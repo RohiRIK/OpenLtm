@@ -15,7 +15,6 @@ data/*.bak*
 .env
 .env.local
 # Orchestration artifacts
-.sisyphus/notepads/
-.sisyphus/evidence/
+.sisyphus/
 node-compile-cache/
 *.tmp
