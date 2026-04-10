@@ -73,8 +73,8 @@ server.tool(
     workspace_id: z.string().optional().describe("Filter by workspace"),
     agent_id: z.string().optional().describe("Filter by agent"),
   },
-  async ({ query, project, limit, category, verbose, since, until, sort_by, workspace_id, agent_id }) => {
-    const results = await recall({ query, project, limit, category, since, until, sort_by, workspace_id, agent_id });
+  async ({ query, project, limit, category, verbose, since, until, sort_by }) => {
+    const results = await recall({ query, project, limit, category, since, until, sort_by });
     const payload = verbose ? strip(results) : compact(strip(results) as unknown[]);
     return { content: [{ type: "text", text: JSON.stringify(payload) }] };
   },
@@ -92,16 +92,13 @@ server.tool(
     workspace_id: z.string().optional().describe("Workspace for this memory"),
     agent_id: z.string().optional().describe("Agent ID for this memory"),
   },
-  async ({ content, category, importance, tags, project, workspace_id, agent_id }) => {
+  async ({ content, category, importance, tags, project }) => {
     const result = learn({
       content,
       category,
       importance,
       tags,
-      project_scope: project,
-      workspace_id,
-      agent_id,
-    });
+      project_scope: project,    });
 
     try {
       server.server.notification({

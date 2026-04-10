@@ -291,8 +291,8 @@ export function learn(input: LearnInput): LearnResult {
   }
 
   const result = db.run(
-    `INSERT INTO memories (content, category, importance, confidence, source, project_scope, dedup_key, workspace_id, agent_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO memories (content, category, importance, confidence, source, project_scope, dedup_key)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
     [
       content,
       input.category,
@@ -301,8 +301,6 @@ export function learn(input: LearnInput): LearnResult {
       input.source ?? null,
       input.project_scope ?? null,
       dedupKey,
-      input.workspace_id ?? null,
-      input.agent_id ?? null,
     ]
   );
 
