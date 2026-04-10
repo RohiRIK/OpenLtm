@@ -1,6 +1,6 @@
 {
   "name": "ltm",
-  "description": "Long-Term Memory system for Claude Code — semantic search, context injection, session learning",
+  "description": "Long-Term Memory system for Claude Code \u2014 semantic search, context injection, session learning",
   "version": "1.3.9",
   "author": {
     "name": "RohiRIK",
@@ -10,11 +10,16 @@
   "mcpServers": {
     "ltm": {
       "command": "bun",
-      "args": ["run", "${CLAUDE_PLUGIN_ROOT}/src/mcp-server.ts"],
+      "args": [
+        "run",
+        "${CLAUDE_PLUGIN_ROOT}/src/mcp-server.ts"
+      ],
       "env": {
         "LTM_DB_PATH": "${CLAUDE_PLUGIN_DATA}/ltm.db"
       }
     }
   },
-  "skills": "./skills/"
+  "skills": "./skills/",
+  "hooks": "./hooks/hooks.json",
+  "agents": "./agents/"
 }
