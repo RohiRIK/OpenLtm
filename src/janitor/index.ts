@@ -56,7 +56,7 @@ export async function runJanitor(): Promise<JanitorRunResult> {
   const errors: string[] = [];
 
   let embedCount = 0;
-  let decayResult: DecayResult = { decayed: 0, deprecated: 0, scanned: 0 };
+  let decayResult: DecayResult = { deprecated: 0, scanned: 0 };
   let promoteResult: PromoteResult = {
     promoted: 0,
     skipped: 0,
