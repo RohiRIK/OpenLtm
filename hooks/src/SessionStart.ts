@@ -20,6 +20,8 @@ const MAX_LTM_LINES    = 30;
 const MAX_AGE_MS       = 30 * 24 * 60 * 60 * 1000;
 const LTM_REMINDER     = "⚡ LTM MCP live — use mcp__ltm__ltm_recall before tasks, mcp__ltm__ltm_learn after discoveries.\n";
 const LTM_REPO_SLUG    = "RohiRIK/claude-ltm-plugin";
+// T6: Imperative directive - injected before memories when autoRecall is not disabled
+const LTM_DIRECTIVE   = "⚡ LTM Active — Before starting work: call `ltm_recall` with task keywords. Check `ltm_context` for project state. After decisions: call `ltm_learn` to store them.\n\n";
 
 function defaultName(cwd: string): string {
   const last = cwd.replace(/\/$/, "").split("/").pop() ?? "";
@@ -194,11 +196,20 @@ async function main(): Promise<void> {
   const injected = trimToLines(summaryText, MAX_INJECT_LINES);
   // Use first ~500 chars of summary as semantic query context
   const sessionContext = summaryText.slice(0, 500).trim() || undefined;
+  
+  // T6: Check autoRecall config - inject directive unless explicitly disabled
+  let useDirective = true;
+  try {
+    const cfg = readConfigSync();
+    useDirective = cfg?.ltm?.autoRecall !== false;
+  } catch (_) {}
+  
   const ltmSection = await buildLtmSection(name, sessionContext);
+  const directive = useDirective ? LTM_DIRECTIVE : "";
 
   const output = ltmSection
-    ? `${injected}\n\n${ltmSection}\n${LTM_REMINDER}`
-    : `${injected}\n${LTM_REMINDER}`;
+    ? `${injected}\n\n${directive}${ltmSection}\n${LTM_REMINDER}`
+    : `${injected}\n${directive}${LTM_REMINDER}`;
 
   process.stdout.write(output);
   logHook("SessionStart", "info", `Injected context for "${name}" (${registeredPath ? "registry" : "slug fallback"})`);
