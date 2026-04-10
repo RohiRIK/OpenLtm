@@ -9,7 +9,7 @@ const TMP_DIRS: string[] = [];
 
 function runConfig(env: Record<string, string>) {
   return Bun.spawnSync(
-    ["bun", "run", "--silent", "-e", `
+    ["bun", "--eval", `
       import { loadConfig } from ${JSON.stringify(CONFIG_MODULE)};
       const cfg = await loadConfig();
       console.log(JSON.stringify(cfg));

@@ -21,3 +21,9 @@
 - Skill descriptions should name the concrete trigger phrases and scenarios that should cause auto-invocation; this is more effective than describing only the skill contents.
 - YAML frontmatter for skills should stay minimal but consistent: `name`, `description`, `user-invocable`, and `version` (plus any existing flags like `disable-model-invocation`).
 - When updating Markdown code blocks, escape embedded shell newlines carefully so the rendered instructions stay valid and readable.
+
+## 2026-04-10 — autoRecall config
+
+- Add new config booleans in three places together: `LtmConfig`, `DEFAULTS.ltm`, and `loadConfig()` fallback wiring; otherwise defaults and overrides drift.
+- Bun subprocess tests that import TS modules should use `bun --eval` with an absolute module path and isolated HOME to exercise `loadConfig()` against real files.
+- When testing config defaults, create a temp `HOME/.claude/config.json` rather than mocking the loader; this catches path resolution and merge behavior together.
