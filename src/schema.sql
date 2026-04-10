@@ -37,7 +37,13 @@ CREATE TABLE IF NOT EXISTS memories (
   -- Phase 2: janitor fields
   status            TEXT    NOT NULL DEFAULT 'active' CHECK(status IN ('active','pending','deprecated','superseded')),
   embedding         BLOB,                     -- float32 vector for semantic search
-  last_used_at      TEXT    NOT NULL DEFAULT (datetime('now'))
+  last_used_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+  -- Phase 3: temporal metadata
+  first_recalled_at  TEXT,
+  last_recalled_at  TEXT,
+  recall_count     INTEGER NOT NULL DEFAULT 0,
+  superseded_by    INTEGER REFERENCES memories(id) ON DELETE SET NULL,
+  superseded_at   TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_memories_category   ON memories(category);
@@ -46,6 +52,8 @@ CREATE INDEX IF NOT EXISTS idx_memories_importance ON memories(importance DESC);
 CREATE INDEX IF NOT EXISTS idx_memories_confidence ON memories(confidence DESC);
 CREATE INDEX IF NOT EXISTS idx_memories_status     ON memories(status);
 CREATE INDEX IF NOT EXISTS idx_memories_last_used  ON memories(last_used_at);
+CREATE INDEX IF NOT EXISTS idx_memories_superseded ON memories(superseded_by);
+CREATE INDEX IF NOT EXISTS idx_memories_recall_count ON memories(recall_count DESC);
 
 -- ============================================================
 -- tags + memory_tags: many-to-many tagging for memories

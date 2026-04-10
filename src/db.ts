@@ -394,6 +394,14 @@ export async function recall(input: RecallInput = {}): Promise<MemoryWithRelatio
     .sort((a, b) => b.score - a.score)
     .map(({ m }) => m);
   updateLastUsed(sorted.map(m => m.id));
+  // T11: Update temporal metadata on recall
+  if (sorted.length > 0) {
+    const placeholders = sorted.map(() => "?").join(",");
+    db.run(
+      `UPDATE memories SET last_recalled_at = datetime('now'), recall_count = recall_count + 1, first_recalled_at = COALESCE(first_recalled_at, datetime('now')) WHERE id IN (${placeholders})`,
+      sorted.map(m => m.id)
+    );
+  }
   return sorted.map(m => enrichMemory(db, m));
 }
 
