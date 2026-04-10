@@ -6,14 +6,14 @@
   },
   "metadata": {
     "description": "Long-Term Memory plugin for Claude Code",
-    "version": "1.3.9"
+    "version": "1.4.5"
   },
   "plugins": [
     {
       "name": "ltm",
       "source": "./",
-      "description": "Persistent semantic memory for Claude Code — semantic search, context injection, session learning, and memory graph visualizer.",
-      "version": "1.3.9",
+      "description": "Persistent semantic memory for Claude Code \u2014 semantic search, context injection, session learning, and memory graph visualizer.",
+      "version": "1.4.5",
       "author": {
         "name": "RohiRIK"
       },

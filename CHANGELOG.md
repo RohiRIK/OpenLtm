@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.4.5] — 2026-04-11
+
+### Added
+- **LTM Evolution Plan (18 tasks)** — Full implementation of automatic LLM memory tool utilization, conflict detection, temporal reasoning, and multi-agent support
+- **SessionStart hook** — Inject memories + context at session start with imperative recall instructions
+- **MCP tool descriptions** — Added "MUST-CALL" triggers to all tools for automatic LLM usage
+- **CLAUDE.md rewrite** — Imperative rules requiring LTM tool usage before non-trivial tasks
+- **Skill YAML frontmatter** — Enhanced descriptions with auto-invocation triggers
+- **autoRecall config** — Option to auto-call ltm_recall at session start
+- **Few-shot examples** — Added to ContinuousLearning skill
+- **/analyze-context command** — Wrapper for context analysis
+- **Unified decay model** — Half-life based (90 days default) eliminating dual-model contradiction
+- **Temporal metadata** — first_recalled_at, last_recalled_at, recall_count on memories table
+- **Contradiction detection** — janitor detects conflicting memories via embeddings
+- **Conflict surfacing** — SessionStart shows conflicting memories to user
+- **Timeline view** — graph-app shows memory recall history
+- **Temporal queries** — ltm_recall supports since/until/sort_by params
+
+### Fixed
+- **plugin.json** — Added hooks and agents paths for proper Claude Code plugin discovery
+
+### Changed
+- **Skills** — Now 5 skills: ContinuousLearning, GitLearn, Learned, LtmServer, session-context
+
+---
+
+# Changelog
+
 ## [1.3.9] — 2026-04-01
 
 ### Added

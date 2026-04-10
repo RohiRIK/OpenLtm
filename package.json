@@ -1,6 +1,6 @@
 {
   "name": "claude-ltm-plugin",
-  "version": "1.3.9",
+  "version": "1.4.5",
   "description": "Long-Term Memory plugin for Claude Code",
   "type": "module",
   "scripts": {
