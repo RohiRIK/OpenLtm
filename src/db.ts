@@ -31,6 +31,12 @@ export interface Memory {
   last_used_at: string;
   confirm_count: number;
   status: "active" | "pending" | "deprecated" | "superseded";
+  // T11/T15: Temporal metadata
+  first_recalled_at?: string;
+  last_recalled_at?: string;
+  recall_count?: number;
+  superseded_by?: number;
+  superseded_at?: string;
 }
 
 export interface MemoryRelation {
@@ -65,7 +71,12 @@ export interface LearnResult {
   confirm_count: number;
 }
 
+// T15: Temporal query params
 export interface RecallInput {
+  since?: string;
+  until?: string;
+  sort_by?: "relevance" | "created" | "last_recalled" | "recall_count";
+
   query?: string;
   tags?: string[];
   category?: MemoryCategory;
@@ -384,15 +395,33 @@ export async function recall(input: RecallInput = {}): Promise<MemoryWithRelatio
   }
 
   conditions.push("status = 'active'");
+
+  // T15: Temporal filters
+  if (input.since) {
+    conditions.push("(created_at > ? OR last_recalled_at > ?)");
+    params.push(input.since, input.since);
+  }
+  if (input.until) {
+    conditions.push("(created_at < ? OR last_recalled_at < ?)");
+    params.push(input.until, input.until);
+  }
+
   const where = `WHERE ${conditions.join(" AND ")}`;
   const rows = db.query<Memory, typeof params>(
     `SELECT * FROM memories ${where} LIMIT ${limit}`
   ).all(...params);
 
-  const sorted = rows
-    .map(m => ({ m, score: computeDecayScore(m) }))
-    .sort((a, b) => b.score - a.score)
-    .map(({ m }) => m);
+  // T15: Sort by temporal field
+  let sorted: typeof rows;
+  if (input.sort_by === "created") {
+    sorted = rows.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  } else if (input.sort_by === "last_recalled") {
+    sorted = rows.sort((a, b) => new Date(b.last_recalled_at ?? "1970").getTime() - new Date(a.last_recalled_at ?? "1970").getTime());
+  } else if (input.sort_by === "recall_count") {
+    sorted = rows.sort((a, b) => (b.recall_count ?? 0) - (a.recall_count ?? 0));
+  } else {
+    sorted = rows.map(m => ({ m, score: computeDecayScore(m) })).sort((a, b) => b.score - a.score).map(({ m }) => m);
+  }
   updateLastUsed(sorted.map(m => m.id));
   // T11: Update temporal metadata on recall
   if (sorted.length > 0) {

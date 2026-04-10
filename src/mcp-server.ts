@@ -72,10 +72,13 @@ server.tool(
     project: z.string().optional().describe("Filter by project scope"),
     limit: z.number().int().min(1).max(50).optional().describe("Max results (default 10)"),
     category: z.enum(["preference", "architecture", "gotcha", "pattern", "workflow", "constraint"]).optional(),
-    verbose: z.boolean().optional().describe("Return full memory objects (default false — returns compact format to save context)"),
+    verbose: z.boolean().optional().describe("Return full memory objects (default false)"),
+    since: z.string().optional().describe("Filter: memories after this ISO date"),
+    until: z.string().optional().describe("Filter: memories before this ISO date"),
+    sort_by: z.enum(["relevance", "created", "last_recalled", "recall_count"]).optional().describe("Sort results by"),
   },
-  async ({ query, project, limit, category, verbose }) => {
-    const results = await recall({ query, project, limit, category });
+  async ({ query, project, limit, category, verbose, since, until, sort_by }) => {
+    const results = await recall({ query, project, limit, category, since, until, sort_by });
     const payload = verbose ? strip(results) : compact(strip(results));
     return { content: [{ type: "text", text: JSON.stringify(payload) }] };
   },
