@@ -66,7 +66,7 @@ const server = new McpServer(
 
 server.tool(
   "ltm_recall",
-  "Search long-term memories by query, category, project scope, or tags",
+  "MUST call before any non-trivial task to surface past decisions, gotchas, and patterns. Searches long-term memories by query, category, project scope, or tags. Also call when starting work on any unfamiliar area.",
   {
     query: z.string().optional().describe("Full-text search query"),
     project: z.string().optional().describe("Filter by project scope"),
@@ -83,7 +83,7 @@ server.tool(
 
 server.tool(
   "ltm_learn",
-  "Store a new memory or reinforce an existing one",
+  "MUST call after discovering a non-obvious pattern, gotcha, or architectural decision. Stores or reinforces a memory. Call whenever you learn something worth preserving across sessions.",
   {
     content: z.string().describe("The insight, pattern, or decision to store"),
     category: z.enum(["preference", "architecture", "gotcha", "pattern", "workflow", "constraint"]),
@@ -113,7 +113,7 @@ server.tool(
 
 server.tool(
   "ltm_relate",
-  "Create a relationship between two memories",
+  "Call when two memories are linked — e.g. a decision caused a gotcha, or a pattern applies to an architecture. Creates a typed relationship between two memories.",
   {
     source_id: z.number().int(),
     target_id: z.number().int(),
@@ -127,7 +127,7 @@ server.tool(
 
 server.tool(
   "ltm_forget",
-  "Delete a memory by ID",
+  "Call when a memory is wrong, outdated, or the user requests removal. Deletes a memory by ID and cascades to its relations.",
   {
     id: z.number().int(),
     reason: z.string().optional().describe("Why this memory is being removed"),
@@ -140,7 +140,7 @@ server.tool(
 
 server.tool(
   "ltm_context",
-  "Get merged context (globals + project-scoped memories) for a project",
+  "MUST call at session start or when switching projects to restore goals, decisions, and gotchas. Returns merged context (globals + project-scoped memories).",
   {
     project: z.string().describe("Project name from registry"),
   },
@@ -152,7 +152,7 @@ server.tool(
 
 server.tool(
   "ltm_graph",
-  "Traverse the memory graph from seed nodes and build reasoning context",
+  "Call when exploring connections between memories or tracing decision chains. Traverses the memory graph from seed nodes and builds a reasoning context.",
   {
     memory_ids: z.array(z.number().int()).min(1).describe("Starting memory IDs for traversal"),
     depth: z.number().int().min(1).max(4).optional().describe("Traversal depth (default 2)"),
@@ -188,7 +188,7 @@ server.tool(
 
 server.tool(
   "ltm_context_items",
-  "Get context items (goals, decisions, progress, gotchas) for a project",
+  "Call when you need to list specific context types — goals, decisions, progress, or gotchas — for a project. Returns structured context items.",
   {
     project: z.string().describe("Project name from registry"),
     type: z.enum(["goal", "decision", "progress", "gotcha"]).optional(),
