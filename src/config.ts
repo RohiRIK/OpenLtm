@@ -19,6 +19,7 @@ export interface LtmConfig {
   decayEnabled: boolean;
   injectTopN: number;
   autoRelate: boolean;
+  autoRecall: boolean;
   graphReasoning: boolean;
   evaluateSessionLlm: boolean;
   semanticFallback: boolean;
@@ -52,6 +53,7 @@ const DEFAULTS: Config = {
     decayEnabled: true,
     injectTopN: 15,
     autoRelate: true,
+    autoRecall: true,
     graphReasoning: false,
     evaluateSessionLlm: false,
     semanticFallback: true,
@@ -90,6 +92,9 @@ export function validateConfig(raw?: unknown): { valid: boolean; errors: string[
       }
       if ("decayEnabled" in ltm && typeof ltm["decayEnabled"] !== "boolean") {
         errors.push("ltm.decayEnabled: must be a boolean");
+      }
+      if ("autoRecall" in ltm && typeof ltm["autoRecall"] !== "boolean") {
+        errors.push("ltm.autoRecall: must be a boolean");
       }
       if ("graphReasoning" in ltm && typeof ltm["graphReasoning"] !== "boolean") {
         errors.push("ltm.graphReasoning: must be a boolean");
@@ -203,6 +208,7 @@ export async function loadConfig(): Promise<Config> {
       decayEnabled: ltm.decayEnabled ?? DEFAULTS.ltm.decayEnabled,
       injectTopN:   ltm.injectTopN   ?? DEFAULTS.ltm.injectTopN,
       autoRelate:         ltm.autoRelate         ?? DEFAULTS.ltm.autoRelate,
+      autoRecall:         ltm.autoRecall         ?? DEFAULTS.ltm.autoRecall,
       graphReasoning:     ltm.graphReasoning     ?? DEFAULTS.ltm.graphReasoning,
       evaluateSessionLlm:     ltm.evaluateSessionLlm     ?? DEFAULTS.ltm.evaluateSessionLlm,
       semanticFallback:       ltm.semanticFallback       ?? DEFAULTS.ltm.semanticFallback,
