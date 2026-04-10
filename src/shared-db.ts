@@ -90,11 +90,34 @@ export function getDb(): Database {
   const dir = join(CLAUDE_DIR, "memory");
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   _db = new Database(DB_PATH, { create: true });
-  _db.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
+  _db.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;");
   // Migrations first — adds columns to existing tables so schema.sql indexes succeed
   runMigrations(_db);
   _db.exec(readFileSync(SCHEMA_PATH, "utf-8"));
   return _db;
+}
+
+/** Retry helper for SQLITE_BUSY errors — wraps a function with automatic retry. */
+export function withRetry<T>(fn: () => T, maxRetries = 3): T {
+  let lastError: Error | null = null;
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return fn();
+    } catch (err: unknown) {
+      const e = err as { message?: string; code?: number };
+      if (e?.message?.includes("SQLITE_BUSY") || e?.code === 5) {
+        lastError = err as Error;
+        if (i < maxRetries - 1) {
+          const delay = Math.pow(2, i) * 50;
+          const start = Date.now();
+          while (Date.now() - start < delay) { /* spin-wait */ }
+        }
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastError;
 }
 
 // --- Settings helpers (used by janitor + server routes) ---

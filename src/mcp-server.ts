@@ -25,34 +25,28 @@ async function isEnabled(): Promise<boolean> {
 }
 
 // Strip embedding blob before sending over MCP — it serializes as {"0":59,...} ~260KB per memory
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function strip(obj: any): any {
+function strip(obj: unknown): unknown {
   if (Array.isArray(obj)) return obj.map(strip);
   if (obj && typeof obj === "object") {
-    const { embedding: _e, ...rest } = obj;
+    const { embedding: _e, ...rest } = obj as Record<string, unknown>;
     return Object.fromEntries(Object.entries(rest).map(([k, v]) => [k, strip(v)]));
   }
   return obj;
 }
 
 /** Compact formatter — strips verbose fields and truncates content to keep MCP responses small. */
-function compact(memories: any[]): any[] {
+function compact(memories: unknown[]): unknown[] {
   const MAX_CONTENT = 300;
-  return memories.map(m => ({
-    id: m.id,
-    content: m.content?.length > MAX_CONTENT ? m.content.slice(0, MAX_CONTENT) + "…" : m.content,
-    category: m.category,
-    importance: m.importance,
-    tags: m.tags,
-    project_scope: m.project_scope,
-    ...(m.relations?.length > 0 && {
-      relations: m.relations.map((r: any) => ({
-        id: r.memory?.id,
-        type: r.relationship_type,
-        dir: r.direction,
-      })),
-    }),
-  }));
+  return memories.map(m => {
+    const mem = m as Record<string, unknown>;
+    const content = typeof mem.content === "string" && mem.content.length > MAX_CONTENT
+      ? mem.content.slice(0, MAX_CONTENT) + "…"
+      : mem.content;
+    const relations = Array.isArray(mem.relations) && mem.relations.length > 0
+      ? { relations: mem.relations.map((r: Record<string, unknown>) => ({ id: (r.memory as Record<string, unknown>)?.id, type: r.relationship_type, dir: r.direction })) }
+      : {};
+    return { id: mem.id, content, category: mem.category, importance: mem.importance, tags: mem.tags, project_scope: mem.project_scope, ...relations };
+  });
 }
 
 // ─── Server ──────────────────────────────────────────────────────────────────
@@ -76,10 +70,12 @@ server.tool(
     since: z.string().optional().describe("Filter: memories after this ISO date"),
     until: z.string().optional().describe("Filter: memories before this ISO date"),
     sort_by: z.enum(["relevance", "created", "last_recalled", "recall_count"]).optional().describe("Sort results by"),
+    workspace_id: z.string().optional().describe("Filter by workspace"),
+    agent_id: z.string().optional().describe("Filter by agent"),
   },
-  async ({ query, project, limit, category, verbose, since, until, sort_by }) => {
-    const results = await recall({ query, project, limit, category, since, until, sort_by });
-    const payload = verbose ? strip(results) : compact(strip(results));
+  async ({ query, project, limit, category, verbose, since, until, sort_by, workspace_id, agent_id }) => {
+    const results = await recall({ query, project, limit, category, since, until, sort_by, workspace_id, agent_id });
+    const payload = verbose ? strip(results) : compact(strip(results) as unknown[]);
     return { content: [{ type: "text", text: JSON.stringify(payload) }] };
   },
 );
@@ -93,14 +89,18 @@ server.tool(
     importance: z.number().int().min(1).max(5).optional().describe("Importance 1-5 (default 3, 5=never decays)"),
     tags: z.array(z.string()).optional().describe("Tags for categorization"),
     project: z.string().optional().describe("Scope to a specific project"),
+    workspace_id: z.string().optional().describe("Workspace for this memory"),
+    agent_id: z.string().optional().describe("Agent ID for this memory"),
   },
-  async ({ content, category, importance, tags, project }) => {
+  async ({ content, category, importance, tags, project, workspace_id, agent_id }) => {
     const result = learn({
       content,
       category,
       importance,
       tags,
       project_scope: project,
+      workspace_id,
+      agent_id,
     });
 
     try {

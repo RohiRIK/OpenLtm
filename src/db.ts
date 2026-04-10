@@ -5,14 +5,13 @@
 import type { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
-import { homedir } from "os";
 import { normalizeKey } from "./dedup.js";
 import { getDb, DB_PATH } from "./shared-db.js";
+import { CLAUDE_DIR } from "./paths.js";
 import { scrubSecrets } from "./secretsScrubber.js";
 
 export { DB_PATH };
-const CLAUDE_DIR  = join(homedir(), ".claude");
-const DOCS_DIR    = join(CLAUDE_DIR, "docs");
+const DOCS_DIR = join(CLAUDE_DIR, "docs");
 
 export type MemoryCategory = "preference" | "architecture" | "gotcha" | "pattern" | "workflow" | "constraint";
 export type RelationshipType = "supports" | "contradicts" | "refines" | "depends_on" | "related_to" | "supersedes";
@@ -31,12 +30,13 @@ export interface Memory {
   last_used_at: string;
   confirm_count: number;
   status: "active" | "pending" | "deprecated" | "superseded";
-  // T11/T15: Temporal metadata
   first_recalled_at?: string;
   last_recalled_at?: string;
   recall_count?: number;
   superseded_by?: number;
   superseded_at?: string;
+  workspace_id?: string;
+  agent_id?: string;
 }
 
 export interface MemoryRelation {
@@ -59,6 +59,8 @@ export interface LearnInput {
   confidence?: number;
   source?: string;
   project_scope?: string;
+  workspace_id?: string;
+  agent_id?: string;
   tags?: string[];
   relate_to?: Array<{ id: number; relationship_type: RelationshipType }>;
   /** Skip regenerating docs/memory-long-term.md (use during bulk imports) */
@@ -71,7 +73,6 @@ export interface LearnResult {
   confirm_count: number;
 }
 
-// T15: Temporal query params
 export interface RecallInput {
   since?: string;
   until?: string;
@@ -82,6 +83,8 @@ export interface RecallInput {
   category?: MemoryCategory;
   project?: string;
   limit?: number;
+  workspace_id?: string;
+  agent_id?: string;
 }
 
 
@@ -288,8 +291,8 @@ export function learn(input: LearnInput): LearnResult {
   }
 
   const result = db.run(
-    `INSERT INTO memories (content, category, importance, confidence, source, project_scope, dedup_key)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO memories (content, category, importance, confidence, source, project_scope, dedup_key, workspace_id, agent_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       content,
       input.category,
@@ -298,6 +301,8 @@ export function learn(input: LearnInput): LearnResult {
       input.source ?? null,
       input.project_scope ?? null,
       dedupKey,
+      input.workspace_id ?? null,
+      input.agent_id ?? null,
     ]
   );
 
@@ -394,9 +399,17 @@ export async function recall(input: RecallInput = {}): Promise<MemoryWithRelatio
     params.push(input.project);
   }
 
+  if (input.workspace_id) {
+    conditions.push("(workspace_id IS NULL OR workspace_id=?)");
+    params.push(input.workspace_id);
+  }
+  if (input.agent_id) {
+    conditions.push("(agent_id IS NULL OR agent_id=?)");
+    params.push(input.agent_id);
+  }
+
   conditions.push("status = 'active'");
 
-  // T15: Temporal filters
   if (input.since) {
     conditions.push("(created_at > ? OR last_recalled_at > ?)");
     params.push(input.since, input.since);
@@ -411,7 +424,6 @@ export async function recall(input: RecallInput = {}): Promise<MemoryWithRelatio
     `SELECT * FROM memories ${where} LIMIT ${limit}`
   ).all(...params);
 
-  // T15: Sort by temporal field
   let sorted: typeof rows;
   if (input.sort_by === "created") {
     sorted = rows.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -423,7 +435,6 @@ export async function recall(input: RecallInput = {}): Promise<MemoryWithRelatio
     sorted = rows.map(m => ({ m, score: computeDecayScore(m) })).sort((a, b) => b.score - a.score).map(({ m }) => m);
   }
   updateLastUsed(sorted.map(m => m.id));
-  // T11: Update temporal metadata on recall
   if (sorted.length > 0) {
     const placeholders = sorted.map(() => "?").join(",");
     db.run(

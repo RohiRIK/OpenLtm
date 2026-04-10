@@ -1,29 +1,26 @@
-# Learnings
+# LTM Evolution Plan — Learnings
 
-## [2026-04-10] Session Start
-- Plan approved by Momus after 4 iterations (8 issues fixed across 3 rejections)
-- Key fixes applied: file extensions (.js→.ts), MCP test harness (use DB functions directly, not server internals), migration CLI (--up not up), wave dependency conflicts (split waves), hook QA needs stdin JSON piping `echo '{"cwd":"/tmp/test-project"}' |`, Task 5 must add YAML frontmatter to GitLearn and session-context
-- Hook test pattern: `echo '{"cwd":"/tmp/test-project"}' | LTM_DB_PATH=/tmp/test-ltm.db bun run hooks/src/SessionStart.ts`
-- MCP harness: test `learn`, `recall`, `forget`, `relate` from `src/db.ts` directly — NOT the server
-- Migration CLI: `bun run src/migrations.ts --up` (not `bun run src/migrations.ts up`)
-- Wave ordering: 1 → 2a → 2b → 3 → 4a → 4b → 4c → 5a → 5b → 5c → FINAL
+## T16-T18: Multi-Agent Memory Isolation
 
-## 2026-04-10 — MUST-CALL trigger descriptions
+### Key Gotcha
+**INSERT param order must match column order exactly** — SQLite bindings map positionally, not by name. When adding new columns to INSERT, ensure the params array order matches the column list order.
 
-- MCP tool descriptions serve as LLM auto-invocation hints — "MUST call before/after" phrasing reliably triggers automatic recall/learn calls in Claude sessions without explicit user prompting.
-- Use imperative "MUST call" for the two highest-value auto-invocation targets (ltm_recall, ltm_context) and softer "Call when" for relationship/graph tools.
-- Pattern: "[WHEN trigger]. [WHAT it does]. [Additional triggers]." keeps descriptions concise (1-3 sentences) while adding behavioural guidance.
-- Descriptions should mention concrete scenarios (non-trivial task, session start, switching projects) not just generic categories.
-- Test strategy: read the source file as text, extract description via regex match on server.tool() call site — avoids instantiating the MCP server and its DB dependencies.
+### Schema Changes
+- Added `workspace_id`, `agent_id` columns to `memories` and `context_items`
+- Added indexes for query performance
+- Created migration `migrations/007_workspaces.sql`
 
-## 2026-04-10 — Skill auto-invocation descriptions
+### MCP Tool Updates
+- `ltm_recall`: Added `workspace_id`, `agent_id` filter params
+- `ltm_learn`: Added `workspace_id`, `agent_id` params for isolation
+- Both default to `null` for backward compatibility (single-user mode)
 
-- Skill descriptions should name the concrete trigger phrases and scenarios that should cause auto-invocation; this is more effective than describing only the skill contents.
-- YAML frontmatter for skills should stay minimal but consistent: `name`, `description`, `user-invocable`, and `version` (plus any existing flags like `disable-model-invocation`).
-- When updating Markdown code blocks, escape embedded shell newlines carefully so the rendered instructions stay valid and readable.
+### Concurrency
+- WAL mode already enabled (from T10 work)
+- Added `PRAGMA busy_timeout=5000` to handle concurrent access
+- Added `withRetry()` helper for SQLITE_BUSY errors (optional utility)
 
-## 2026-04-10 — autoRecall config
-
-- Add new config booleans in three places together: `LtmConfig`, `DEFAULTS.ltm`, and `loadConfig()` fallback wiring; otherwise defaults and overrides drift.
-- Bun subprocess tests that import TS modules should use `bun --eval` with an absolute module path and isolated HOME to exercise `loadConfig()` against real files.
-- When testing config defaults, create a temp `HOME/.claude/config.json` rather than mocking the loader; this catches path resolution and merge behavior together.
+### Verification
+- TypeScript: ✅ clean
+- Tests: 39/40 pass (1 pre-existing Playwright config error)
+- Manual workspace filtering test: ✅ works correctly
