@@ -1,3 +1,10 @@
+---
+name: session-context
+description: "Session context persistence for project goals, decisions, progress, and gotchas; use when restoring project state, managing session notes, or checking whether context was injected at startup."
+user-invocable: false
+version: 1.0.0
+---
+
 # Session Context Persistence
 
 ## Overview

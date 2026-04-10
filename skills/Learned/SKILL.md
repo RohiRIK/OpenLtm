@@ -1,6 +1,6 @@
 ---
 name: Learned
-description: "Reference for retrieved patterns and lessons from past sessions."
+description: "Reference for retrieved patterns and lessons from past sessions; use when prior fixes, gotchas, decisions, or earlier sessions may apply, or when asked what we learned before."
 user-invocable: false
 version: 1.0.0
 ---

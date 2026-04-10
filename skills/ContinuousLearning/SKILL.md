@@ -1,6 +1,6 @@
 ---
 name: ContinuousLearning
-description: "Reference for LTM memory commands, context hooks, and DB schema."
+description: "Reference for LTM memory commands, context hooks, and DB schema; use when the user mentions learning, recalling, forgetting, relating, or capturing memory, or when a session starts or the project changes."
 user-invocable: false
 version: 2.1.0
 ---

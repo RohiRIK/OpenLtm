@@ -1,3 +1,10 @@
+---
+name: GitLearn
+description: "Retroactive Git commit learning for extracting memories from git history; use when onboarding a repo, backfilling past learnings, or after a productive sprint. Trigger phrases: 'git learn', 'review past commits', 'backfill learnings'."
+user-invocable: false
+version: 1.0.0
+---
+
 # /git-learn — Retroactive Git Commit Learning
 
 Extract LTM memories from past git commits in the current repository.
@@ -41,8 +48,7 @@ git log --oneline --since="<date>"
 For each commit hash, run:
 
 ```bash
-CLAUDE_PLUGIN_ROOT=<plugin-root> bun run <plugin-root>/hooks/src/GitCommit.ts \
-  --extract "$(bun -e "
+CLAUDE_PLUGIN_ROOT=<plugin-root> bun run <plugin-root>/hooks/src/GitCommit.ts   --extract "$(bun -e "
     const { spawnSync } = require('child_process');
     const hash = '<HASH>';
     const diff = spawnSync('git', ['show', '--unified=3', '--no-color', hash], { encoding: 'utf-8' }).stdout.slice(0, 4000);

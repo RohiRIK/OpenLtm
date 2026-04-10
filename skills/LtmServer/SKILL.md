@@ -1,6 +1,6 @@
 ---
 name: LtmServer
-description: "Start, stop, or check the LTM graph visualization server."
+description: "Start, stop, or check the LTM graph visualization server; use when the user asks to open, launch, stop, kill, or check graph-server status."
 disable-model-invocation: true
 user-invocable: false
 version: 1.1.0
