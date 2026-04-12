@@ -76,6 +76,34 @@ function runMigrations(db: Database): void {
     `);
   }
 
+  if (!hasColumn(db, "memories", "superseded_by")) {
+    db.exec("ALTER TABLE memories ADD COLUMN superseded_by INTEGER REFERENCES memories(id) ON DELETE SET NULL");
+  }
+  if (!hasColumn(db, "memories", "superseded_at")) {
+    db.exec("ALTER TABLE memories ADD COLUMN superseded_at TEXT");
+  }
+  if (!hasColumn(db, "memories", "first_recalled_at")) {
+    db.exec("ALTER TABLE memories ADD COLUMN first_recalled_at TEXT");
+  }
+  if (!hasColumn(db, "memories", "last_recalled_at")) {
+    db.exec("ALTER TABLE memories ADD COLUMN last_recalled_at TEXT");
+  }
+  if (!hasColumn(db, "memories", "recall_count")) {
+    db.exec("ALTER TABLE memories ADD COLUMN recall_count INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!hasColumn(db, "memories", "workspace_id")) {
+    db.exec("ALTER TABLE memories ADD COLUMN workspace_id TEXT");
+  }
+  if (!hasColumn(db, "memories", "agent_id")) {
+    db.exec("ALTER TABLE memories ADD COLUMN agent_id TEXT");
+  }
+  if (!hasColumn(db, "context_items", "workspace_id")) {
+    db.exec("ALTER TABLE context_items ADD COLUMN workspace_id TEXT");
+  }
+  if (!hasColumn(db, "context_items", "agent_id")) {
+    db.exec("ALTER TABLE context_items ADD COLUMN agent_id TEXT");
+  }
+
   // New indexes (CREATE INDEX IF NOT EXISTS is safe to re-run)
   db.exec(
     "CREATE INDEX IF NOT EXISTS idx_memories_status ON memories(status)",

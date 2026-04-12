@@ -18,3 +18,7 @@ data/*.bak*
 .sisyphus/
 node-compile-cache/
 *.tmp
+
+# Per-project plugin settings (never commit)
+.claude/*.local.md
+.claude/*.local.json

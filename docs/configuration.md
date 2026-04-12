@@ -66,3 +66,26 @@ The graph API runs on `apiPort`, the Next.js UI on `uiPort`.
 ```
 
 Providers: `s3` | `r2` | `null`
+
+## Per-project settings (optional)
+
+Create `.claude/ltm.local.md` in your project for per-project LTM overrides:
+
+```markdown
+---
+enabled: true
+injectTopN: 10
+autoRecall: false
+---
+
+# Project-specific notes
+
+This project uses stricter memory injection.
+```
+
+**Fields:**
+- `enabled` — Enable/disable LTM for this project (default: true)
+- `injectTopN` — Override max memories to inject
+- `autoRecall` — Override auto-recall at session start
+
+**Note:** Changes require restarting Claude Code.
