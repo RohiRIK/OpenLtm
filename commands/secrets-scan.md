@@ -12,30 +12,31 @@ argument-hint: "[--project X] [--dry-run]"
 Run:
 
 ```bash
-DB="${LTM_DB_PATH:-$CLAUDE_PLUGIN_DATA/ltm.db}"
 bun --eval "
-const { Database } = require('bun:sqlite');
-const { scrubSecrets } = await import('${CLAUDE_PLUGIN_ROOT}/src/secretsScrubber.js');
-const args = process.argv.slice(2);
-const dryRun = args.includes('--dry-run');
-const project = args[args.indexOf('--project') + 1] ?? null;
-const db = new Database(process.env.DB);
-const where = project ? \"WHERE status='active' AND project_scope=?\" : \"WHERE status='active'\";
-const rows = db.query('SELECT id, content FROM memories ' + where).all(...(project ? [project] : []));
-let scanned = 0, redacted = 0;
-const typeCounts = {};
-for (const row of rows) {
-  scanned++;
-  const { scrubbed, redactions } = scrubSecrets(row.content);
-  if (redactions.length) {
-    redacted++;
-    redactions.forEach(r => typeCounts[r] = (typeCounts[r] ?? 0) + 1);
-    if (!dryRun) db.run('UPDATE memories SET content=? WHERE id=?', [scrubbed, row.id]);
-    else console.log('[dry-run] Memory ' + row.id + ' would redact: ' + redactions.join(', '));
+import { Database } from 'bun:sqlite';
+await (async () => {
+  const { scrubSecrets } = await import(process.env.CLAUDE_PLUGIN_ROOT + '/src/secretsScrubber.js');
+  const args = process.argv.slice(2);
+  const dryRun = args.includes('--dry-run');
+  const project = args[args.indexOf('--project') + 1] ?? null;
+  const db = new Database(process.env.LTM_DB_PATH);
+  const where = project ? \"WHERE status='active' AND project_scope=?\" : \"WHERE status='active'\";
+  const rows = db.query('SELECT id, content FROM memories ' + where).all(...(project ? [project] : []));
+  let scanned = 0, redacted = 0;
+  const typeCounts = {};
+  for (const row of rows) {
+    scanned++;
+    const { scrubbed, redactions } = scrubSecrets(row.content);
+    if (redactions.length) {
+      redacted++;
+      redactions.forEach(r => typeCounts[r] = (typeCounts[r] ?? 0) + 1);
+      if (!dryRun) db.run('UPDATE memories SET content=? WHERE id=?', [scrubbed, row.id]);
+      else console.log('[dry-run] Memory ' + row.id + ' would redact: ' + redactions.join(', '));
+    }
   }
-}
-const typeStr = Object.entries(typeCounts).map(([k,v]) => k+'('+v+')').join(', ');
-console.log('Scanned ' + scanned + ', redacted ' + redacted + (typeStr ? ' ('+typeStr+')' : '') + (dryRun ? ' [dry-run]' : ''));
+  const typeStr = Object.entries(typeCounts).map(([k,v]) => k+'('+v+')').join(', ');
+  console.log('Scanned ' + scanned + ', redacted ' + redacted + (typeStr ? ' ('+typeStr+')' : '') + (dryRun ? ' [dry-run]' : ''));
+})();
 " -- $@
 ```
 

@@ -3,17 +3,16 @@ description: "Run a memory decay diagnostic — score distribution and at-risk m
 ---
 
 ```bash
-DB="${LTM_DB_PATH:-$CLAUDE_PLUGIN_DATA/ltm.db}"
 bun --eval "
-const { Database } = require('bun:sqlite');
-const db = new Database('$DB');
+import { Database } from 'bun:sqlite';
+const db = new Database(process.env.LTM_DB_PATH);
 const all = db.query(\"SELECT * FROM memories WHERE status='active'\").all();
 const dep = db.query(\"SELECT COUNT(*) as n FROM memories WHERE status='deprecated'\").get();
 const lastRun = db.query(\"SELECT value FROM settings WHERE key='decay_last_run'\").get()?.value ?? 'never';
 
 const now = Date.now();
 const scored = all.map(m => {
-  const ageDays = (now - new Date(m.last_accessed ?? m.created_at).getTime()) / 86400000;
+  const ageDays = (now - new Date(m.last_used_at ?? m.created_at).getTime()) / 86400000;
   const recency = Math.exp(-ageDays / 30);
   return { ...m, score: (m.importance ?? 1) * (m.confidence ?? 1) * recency * (1 + (m.confirm_count ?? 0) * 0.1) };
 });

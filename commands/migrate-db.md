@@ -16,7 +16,7 @@ If `CLAUDE_PLUGIN_ROOT` is unset, find plugin root: `claude plugin info ltm 2>/d
 |----------|--------|
 | `LTM_DB_PATH` env set | Shows override path, no migration needed |
 | Marketplace install, DB already migrated | Confirms target path and size |
-| Marketplace install, legacy DB exists | Copies `$CLAUDE_PLUGIN_DATA/ltm.db` → `$CLAUDE_PLUGIN_DATA/ltm.db` |
+| Marketplace install, legacy DB exists | Copies `~/.claude/memory/ltm.db` → `$CLAUDE_PLUGIN_DATA/ltm.db` |
 | Marketplace install, fresh | Confirms where DB will be created |
 | Dev/git-clone install | Shows `$CLAUDE_PLUGIN_DATA/ltm.db`, no migration needed |
 

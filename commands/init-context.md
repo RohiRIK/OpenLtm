@@ -7,15 +7,14 @@ disable-model-invocation: true
 ```bash
 cat ~/.claude/projects/registry.json
 ```
-Match `cwd`. If missing, run `/register-project` first.
+Match `cwd`. If missing, run `/ltm:register-project` first.
 
 **2 — Check for existing goal:**
 ```bash
-DB="${LTM_DB_PATH:-$CLAUDE_PLUGIN_DATA/ltm.db}"
 bun --eval "
-const { Database } = require('bun:sqlite');
-const db = new Database('$DB');
-const row = db.query(\"SELECT content FROM context_items WHERE project=? AND type='goal' LIMIT 1\").get('<project>');
+import { Database } from 'bun:sqlite';
+const db = new Database(process.env.LTM_DB_PATH);
+const row = db.query(\"SELECT content FROM context_items WHERE project_name=? AND type='goal' LIMIT 1\").get('<project>');
 console.log(row ? row.content : '');
 "
 ```
@@ -27,12 +26,10 @@ If a goal exists, show it and ask: "Replace it?"
 **4 — Write:**
 ```bash
 bun --eval "
-const { Database } = require('bun:sqlite');
-const db = new Database('$DB');
-db.run(\`INSERT INTO context_items (project, type, content, updated_at)
-  VALUES (?, 'goal', ?, datetime('now'))
-  ON CONFLICT(project, type) DO UPDATE SET content=excluded.content, updated_at=excluded.updated_at\`,
-  ['<project>', '<goal>']);
+import { Database } from 'bun:sqlite';
+const db = new Database(process.env.LTM_DB_PATH);
+db.run(\"DELETE FROM context_items WHERE project_name=? AND type='goal'\", ['<project>']);
+db.run('INSERT INTO context_items (project_name, type, content, created_at) VALUES (?, ?, ?, datetime(\"now\"))', ['<project>', 'goal', '<goal>']);
 console.log('done');
 "
 ```

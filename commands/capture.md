@@ -32,14 +32,16 @@ LTM memory (call `mcp__ltm__ltm_learn`):
 
 Context item (bun:sqlite direct):
 ```bash
-DB="${LTM_DB_PATH:-$CLAUDE_PLUGIN_DATA/ltm.db}"
 bun --eval "
-const { Database } = require('bun:sqlite');
-const db = new Database('$DB');
-db.run(\`INSERT INTO context_items (project, type, content, updated_at)
-  VALUES (?, ?, ?, datetime('now'))
-  ON CONFLICT(project, type) DO UPDATE SET content=excluded.content, updated_at=excluded.updated_at\`,
-  ['<project>', '<context_type>', '<content>']);
+import { Database } from 'bun:sqlite';
+const db = new Database(process.env.LTM_DB_PATH);
+const type = '<context_type>';
+const project = '<project>';
+const content = '<content>';
+if (type === 'goal') {
+  db.run(\"DELETE FROM context_items WHERE project_name=? AND type='goal'\", [project]);
+}
+db.run('INSERT INTO context_items (project_name, type, content, created_at) VALUES (?, ?, ?, datetime(\"now\"))', [project, type, content]);
 console.log('ok');
 "
 ```
