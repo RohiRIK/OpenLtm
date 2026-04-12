@@ -122,13 +122,26 @@ export async function runPendingMigrations(db?: Database): Promise<MigrationResu
     const { up } = parseMigration(file.content);
     const checksum = computeChecksum(file.content);
 
-    _db.transaction(() => {
-      _db.exec(up);
-      _db.run(
-        `INSERT INTO _schema_version (version, name, checksum) VALUES (?, ?, ?)`,
-        [file.version, file.name, checksum],
-      );
-    })();
+    try {
+      _db.transaction(() => {
+        _db.exec(up);
+        _db.run(
+          `INSERT INTO _schema_version (version, name, checksum) VALUES (?, ?, ?)`,
+          [file.version, file.name, checksum],
+        );
+      })();
+    } catch (err: unknown) {
+      const msg = (err as { message?: string }).message ?? "";
+      // Column was already added by shared-db.ts runMigrations() — self-heal by recording as applied
+      if (msg.includes("duplicate column name") || msg.includes("already exists")) {
+        _db.run(
+          `INSERT OR IGNORE INTO _schema_version (version, name, checksum) VALUES (?, ?, ?)`,
+          [file.version, file.name, checksum],
+        );
+      } else {
+        throw err;
+      }
+    }
 
     results.push({ version: file.version, name: file.name, action: "applied" });
   }
