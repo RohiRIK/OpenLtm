@@ -19,6 +19,30 @@ Every task follows this workflow:
 4. **Simplify** — Run `/simplify` to clean up the code
 5. **Verify** — Run `/verify` (tsc + lint + test + build)
 
+## Version Bump — MANDATORY
+
+**After EVERY fix, feature, or change that touches any file in this repo:**
+
+1. Bump the patch version in **BOTH** files:
+   - `package.json` → `"version": "X.Y.Z"`
+   - `.claude-plugin/plugin.json` → `"version": "X.Y.Z"`
+2. Both files MUST always have the same version number.
+3. Commit with `release: bump version to X.Y.Z`
+4. Push to GitHub.
+
+**Why:** The Claude Code plugin marketplace detects new versions via the version field in `.claude-plugin/plugin.json`. If the version is not bumped, users never see the update and "Update now" does nothing.
+
+**Do not skip this step even for tiny one-line fixes.**
+
+## Cache Sync — MANDATORY
+
+After every fix, also patch the running cache at:
+`~/.claude/plugins/cache/ltm/ltm/<version>/`
+
+The plugin system reads from the cache, not the source repo. Changes only take effect if:
+- The cache file is patched directly (immediate), OR
+- The user clicks "Update now" in the plugin UI (requires version bump)
+
 ## Available MCP Tools
 
 | Tool | When to use |
