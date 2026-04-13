@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "LTM_DB_PATH=${CLAUDE_PLUGIN_DATA}/ltm.db CLAUDE_PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT} /opt/homebrew/bin/bun run ${CLAUDE_PLUGIN_ROOT}/hooks/src/SessionStart.ts"
+            "command": "/opt/homebrew/bin/bun run ${CLAUDE_PLUGIN_ROOT}/hooks/src/SessionStart.ts"
           }
         ]
       }
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "LTM_DB_PATH=${CLAUDE_PLUGIN_DATA}/ltm.db CLAUDE_PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT} /opt/homebrew/bin/bun run ${CLAUDE_PLUGIN_ROOT}/hooks/src/UpdateContext.ts"
+            "command": "/opt/homebrew/bin/bun run ${CLAUDE_PLUGIN_ROOT}/hooks/src/UpdateContext.ts"
           }
         ]
       },
@@ -27,7 +27,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "LTM_DB_PATH=${CLAUDE_PLUGIN_DATA}/ltm.db CLAUDE_PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT} /opt/homebrew/bin/bun run ${CLAUDE_PLUGIN_ROOT}/hooks/src/EvaluateSession.ts"
+            "command": "/opt/homebrew/bin/bun run ${CLAUDE_PLUGIN_ROOT}/hooks/src/EvaluateSession.ts"
           }
         ]
       }
@@ -38,7 +38,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "LTM_DB_PATH=${CLAUDE_PLUGIN_DATA}/ltm.db CLAUDE_PLUGIN_ROOT=${CLAUDE_PLUGIN_ROOT} /opt/homebrew/bin/bun run ${CLAUDE_PLUGIN_ROOT}/hooks/src/PreCompact.ts"
+            "command": "/opt/homebrew/bin/bun run ${CLAUDE_PLUGIN_ROOT}/hooks/src/PreCompact.ts"
           }
         ]
       }
