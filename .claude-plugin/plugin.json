@@ -19,6 +19,5 @@
       }
     }
   },
-  "skills": "./skills/",
-  "hooks": "./hooks/hooks.json"
+  "skills": "./skills/"
 }
