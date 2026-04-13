@@ -5,7 +5,7 @@
  *
  * Usage: bun run scripts/install-wiring.ts <plugin-root>
  */
-import { existsSync, readFileSync, readdirSync, writeFileSync, copyFileSync, mkdirSync, chmodSync } from "fs";
+import { existsSync, readFileSync, readdirSync, writeFileSync, copyFileSync, mkdirSync, chmodSync, rmSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 import { execSync } from "child_process";
@@ -109,6 +109,24 @@ if (isMarketplaceInstall) {
   } else {
     console.log("  ✔ Hooks managed by plugin system (hooks/hooks.json) — settings.json clean");
   }
+
+  // Remove stale .bundle.mjs files from ~/.claude/hooks/<Event>/.
+  // These were compiled by an older plugin system version and left behind when
+  // the hooks field was temporarily removed from plugin.json (commit 9a7c60c).
+  // They have a #!/usr/bin/env bun shebang and are auto-discovered by Claude Code,
+  // but bun is not in the execution PATH → exit 127 on every session start.
+  const STALE_BUNDLES = [
+    join(CLAUDE_DIR, "hooks", "SessionStart",   "SessionStart.bundle.mjs"),
+    join(CLAUDE_DIR, "hooks", "UpdateContext",   "UpdateContext.bundle.mjs"),
+    join(CLAUDE_DIR, "hooks", "EvaluateSession", "EvaluateSession.bundle.mjs"),
+    join(CLAUDE_DIR, "hooks", "PreCompact",      "PreCompact.bundle.mjs"),
+  ];
+  let bundlesRemoved = 0;
+  for (const p of STALE_BUNDLES) {
+    if (existsSync(p)) { rmSync(p); bundlesRemoved++; }
+  }
+  if (bundlesRemoved > 0)
+    console.log(`  ✔ Removed ${bundlesRemoved} stale hook bundle(s) from ~/.claude/hooks/`);
 } else {
   // Dev/git-clone install: no plugin system, wire hooks into settings.json directly
   const LTM_HOOKS: [string, string][] = [
