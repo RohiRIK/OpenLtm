@@ -14,7 +14,13 @@ import { Database } from "bun:sqlite";
 import { getDbPath, CLAUDE_DIR } from "./resolveProject.js";
 
 const HOME = homedir();
-const BUN_PATH = "/opt/homebrew/bin/bun";
+const BUN_CANDIDATES = [
+  "/opt/homebrew/bin/bun",
+  "/usr/local/bin/bun",
+  `${HOME}/.bun/bin/bun`,
+  `${HOME}/.volta/bin/bun`,
+  `${HOME}/.asdf/shims/bun`,
+];
 
 // Resolve plugin root: env var → derive from this file's location (hooks/lib/ → ../../)
 const PLUGIN_ROOT = process.env.CLAUDE_PLUGIN_ROOT ?? join(import.meta.dir, "..", "..");
@@ -105,16 +111,28 @@ function checkManifest(): void {
 function checkBun(): void {
   section("Bun Runtime");
 
-  if (!existsSync(BUN_PATH)) {
-    fail(`${BUN_PATH} not found`, "hooks/hooks.json commands will fail. Install bun via Homebrew: brew install bun");
-    return;
+  // AC-2a: wrapper script exists and is executable
+  const wrapperPath = join(PLUGIN_ROOT, "hooks", "bin", "run-hook.sh");
+  if (!existsSync(wrapperPath)) {
+    fail("hooks/bin/run-hook.sh not found", `Expected at ${wrapperPath} — re-install plugin`);
+  } else {
+    try {
+      accessSync(wrapperPath, constants.X_OK);
+      ok("hooks/bin/run-hook.sh exists and is executable");
+    } catch {
+      fail("hooks/bin/run-hook.sh is not executable", `Run: chmod +x "${wrapperPath}"`);
+    }
   }
 
-  try {
-    accessSync(BUN_PATH, constants.X_OK);
-    ok(`${BUN_PATH} exists and is executable`);
-  } catch {
-    fail(`${BUN_PATH} is not executable`, `Run: chmod +x ${BUN_PATH}`);
+  // AC-2b: bun discoverable via well-known locations
+  const found = BUN_CANDIDATES.find(p => existsSync(p));
+  if (found) {
+    ok(`bun found at ${found}`);
+  } else {
+    warn(
+      "bun not found in well-known locations — wrapper will fall back to shell profile sourcing",
+      `Install bun: https://bun.sh — or add it to one of: ${BUN_CANDIDATES.join(", ")}`
+    );
   }
 }
 
@@ -247,22 +265,27 @@ function checkPluginHooks(): void {
   for (const [event, entries] of Object.entries(hooksConfig.hooks)) {
     for (const entry of entries) {
       for (const h of entry.hooks) {
-        const bunMatch = h.command.match(/^(\/[^\s]+\/bun)/);
-        const srcMatch = h.command.match(/\$\{CLAUDE_PLUGIN_ROOT\}\/(.+\.ts)$/);
-        const bunBin = bunMatch?.[1];
-        const srcRel = srcMatch?.[1];
+        // Detect wrapper-style command: run-hook.sh <source.ts>
+        const wrapperMatch = h.command.match(/run-hook\.sh\s+\$\{CLAUDE_PLUGIN_ROOT\}\/(.+\.ts)$/);
+        // Legacy: direct bun invocation (pre-1.4.15)
+        const legacyMatch = h.command.match(/^(\/[^\s]+\/bun)\s+run\s+\$\{CLAUDE_PLUGIN_ROOT\}\/(.+\.ts)$/);
 
-        if (!bunBin) {
-          warn(`${event}: could not parse bun path`, `Check command: ${h.command}`);
+        if (wrapperMatch) {
+          // Wrapper handles bun discovery — just confirm wrapper exists (covered in AC-2)
+          ok(`${event}: uses run-hook.sh wrapper (bun discovery handled)`);
+        } else if (legacyMatch) {
+          const bunBin = legacyMatch[1]!;
+          if (!existsSync(bunBin)) {
+            fail(`${event}: bun not found at ${bunBin}`, `Install bun at ${bunBin} or update hooks.json`);
+          } else {
+            ok(`${event}: bun path valid (${bunBin})`);
+          }
+        } else {
+          warn(`${event}: unrecognised command format`, `Check hooks.json: ${h.command}`);
           continue;
         }
 
-        if (!existsSync(bunBin)) {
-          fail(`${event}: bun not found at ${bunBin}`, `Install bun at ${bunBin} or update hooks.json`);
-        } else {
-          ok(`${event}: bun path valid (${bunBin})`);
-        }
-
+        const srcRel = wrapperMatch?.[1] ?? legacyMatch?.[2];
         if (!srcRel) continue;
 
         const fullPath = join(PLUGIN_ROOT, srcRel);
@@ -291,7 +314,8 @@ function checkPluginHooks(): void {
 function checkSettingsHooks(): void {
   section("Settings.json Hooks");
 
-  if (!existsSync(BUN_PATH)) {
+  const bunBin = BUN_CANDIDATES.find(p => existsSync(p));
+  if (!bunBin) {
     console.log("  ⚠   bun not found — skipping settings.json hook check");
     return;
   }
@@ -302,7 +326,7 @@ function checkSettingsHooks(): void {
     return;
   }
 
-  const result = spawnSync(BUN_PATH, [doctorPath], {
+  const result = spawnSync(bunBin, [doctorPath], {
     stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env, CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT },
   });

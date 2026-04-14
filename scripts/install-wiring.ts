@@ -169,6 +169,16 @@ try {
   console.log("  ⚠  Could not set git core.hooksPath — set manually: git config --global core.hooksPath " + gitHooksDir);
 }
 
+// ── Ensure run-hook.sh is executable (defensive — git preserves bit, but cache copies may not) ──
+const runHookScript = join(root, "hooks", "bin", "run-hook.sh");
+if (existsSync(runHookScript)) {
+  try {
+    chmodSync(runHookScript, 0o755);
+  } catch {
+    console.log("  ⚠  Could not chmod hooks/bin/run-hook.sh — hooks may fail if executable bit is missing");
+  }
+}
+
 // ── Patch known_marketplaces.json to use GitHub API source ───────────────────
 // The plugin system defaults to "git" source (requires local git fetch).
 // "github" source uses the GitHub API — no fetch needed for update checks.
