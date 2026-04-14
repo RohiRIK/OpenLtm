@@ -5,8 +5,10 @@
 # (fast, no shell startup overhead), then fall back to profile sourcing.
 #
 # Usage: run-hook.sh <hook.ts> [args...]
+#
+# Keep candidate list in sync with BUN_CANDIDATES in hooks/lib/pluginDoctor.ts
+set -u
 
-# ── Fast path: check well-known install locations ─────────────────────────────
 for candidate in \
   "/opt/homebrew/bin/bun" \
   "/usr/local/bin/bun" \

@@ -14,6 +14,7 @@ import { Database } from "bun:sqlite";
 import { getDbPath, CLAUDE_DIR } from "./resolveProject.js";
 
 const HOME = homedir();
+// Keep in sync with the candidate list in hooks/bin/run-hook.sh
 const BUN_CANDIDATES = [
   "/opt/homebrew/bin/bun",
   "/usr/local/bin/bun",
@@ -21,6 +22,7 @@ const BUN_CANDIDATES = [
   `${HOME}/.volta/bin/bun`,
   `${HOME}/.asdf/shims/bun`,
 ];
+const RESOLVED_BUN = BUN_CANDIDATES.find(p => existsSync(p));
 
 // Resolve plugin root: env var → derive from this file's location (hooks/lib/ → ../../)
 const PLUGIN_ROOT = process.env.CLAUDE_PLUGIN_ROOT ?? join(import.meta.dir, "..", "..");
@@ -113,21 +115,21 @@ function checkBun(): void {
 
   // AC-2a: wrapper script exists and is executable
   const wrapperPath = join(PLUGIN_ROOT, "hooks", "bin", "run-hook.sh");
-  if (!existsSync(wrapperPath)) {
-    fail("hooks/bin/run-hook.sh not found", `Expected at ${wrapperPath} — re-install plugin`);
-  } else {
-    try {
-      accessSync(wrapperPath, constants.X_OK);
-      ok("hooks/bin/run-hook.sh exists and is executable");
-    } catch {
+  try {
+    accessSync(wrapperPath, constants.X_OK);
+    ok("hooks/bin/run-hook.sh exists and is executable");
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") {
+      fail("hooks/bin/run-hook.sh not found", `Expected at ${wrapperPath} — re-install plugin`);
+    } else {
       fail("hooks/bin/run-hook.sh is not executable", `Run: chmod +x "${wrapperPath}"`);
     }
   }
 
   // AC-2b: bun discoverable via well-known locations
-  const found = BUN_CANDIDATES.find(p => existsSync(p));
-  if (found) {
-    ok(`bun found at ${found}`);
+  if (RESOLVED_BUN) {
+    ok(`bun found at ${RESOLVED_BUN}`);
   } else {
     warn(
       "bun not found in well-known locations — wrapper will fall back to shell profile sourcing",
@@ -314,8 +316,7 @@ function checkPluginHooks(): void {
 function checkSettingsHooks(): void {
   section("Settings.json Hooks");
 
-  const bunBin = BUN_CANDIDATES.find(p => existsSync(p));
-  if (!bunBin) {
+  if (!RESOLVED_BUN) {
     console.log("  ⚠   bun not found — skipping settings.json hook check");
     return;
   }
@@ -326,7 +327,7 @@ function checkSettingsHooks(): void {
     return;
   }
 
-  const result = spawnSync(bunBin, [doctorPath], {
+  const result = spawnSync(RESOLVED_BUN!, [doctorPath], {
     stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env, CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT },
   });

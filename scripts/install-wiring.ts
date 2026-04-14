@@ -171,10 +171,13 @@ try {
 
 // ── Ensure run-hook.sh is executable (defensive — git preserves bit, but cache copies may not) ──
 const runHookScript = join(root, "hooks", "bin", "run-hook.sh");
-if (existsSync(runHookScript)) {
-  try {
-    chmodSync(runHookScript, 0o755);
-  } catch {
+try {
+  chmodSync(runHookScript, 0o755);
+} catch (err) {
+  const code = (err as NodeJS.ErrnoException).code;
+  if (code === "ENOENT") {
+    console.log("  ⚠  hooks/bin/run-hook.sh not found — skipping chmod");
+  } else {
     console.log("  ⚠  Could not chmod hooks/bin/run-hook.sh — hooks may fail if executable bit is missing");
   }
 }
