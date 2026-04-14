@@ -6,23 +6,18 @@
  * Usage: bun ${CLAUDE_PLUGIN_ROOT}/hooks/lib/pluginDoctor.ts
  */
 
-import { existsSync, readFileSync, readdirSync, statSync, accessSync, constants } from "fs";
-import { join } from "path";
+import { existsSync, readFileSync, readdirSync, statSync, accessSync, openSync, readSync, closeSync, constants } from "fs";
+import { join, basename } from "path";
 import { homedir } from "os";
 import { spawnSync } from "child_process";
 import { Database } from "bun:sqlite";
-import { getDbPath } from "./resolveProject.js";
-
-// ── Constants ──────────────────────────────────────────────────────────────────
+import { getDbPath, CLAUDE_DIR } from "./resolveProject.js";
 
 const HOME = homedir();
-const CLAUDE_DIR = join(HOME, ".claude");
 const BUN_PATH = "/opt/homebrew/bin/bun";
 
 // Resolve plugin root: env var → derive from this file's location (hooks/lib/ → ../../)
 const PLUGIN_ROOT = process.env.CLAUDE_PLUGIN_ROOT ?? join(import.meta.dir, "..", "..");
-
-// ── Result tracking ────────────────────────────────────────────────────────────
 
 let passed = 0;
 let failed = 0;
@@ -48,8 +43,6 @@ function warn(desc: string, fix: string): void {
 function section(title: string): void {
   console.log(`\n## ${title}`);
 }
-
-// ── AC-1 + AC-9: Plugin manifest ───────────────────────────────────────────────
 
 function checkManifest(): void {
   section("Plugin Manifest");
@@ -84,7 +77,8 @@ function checkManifest(): void {
     );
   }
 
-  // AC-9: forbidden fields
+  // AC-9: plugin system auto-discovers hooks.json — declaring it in plugin.json causes
+  // duplicate validation error on /reload-plugins
   if ("hooks" in pluginJson) {
     fail(
       'plugin.json contains "hooks" field',
@@ -108,8 +102,6 @@ function checkManifest(): void {
   }
 }
 
-// ── AC-2: Bun runtime ─────────────────────────────────────────────────────────
-
 function checkBun(): void {
   section("Bun Runtime");
 
@@ -125,8 +117,6 @@ function checkBun(): void {
     fail(`${BUN_PATH} is not executable`, `Run: chmod +x ${BUN_PATH}`);
   }
 }
-
-// ── AC-3: Database ────────────────────────────────────────────────────────────
 
 function checkDatabase(): void {
   section("Database");
@@ -174,8 +164,6 @@ function checkDatabase(): void {
   }
 }
 
-// ── AC-4: MCP registration ────────────────────────────────────────────────────
-
 function checkMcp(): void {
   section("MCP Registration");
 
@@ -214,8 +202,6 @@ function checkMcp(): void {
   }
 }
 
-// ── AC-5: Plugin-managed hooks (hooks.json) ───────────────────────────────────
-
 type HookEntry = { matcher: string; hooks: Array<{ type: string; command: string }> };
 
 function checkPluginHooks(): void {
@@ -240,7 +226,6 @@ function checkPluginHooks(): void {
     return;
   }
 
-  // Parse hooks.log for errors in last 24h
   const logPath = join(CLAUDE_DIR, "logs", "hooks.log");
   const cutoff = Date.now() - 24 * 60 * 60 * 1000;
   const errorsByHook = new Map<string, number>();
@@ -287,7 +272,7 @@ function checkPluginHooks(): void {
           ok(`${event}: source file exists — ${srcRel}`);
         }
 
-        const hookName = srcRel.split("/").pop()!.replace(/\.ts$/, "");
+        const hookName = basename(srcRel, ".ts");
         const errCount = errorsByHook.get(hookName) ?? 0;
         if (errCount >= 3) {
           console.log(`  🔴  ${event}/${hookName}: ${errCount} errors in last 24h`);
@@ -302,8 +287,6 @@ function checkPluginHooks(): void {
     }
   }
 }
-
-// ── AC-6: Settings.json hooks ─────────────────────────────────────────────────
 
 function checkSettingsHooks(): void {
   section("Settings.json Hooks");
@@ -332,8 +315,6 @@ function checkSettingsHooks(): void {
   }
 }
 
-// ── AC-7: Stale hook executables ──────────────────────────────────────────────
-
 function checkStaleExecutables(): void {
   section("Stale Hook Executables");
 
@@ -350,6 +331,7 @@ function checkStaleExecutables(): void {
     try {
       files = readdirSync(dir);
     } catch {
+      warn(`~/.claude/hooks/${name}/ — could not read directory`, `Check permissions: ls -la "${dir}"`);
       continue;
     }
 
@@ -361,9 +343,12 @@ function checkStaleExecutables(): void {
         const stat = statSync(filePath);
         if (!(stat.mode & 0o111)) continue;
 
-        const buf = readFileSync(filePath);
-        const head = buf.slice(0, 32).toString("utf-8");
-        if (head.includes("bun")) {
+        // Read only the first 32 bytes to check shebang — avoid loading large .bundle.mjs files
+        const buf = Buffer.allocUnsafe(32);
+        const fd = openSync(filePath, "r");
+        readSync(fd, buf, 0, 32, 0);
+        closeSync(fd);
+        if (buf.toString("utf-8").includes("bun")) {
           fail(
             `Stale executable: ~/.claude/hooks/${name}/${file}`,
             `Will cause exit 127. Delete: rm "${filePath}"`
@@ -378,8 +363,6 @@ function checkStaleExecutables(): void {
     }
   }
 }
-
-// ── AC-8: Marketplace source ──────────────────────────────────────────────────
 
 function checkMarketplace(): void {
   section("Marketplace Source");
@@ -406,14 +389,12 @@ function checkMarketplace(): void {
         "postinstall patches this automatically; or run: bun run scripts/install-wiring.ts"
       );
     } else {
-      warn(`ltm marketplace source is "${src ?? "unknown"}"`, "Expected \"github\" for API-based update checks");
+      warn(`ltm marketplace source is "${src ?? "unknown"}"`, 'Expected "github" for API-based update checks');
     }
   } catch {
     warn("Could not parse known_marketplaces.json", "Check JSON validity");
   }
 }
-
-// ── Summary ───────────────────────────────────────────────────────────────────
 
 function printSummary(): void {
   console.log("\n" + "─".repeat(60));
@@ -427,8 +408,6 @@ function printSummary(): void {
     console.log("Overall: 🟢 Plugin is healthy");
   }
 }
-
-// ── Main ──────────────────────────────────────────────────────────────────────
 
 console.log("# LTM Plugin Doctor\n");
 console.log(`Plugin root: ${PLUGIN_ROOT}`);
