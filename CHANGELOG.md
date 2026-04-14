@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.4.15] — 2026-04-14
+
+### Added
+- **`/ltm:doctor` command** — Unified plugin health check covering 9 areas: version consistency, bun runtime, database integrity + migrations, MCP registration, hooks.json source files + log error counts, settings.json hooks, stale executables (exit 127 source), marketplace source, and plugin.json forbidden fields. Output: ✅/❌/🟡/🔴 per check with `→` remediation and final N passed/M failed summary.
+- **`hooks/bin/run-hook.sh`** — POSIX shell wrapper that locates bun across all install methods (Homebrew, Volta, asdf, curl installer) before falling back to shell profile sourcing. Eliminates the hardcoded `/opt/homebrew/bin/bun` dependency that broke non-Homebrew installs.
+
+### Fixed
+- **Exit 127 on session start** — Stale `.ts` and `.bundle.mjs` executables in `~/.claude/hooks/` were auto-discovered by Claude Code and run via `#!/usr/bin/env bun` shebang; bun is not in the harness subprocess PATH → exit 127. `install-wiring.ts` now removes these stale files on every update.
+- **hooks.json commands** — Replaced hardcoded `/opt/homebrew/bin/bun run ...` with `run-hook.sh` wrapper. Works on any machine regardless of bun install method and survives marketplace updates without requiring postinstall re-patching.
+
+### Changed
+- **`install-wiring.ts`** — Stale hook file cleanup now derived from `LTM_HOOK_PATTERNS` instead of hardcoded list; removes both `.ts` and `.bundle.mjs` variants. Adds defensive `chmod +x` on `run-hook.sh` after each update.
+
+---
+
 ## [1.4.5] — 2026-04-11
 
 ### Added
