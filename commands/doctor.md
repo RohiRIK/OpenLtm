@@ -1,5 +1,6 @@
 ---
 description: "Run a full health check on every aspect of the LTM plugin — versions, bun runtime, database, MCP, hooks, stale files, and marketplace source."
+allowed-tools: ["Bash"]
 ---
 
 Run and display output verbatim:

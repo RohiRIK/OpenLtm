@@ -1,5 +1,6 @@
 ---
 description: "Run a health check on all registered Claude Code hooks."
+allowed-tools: ["Bash"]
 ---
 
 Run and display output verbatim:

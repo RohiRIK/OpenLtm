@@ -1,6 +1,7 @@
 ---
 description: "Start, stop, or check the LTM Graph visualization server."
 argument-hint: "[start|stop|status]"
+allowed-tools: ["Skill", "Bash"]
 ---
 
 Route to the **LtmServer** skill:

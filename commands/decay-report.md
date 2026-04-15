@@ -1,5 +1,6 @@
 ---
 description: "Run a memory decay diagnostic — score distribution and at-risk memories."
+allowed-tools: ["Bash"]
 ---
 
 ```bash

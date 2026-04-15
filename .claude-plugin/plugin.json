@@ -1,12 +1,11 @@
 {
   "name": "ltm",
   "description": "Long-Term Memory system for Claude Code \u2014 semantic search, context injection, session learning",
-  "version": "1.4.15",
+  "version": "1.4.16",
   "author": {
     "name": "RohiRIK",
     "email": "rohi5054@gmail.com"
   },
-  "commands": "./commands/",
   "mcpServers": {
     "ltm": {
       "command": "bun",

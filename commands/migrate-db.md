@@ -1,5 +1,6 @@
 ---
 description: "Check and migrate ltm.db from legacy $CLAUDE_PLUGIN_DATA/ path to the marketplace plugin data directory."
+allowed-tools: ["Bash"]
 ---
 
 Run and display output verbatim:

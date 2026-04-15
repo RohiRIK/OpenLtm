@@ -1,5 +1,6 @@
 ---
 description: "Show project health scores from the LTM graph server."
+allowed-tools: ["Bash"]
 ---
 
 ```bash

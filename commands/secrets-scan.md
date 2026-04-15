@@ -1,6 +1,7 @@
 ---
 description: "Scan all active LTM memories for secrets and redact them in-place."
 argument-hint: "[--project X] [--dry-run]"
+allowed-tools: ["Bash"]
 ---
 
 ```

@@ -1,6 +1,7 @@
 ---
 description: "Manage versioned LTM schema migrations."
 argument-hint: "[status|up|down|reset]"
+allowed-tools: ["Bash"]
 ---
 
 | Arg | Action |

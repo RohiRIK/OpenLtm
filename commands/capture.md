@@ -1,6 +1,7 @@
 ---
 description: "Save context + learn in one shot. Use after any decision, gotcha, or progress."
 argument-hint: "<decision|gotcha|progress|pattern|goal> \"<content>\""
+allowed-tools: ["Bash"]
 ---
 
 | Type | Context type | LTM category | Importance | Permanent? |
