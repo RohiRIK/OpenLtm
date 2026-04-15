@@ -3,6 +3,8 @@ description: "Run a health check on all registered Claude Code hooks."
 allowed-tools: ["Bash"]
 ---
 
+> ⚠ **Deprecated:** use `/ltm:doctor` instead — it now includes full hook health. This alias will be removed in v1.6.0.
+
 Run and display output verbatim:
 
 ```bash

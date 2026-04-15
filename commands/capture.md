@@ -4,6 +4,8 @@ argument-hint: "<decision|gotcha|progress|pattern|goal> \"<content>\""
 allowed-tools: ["Bash"]
 ---
 
+> ⚠ **Deprecated:** use `/ltm:memory learn --save-context <type> "<content>"` or `/ltm:learn --save-context` instead. This alias will be removed in v1.6.0.
+
 | Type | Context type | LTM category | Importance | Permanent? |
 |------|-------------|--------------|------------|------------|
 | `decision` | `decision` | `architecture` | 3 | ✅ |

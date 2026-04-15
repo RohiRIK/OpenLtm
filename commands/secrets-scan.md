@@ -10,13 +10,15 @@ allowed-tools: ["Bash"]
 /secrets-scan --dry-run    → show what would be redacted, no writes
 ```
 
+> ⚠ Note: new memories are auto-scrubbed on write (via `db.ts`). This command scans **existing** memories only.
+
 Run:
 
 ```bash
 bun --eval "
 import { Database } from 'bun:sqlite';
 await (async () => {
-  const { scrubSecrets } = await import(process.env.CLAUDE_PLUGIN_ROOT + '/src/secretsScrubber.js');
+  const { scrubSecrets } = await import(process.env.CLAUDE_PLUGIN_ROOT + '/src/secretsScrubber.ts');
   const args = process.argv.slice(2);
   const dryRun = args.includes('--dry-run');
   const project = args[args.indexOf('--project') + 1] ?? null;

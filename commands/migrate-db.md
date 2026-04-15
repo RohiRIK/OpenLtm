@@ -3,6 +3,8 @@ description: "Check and migrate ltm.db from legacy $CLAUDE_PLUGIN_DATA/ path to 
 allowed-tools: ["Bash"]
 ---
 
+> ⚠ **Deprecated:** use `/ltm:migrate --legacy` or `/ltm:admin migrate --legacy` instead. This alias will be removed in v1.6.0.
+
 Run and display output verbatim:
 
 ```bash

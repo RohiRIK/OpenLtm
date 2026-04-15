@@ -3,6 +3,8 @@ description: "Run a memory decay diagnostic — score distribution and at-risk m
 allowed-tools: ["Bash"]
 ---
 
+> ⚠ **Deprecated:** use `/ltm:health` instead — it now includes the decay summary inline. This alias will be removed in v1.6.0.
+
 ```bash
 bun --eval "
 import { Database } from 'bun:sqlite';

@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.4.17] — 2026-04-15
+
+### Added
+- **`/ltm:memory` command** — Grouped routing for `recall | learn | forget | relate`. Replaces the 4 flat commands with a single entry point; flat commands kept as unchanged aliases.
+- **`/ltm:project` command** — Grouped routing for `init | analyze | register`. Embeds full logic from `init-context`, `analyze-context`, `register-project`.
+- **`/ltm:admin` command** — Grouped routing for `migrate | scan | server`. Includes all migrate flags, secrets scan, and server management.
+- **`--save-context` flag on `/ltm:learn`** — Stores memory AND writes to `context_items` table in one shot. Replaces the need for separate `/ltm:capture` calls.
+- **Legacy DB detection in `/ltm:migrate`** — Automatically checks for `~/.claude/memory/ltm.db` on `status` runs; `--legacy` flag triggers migration.
+
+### Changed
+- **`/ltm:health`** — Now shows graph server project scores (if running) AND inline memory decay summary from local DB. Graph server is optional — decay section always renders.
+- **`/ltm:doctor`** — Now runs both `pluginDoctor.ts` (plugin health) and `hookDoctor.ts` (hook health) in a single command. Replaces the need for `/ltm:hook-doctor`.
+
+### Fixed
+- **`/ltm:secrets-scan`** — Fixed `secretsScrubber.js` import → `secretsScrubber.ts`. Previous `.js` extension caused a runtime error since Bun runs `.ts` directly.
+- **Added auto-scrub note** to `secrets-scan` and `admin scan` — clarifies that new memories are already scrubbed on write via `db.ts:263`; this command patches existing memories only.
+
+### Deprecated (removing in v1.6.0)
+- `/ltm:hook-doctor` → use `/ltm:doctor`
+- `/ltm:migrate-db` → use `/ltm:migrate --legacy` or `/ltm:admin migrate --legacy`
+- `/ltm:capture` → use `/ltm:learn --save-context` or `/ltm:memory learn --save-context`
+- `/ltm:decay-report` → use `/ltm:health`
+
+---
+
 ## [1.4.15] — 2026-04-14
 
 ### Added
