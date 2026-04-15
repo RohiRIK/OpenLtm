@@ -1,5 +1,5 @@
 ---
-description: "Project-scoped context operations — init, analyze, register. Groups project management commands."
+description: "USE WHEN initializing a project goal, analyzing project context before starting work, or registering a project in the LTM registry. Groups init | analyze | register."
 argument-hint: "<init|analyze|register> [args]"
 ---
 

@@ -1,5 +1,5 @@
 ---
-description: "Core memory operations — recall, learn, forget, relate. Groups the four primary LTM CRUD commands."
+description: "USE WHEN recalling past decisions, storing new insights, forgetting stale memories, or linking memories. Groups recall | learn (with optional --save-context) | forget | relate."
 argument-hint: "<recall|learn|forget|relate> [args]"
 ---
 

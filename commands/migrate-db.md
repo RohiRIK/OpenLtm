@@ -1,5 +1,5 @@
 ---
-description: "Check and migrate ltm.db from legacy $CLAUDE_PLUGIN_DATA/ path to the marketplace plugin data directory."
+description: "DEPRECATED — use /ltm:migrate --legacy or /ltm:admin migrate --legacy instead. Check and migrate ltm.db from legacy path."
 allowed-tools: ["Bash"]
 ---
 

@@ -1,5 +1,5 @@
 ---
-description: "LTM maintenance and tooling — migrate, scan, server. Groups admin commands."
+description: "USE WHEN running schema migrations, scanning memories for secrets, or managing the LTM graph visualization server. Groups migrate | scan | server."
 argument-hint: "<migrate|scan|server> [args]"
 allowed-tools: ["Bash", "Skill"]
 ---

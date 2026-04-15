@@ -1,5 +1,5 @@
 ---
-description: "Save context + learn in one shot. Use after any decision, gotcha, or progress."
+description: "DEPRECATED — use /ltm:learn --save-context or /ltm:memory learn --save-context instead. Save context + learn in one shot."
 argument-hint: "<decision|gotcha|progress|pattern|goal> \"<content>\""
 allowed-tools: ["Bash"]
 ---

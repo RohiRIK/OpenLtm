@@ -1,5 +1,5 @@
 ---
-description: "Run a memory decay diagnostic — score distribution and at-risk memories."
+description: "DEPRECATED — use /ltm:health instead (now includes inline decay summary). Run a memory decay diagnostic."
 allowed-tools: ["Bash"]
 ---
 

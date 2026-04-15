@@ -1,5 +1,5 @@
 ---
-description: "Run a health check on all registered Claude Code hooks."
+description: "DEPRECATED — use /ltm:doctor instead (now includes hook health). Run a health check on all registered Claude Code hooks."
 allowed-tools: ["Bash"]
 ---
 
