@@ -128,12 +128,6 @@ async function main(): Promise<void> {
   const { cwd } = parsed;
   const { name, projectDir, isNew, registeredPath } = resolveProject(cwd);
 
-  // Read per-project settings
-  const projectSettings = readProjectSettings(cwd);
-  if (!projectSettings.enabled) {
-    process.stderr.write("[SessionStart] LTM disabled for this project via .claude/ltm.local.md\n");
-  }
-
   if (isNew) {
     const suggested = defaultName(cwd);
     registerPath(cwd, suggested);
@@ -166,7 +160,7 @@ async function main(): Promise<void> {
   try { const cfg = readConfigSync(); useDirective = cfg?.ltm?.autoRecall !== false; } catch (_) {}
 
   // Override injectTopN from project settings if set
-  const injectTopN = projectSettings.injectTopN ?? readConfigSync().ltm?.injectTopN ?? 15;
+  const injectTopN = readConfigSync().ltm?.injectTopN ?? 15;
   const ltmSection = await buildLtmSection(name, sessionContext);
   const directive = useDirective ? LTM_DIRECTIVE : "";
   const conflictSection = buildConflictSection(name);
