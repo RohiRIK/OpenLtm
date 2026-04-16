@@ -1,8 +1,10 @@
 ---
-description: "Delete a specific memory by ID from long-term memory."
+description: "DEPRECATED — use /ltm:memory forget instead. Delete a specific memory by ID."
 disable-model-invocation: true
 argument-hint: "<memory-id> [reason]"
 ---
+
+> ⚠ **Deprecated:** use `/ltm:memory forget` instead. This alias will be removed in v1.6.0.
 
 1. Recall the memory to show what will be deleted: `mcp__ltm__ltm_recall` with the ID or a targeted query.
 2. Show the user: content, tags, relations.

@@ -1,7 +1,9 @@
 ---
-description: "USE WHEN discovering a new insight or pattern worth preserving."
+description: "DEPRECATED — use /ltm:memory learn instead. Store an insight or pattern in long-term memory."
 argument-hint: "[insight] --category [preference|architecture|gotcha|pattern|workflow|constraint] --importance [1-5]"
 ---
+
+> ⚠ **Deprecated:** use `/ltm:memory learn` instead. This alias will be removed in v1.6.0.
 
 Store a memory via `mcp__ltm__ltm_learn`. Parse args:
 

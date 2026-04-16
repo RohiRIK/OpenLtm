@@ -1,7 +1,9 @@
 ---
-description: "Register or rename a project in the LTM registry."
+description: "DEPRECATED — use /ltm:project register instead. Register or rename a project in the LTM registry."
 disable-model-invocation: true
 ---
+
+> ⚠ **Deprecated:** use `/ltm:project register` instead. This alias will be removed in v1.6.0.
 
 # /ltm:register-project — Register or Rename a Project
 

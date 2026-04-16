@@ -1,8 +1,10 @@
 ---
-description: "Manage versioned LTM schema migrations and legacy DB path migration."
+description: "DEPRECATED — use /ltm:admin migrate instead. Manage versioned LTM schema migrations."
 argument-hint: "[status|up|down|reset|--legacy]"
 allowed-tools: ["Bash"]
 ---
+
+> ⚠ **Deprecated:** use `/ltm:admin migrate` instead. This alias will be removed in v1.6.0.
 
 | Arg | Action |
 |-----|--------|

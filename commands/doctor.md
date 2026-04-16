@@ -1,7 +1,9 @@
 ---
-description: "Run a full health check on every aspect of the LTM plugin — versions, bun runtime, database, MCP, hooks, stale files, and marketplace source."
+description: "DEPRECATED — use /ltm:health instead. Run a full health check on the LTM plugin."
 allowed-tools: ["Bash"]
 ---
+
+> ⚠ **Deprecated:** use `/ltm:health` instead. This alias will be removed in v1.6.0.
 
 If `CLAUDE_PLUGIN_ROOT` is unset, find plugin root: `claude plugin info ltm 2>/dev/null | grep -i path | head -1`.
 

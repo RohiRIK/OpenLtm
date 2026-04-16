@@ -1,7 +1,9 @@
 ---
-description: "Analyze project context before starting work. Call at session start or before any significant task."
+description: "DEPRECATED — use /ltm:project analyze instead. Analyze project context before starting work."
 argument-hint: "[topic or task description]"
 ---
+
+> ⚠ **Deprecated:** use `/ltm:project analyze` instead. This alias will be removed in v1.6.0.
 
 This command orchestrates context retrieval in the right order.
 

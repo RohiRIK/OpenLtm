@@ -1,8 +1,10 @@
 ---
-description: "Start, stop, or check the LTM Graph visualization server."
+description: "DEPRECATED — use /ltm:admin server instead. Start, stop, or check the LTM Graph visualization server."
 argument-hint: "[start|stop|status]"
 allowed-tools: ["Skill", "Bash"]
 ---
+
+> ⚠ **Deprecated:** use `/ltm:admin server` instead. This alias will be removed in v1.6.0.
 
 Route to the **LtmServer** skill:
 

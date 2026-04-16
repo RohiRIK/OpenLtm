@@ -1,7 +1,9 @@
 ---
-description: "Seed a new project goal into the LTM context system."
+description: "DEPRECATED — use /ltm:project init instead. Seed a new project goal into the LTM context system."
 disable-model-invocation: true
 ---
+
+> ⚠ **Deprecated:** use `/ltm:project init` instead. This alias will be removed in v1.6.0.
 
 **1 — Verify project is registered:**
 ```bash

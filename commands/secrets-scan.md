@@ -1,8 +1,10 @@
 ---
-description: "Scan all active LTM memories for secrets and redact them in-place."
+description: "DEPRECATED — use /ltm:admin scan instead. Scan all active LTM memories for secrets and redact them in-place."
 argument-hint: "[--project X] [--dry-run]"
 allowed-tools: ["Bash"]
 ---
+
+> ⚠ **Deprecated:** use `/ltm:admin scan` instead. This alias will be removed in v1.6.0.
 
 ```
 /secrets-scan              → scan all active memories
