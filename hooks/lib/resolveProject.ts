@@ -11,7 +11,7 @@
  * Format: { "/abs/path": "friendly-name" }
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync } from "fs";
+import { existsSync, readFileSync, writeFileSync, renameSync, openSync, fsyncSync, closeSync, mkdirSync, copyFileSync } from "fs";
 import { join, sep } from "path";
 import { homedir } from "os";
 
@@ -53,9 +53,22 @@ function loadRegistry(): Record<string, string> {
   }
 }
 
+export function writeRegistryAtomic(registryPath: string, data: unknown): void {
+  const tmp = registryPath + ".tmp";
+  const json = JSON.stringify(data, null, 2);
+  writeFileSync(tmp, json, "utf8");
+  const fd = openSync(tmp, "r+");
+  try {
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+  renameSync(tmp, registryPath);
+}
+
 export function saveRegistry(registry: Record<string, string>): void {
   if (!existsSync(PROJECTS_DIR)) mkdirSync(PROJECTS_DIR, { recursive: true });
-  writeFileSync(REGISTRY_PATH, JSON.stringify(registry, null, 2) + "\n");
+  writeRegistryAtomic(REGISTRY_PATH, registry);
 }
 
 export function registerPath(cwd: string, name: string): void {
