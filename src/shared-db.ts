@@ -8,6 +8,7 @@ import { existsSync, mkdirSync, readFileSync } from "fs";
 import { join } from "path";
 import { getDbPath, getSchemaPath, CLAUDE_DIR } from "./paths.js";
 import { runPendingMigrations } from "./migrations.js";
+import { writeQueue } from "./lib/writeQueue.js";
 
 export const DB_PATH = getDbPath();
 const SCHEMA_PATH = getSchemaPath();
@@ -96,13 +97,15 @@ export function getSetting(key: string): string | null {
   return row?.value ?? null;
 }
 
-export function setSetting(key: string, value: string): void {
+export function setSetting(key: string, value: string): Promise<void> {
   const db = getDb();
-  db.run(
-    `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
-     ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`,
-    [key, value],
-  );
+  return writeQueue.enqueue(() => {
+    db.run(
+      `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
+       ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`,
+      [key, value],
+    );
+  });
 }
 
 export function getAllSettings(): Record<string, string> {

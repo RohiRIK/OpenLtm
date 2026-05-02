@@ -840,7 +840,7 @@ Bun.serve({
         const body = (await req.json()) as Record<string, string>;
         for (const [key, value] of Object.entries(body)) {
           if (typeof key === "string" && typeof value === "string") {
-            setSetting(key, value);
+            await setSetting(key, value);
           }
         }
         broadcast({ type: "settings-updated" });
@@ -886,7 +886,7 @@ Bun.serve({
             openrouter: SETTING_KEYS.OPENROUTER_API_KEY,
           };
           const settingKey = keySettingMap[body.provider];
-          if (settingKey) setSetting(settingKey, body.key);
+          if (settingKey) await setSetting(settingKey, body.key);
         }
         const provider = body.provider
           ? (PROVIDER_VERIFY_MAP[body.provider] ?? null)
