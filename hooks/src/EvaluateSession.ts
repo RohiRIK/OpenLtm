@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync } from 
 import { join } from "path";
 import { resolveProject, PROJECTS_DIR, CLAUDE_DIR, getDbPath } from "../lib/resolveProject.js";
 import { logHook } from "../lib/hookLogger.js";
+import { safeRun } from "../lib/hookUtils.js";
 import { learn } from "../../src/db.js";
 import { addItem } from "../../src/context.js";
 import { extractAndLearn } from "../lib/llmExtract.js";
@@ -104,16 +105,19 @@ async function main() {
       inputStr += text;
       process.stdout.write(chunk); // Pass through immediately
     }
-  } catch (e) {
-    // Stdin might be empty or closed
+  } catch (stdinErr) {
+    // Stdin might be empty or closed — non-fatal
+    logHook("EvaluateSession", "warn", "stdin read failed", String(stdinErr));
   }
 
+  let input: any = {};
   try {
-    let input: any = {};
-    try {
-      input = JSON.parse(inputStr);
-    } catch (e) {}
+    input = JSON.parse(inputStr);
+  } catch {
+    // Non-JSON input is acceptable — hooks may receive empty or plain-text stdin
+  }
 
+  {
     let transcriptPath = input.transcript_path;
     let sessionId = input.session_id;
 
@@ -221,7 +225,9 @@ async function main() {
                   project_scope: projectName, source: "evaluate-session" });
         }
       }
-    } catch { /* non-fatal */ }
+    } catch (learnErr) {
+      logHook("EvaluateSession", "warn", "Failed to store error blocks as memories", String(learnErr));
+    }
 
     try {
       if ((readConfigSync() as Config).ltm?.evaluateSessionLlm) {
@@ -232,7 +238,9 @@ async function main() {
           });
         }
       }
-    } catch { /* non-fatal */ }
+    } catch (cfgErr) {
+      logHook("EvaluateSession", "warn", "Failed to read config for LLM extraction", String(cfgErr));
+    }
 
     // Update Summary (deduplicate by sessionId)
     if (!existsSync(SUMMARY_FILE)) {
@@ -251,12 +259,7 @@ async function main() {
         : summaryContent + newLine;
       writeFileSync(SUMMARY_FILE, newSummary);
     }
-
-  } catch (error) {
-    // Fail silently on parse error or logic error to not break hook
-    logHook("EvaluateSession", "error", "Error analyzing session", String(error));
-    console.error("[ContinuousLearning] Error analyzing session:", error);
   }
 }
 
-main();
+await safeRun("EvaluateSession", main);
