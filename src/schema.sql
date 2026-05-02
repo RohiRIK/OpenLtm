@@ -2,6 +2,16 @@
 -- Two-table design: context_items (per-project context) + memories (global learned insights)
 
 -- ============================================================
+-- schema_migrations: versioned migration tracking
+-- ============================================================
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  version    TEXT    NOT NULL UNIQUE,
+  applied_at INTEGER NOT NULL DEFAULT (unixepoch()),
+  checksum   TEXT
+);
+
+-- ============================================================
 -- context_items: replaces the 4 per-project Markdown context files
 -- ============================================================
 CREATE TABLE IF NOT EXISTS context_items (
