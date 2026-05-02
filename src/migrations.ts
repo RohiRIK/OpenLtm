@@ -124,7 +124,8 @@ export async function runPendingMigrations(db?: Database): Promise<MigrationResu
 
     try {
       _db.transaction(() => {
-        _db.exec(up);
+        // Skip exec for marker migrations that have no DDL (e.g. 001_baseline).
+        if (up) _db.exec(up);
         _db.run(
           `INSERT INTO _schema_version (version, name, checksum) VALUES (?, ?, ?)`,
           [file.version, file.name, checksum],
