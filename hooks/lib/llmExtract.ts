@@ -5,6 +5,7 @@
 import { learn } from "../../src/db.js";
 import { getLlmConfig, callLlm } from "../../src/embeddings.js";
 import type { MemoryCategory } from "../../src/db.js";
+import type { MemoryProposal } from "./proposalQueue.js";
 
 const SYSTEM_PROMPT = `Extract learnings from the provided text. Return ONLY valid JSON:
 {"decisions":["..."],"gotchas":["..."],"patterns":["..."],"progress":"..."}
@@ -65,4 +66,38 @@ export async function extractAndLearn(
   }
 
   return extracted.progress?.length > 5 ? extracted.progress : undefined;
+}
+
+/** Returns memory proposals without writing to the DB. Caller decides what to persist. */
+export async function extractProposals(
+  text: string,
+  projectName: string,
+  opts: ExtractOptions,
+): Promise<{ proposals: MemoryProposal[]; progress: string | undefined }> {
+  const cfg = getLlmConfig();
+  if (!cfg) return { proposals: [], progress: undefined };
+
+  const input = opts.preamble ? `${opts.preamble}\n\n${text}` : text;
+
+  const raw = await callLlm(cfg, input, { systemPrompt: SYSTEM_PROMPT, maxTokens: 800, raw: true });
+  if (!raw) return { proposals: [], progress: undefined };
+
+  let extracted: { decisions: string[]; gotchas: string[]; patterns: string[]; progress: string };
+  try {
+    extracted = JSON.parse(raw.replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim());
+  } catch {
+    return { proposals: [], progress: undefined };
+  }
+
+  const proposals: MemoryProposal[] = [];
+  for (const { key, category, importance } of LEARN_ITEMS) {
+    for (const item of ((extracted[key] as string[]) ?? []).slice(0, 5)) {
+      if (item.length > 10) {
+        proposals.push({ content: item, category, importance, source: opts.source });
+      }
+    }
+  }
+
+  const progress = extracted.progress?.length > 5 ? extracted.progress : undefined;
+  return { proposals, progress };
 }
