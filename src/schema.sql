@@ -127,6 +127,5 @@ CREATE TABLE IF NOT EXISTS settings (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- T16: workspace_id + agent_id indexes (columns added via migrations in shared-db.ts)
-CREATE INDEX IF NOT EXISTS idx_memories_workspace ON memories(workspace_id);
-CREATE INDEX IF NOT EXISTS idx_memories_agent ON memories(agent_id);
+-- workspace_id + agent_id indexes are created by migration 007_workspaces.sql
+-- after the columns are added via ALTER TABLE. Do not add them here.

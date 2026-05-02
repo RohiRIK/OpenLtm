@@ -16,7 +16,7 @@ const SCHEMA_PATH = getSchemaPath();
 let _db: Database | null = null;
 let _initPromise: Promise<Database> | null = null;
 
-async function initDb(): Promise<Database> {
+export async function initDb(): Promise<Database> {
   const dir = join(CLAUDE_DIR, "memory");
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   const db = new Database(DB_PATH, { create: true });
