@@ -130,7 +130,11 @@ async function main(): Promise<void> {
   if (!existsSync(TMP_DIR)) mkdirSync(TMP_DIR, { recursive: true });
   writeFileSync(COUNTER_FILE, "0");
 
-  if (!parsed) { process.stderr.write("[SessionStart] No cwd in input, skipping context injection\n"); return; }
+  if (!parsed) {
+    process.stderr.write("[SessionStart] No cwd in input, skipping context injection\n");
+    process.stdout.write("**Context not restored:** no project match found\n");
+    return;
+  }
   const { cwd } = parsed;
   const { name, projectDir, isNew, registeredPath } = resolveProject(cwd);
 
@@ -138,7 +142,12 @@ async function main(): Promise<void> {
     const suggested = defaultName(cwd);
     registerPath(cwd, suggested);
     mkdirSync(join(PROJECTS_DIR, suggested), { recursive: true });
-    process.stdout.write(`# New Project Detected\n\nNo context files found for: \`${cwd}\`\n\nI've registered this project as **"${suggested}"**.\nShould I create the 4 context files now? (yes/no)\n`);
+    process.stdout.write(
+      `**Context not restored:** no project match found\n\n` +
+      `# New Project Detected\n\nNo context files found for: \`${cwd}\`\n\n` +
+      `I've registered this project as **"${suggested}"**.\n` +
+      `Should I create the 4 context files now? (yes/no)\n`,
+    );
     return;
   }
 
@@ -148,13 +157,19 @@ async function main(): Promise<void> {
   if (!existsSync(summaryPath)) {
     const contextFiles = ["context-goals.md", "context-decisions.md", "context-progress.md", "context-gotchas.md"];
     if (!contextFiles.some(f => existsSync(join(projectDir, f)))) {
-      process.stdout.write(`# Project Registered — No Context Files Yet\n\nProject **"${name}"** has no context files.\nShould I create them now? (yes/no)\n`);
+      process.stdout.write(
+        `**Context not restored:** no project match found\n\n` +
+        `# Project Registered — No Context Files Yet\n\nProject **"${name}"** has no context files.\nShould I create them now? (yes/no)\n`,
+      );
+    } else {
+      process.stdout.write(`**Context not restored:** no project match found\n`);
     }
     return;
   }
 
   if (Date.now() - statSync(summaryPath).mtimeMs > MAX_AGE_MS) {
     process.stderr.write(`[SessionStart] Context for "${name}" is older than 30 days — skipping\n`);
+    process.stdout.write(`**Context not restored:** no project match found\n`);
     return;
   }
 
@@ -171,8 +186,14 @@ async function main(): Promise<void> {
   const directive = useDirective ? LTM_DIRECTIVE : "";
   const conflictSection = buildConflictSection(name);
 
-  // Build output: injected + directive + ltmSection + conflicts + reminder
-  let output = injected;
+  // Count memories for status line
+  const memoryCount = ltmSection
+    ? ltmSection.split("\n").filter(l => l.startsWith("- [")).length
+    : 0;
+  const statusLine = `**Context restored:** ${memoryCount} memories loaded for project "${name}"\n`;
+
+  // Build output: status line + injected + directive + ltmSection + conflicts + reminder
+  let output = statusLine + "\n" + injected;
   if (ltmSection) {
     output += `\n\n${directive}${ltmSection}`;
     if (conflictSection) output += `\n${conflictSection}`;
@@ -185,4 +206,8 @@ async function main(): Promise<void> {
   logHook("SessionStart", "info", `Injected context for "${name}" (${registeredPath ? "registry" : "slug fallback"})`);
 }
 
-safeRun("SessionStart", main);
+safeRun("SessionStart", main).then(result => {
+  if (!result.ok) {
+    process.stdout.write("**Context not restored:** database error (check /ltm:doctor)\n");
+  }
+});
