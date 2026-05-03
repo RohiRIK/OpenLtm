@@ -8,7 +8,7 @@ import { appendFileSync, readFileSync, mkdirSync, statSync, writeFileSync } from
 import { join, dirname } from "path";
 import { homedir } from "os";
 
-export type LogLevel = "info" | "warn" | "error";
+export type LogLevel = "info" | "warn" | "error" | "event";
 
 export interface LogEntry {
   ts: string;
@@ -17,6 +17,12 @@ export interface LogEntry {
   msg: string;
   detail?: string;
   durationMs?: number;
+  /** Structured event name — present when level === "event". Consumed by /ltm:health. */
+  event?: string;
+  /** Optional count for aggregation (e.g. memories recalled, items written). */
+  count?: number;
+  /** Project scope for the event. */
+  project?: string;
 }
 
 const LOG_PATH = join(homedir(), ".claude", "logs", "hooks.log");
@@ -67,6 +73,35 @@ export function logHook(
   } catch (fallbackErr) {
     // logger itself failed — never crash the hook
     console.error(`[hookLogger] Failed to write log: ${fallbackErr}`);
+  }
+}
+
+/**
+ * Emit a structured activity event to hooks.log.
+ * Events are aggregated by /ltm:health to show real activity counts.
+ */
+export function logEvent(
+  hook: string,
+  event: string,
+  opts?: { project?: string; count?: number; detail?: string; durationMs?: number },
+): void {
+  try {
+    ensureDir();
+    rotate();
+    const entry: LogEntry = {
+      ts: new Date().toISOString(),
+      hook,
+      level: "event",
+      msg: event,
+      event,
+      ...(opts?.project !== undefined && { project: opts.project }),
+      ...(opts?.count !== undefined && { count: opts.count }),
+      ...(opts?.detail !== undefined && { detail: opts.detail }),
+      ...(opts?.durationMs !== undefined && { durationMs: opts.durationMs }),
+    };
+    appendFileSync(LOG_PATH, JSON.stringify(entry) + "\n");
+  } catch {
+    // event logging failure is non-fatal
   }
 }
 

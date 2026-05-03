@@ -24,15 +24,8 @@ async function isEnabled(): Promise<boolean> {
   }
 }
 
-// Strip embedding blob before sending over MCP — it serializes as {"0":59,...} ~260KB per memory
-function strip(obj: unknown): unknown {
-  if (Array.isArray(obj)) return obj.map(strip);
-  if (obj && typeof obj === "object") {
-    const { embedding: _e, ...rest } = obj as Record<string, unknown>;
-    return Object.fromEntries(Object.entries(rest).map(([k, v]) => [k, strip(v)]));
-  }
-  return obj;
-}
+// Embedding excluded at the SQL query level — strip() is now a no-op passthrough kept for call-site compatibility.
+function strip(obj: unknown): unknown { return obj; }
 
 /** Compact formatter — strips verbose fields and truncates content to keep MCP responses small. */
 function compact(memories: unknown[]): unknown[] {

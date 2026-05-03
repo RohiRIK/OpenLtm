@@ -31,6 +31,47 @@ If the server is NOT running, show: `(graph server offline — start with /ltm:a
 
 ---
 
+## Activity (last 24 h)
+
+Aggregate structured events from `~/.claude/logs/hooks.log`:
+
+```bash
+bun --eval "
+import { readFileSync, existsSync } from 'fs';
+import { join } from 'path';
+import { homedir } from 'os';
+const LOG = join(homedir(), '.claude', 'logs', 'hooks.log');
+if (!existsSync(LOG)) { console.log('No hooks.log yet — hooks have not fired.'); process.exit(0); }
+const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+const counts = {};
+readFileSync(LOG, 'utf-8').trim().split('\n').forEach(line => {
+  try {
+    const e = JSON.parse(line);
+    if (e.level !== 'event' || !e.event) return;
+    if (new Date(e.ts).getTime() < cutoff) return;
+    counts[e.event] = (counts[e.event] ?? 0) + 1;
+  } catch {}
+});
+const LABELS = {
+  'session.start':     'Sessions started',
+  'session.evaluated': 'Sessions evaluated',
+  'context.updated':   'Context updates',
+  'compact.pre':       'Compactions',
+  'recall.hit':        'Recall hits',
+  'learn.write':       'Memories learned',
+  'wizard.complete':   'Wizard completions',
+};
+console.log('Activity (last 24 h)');
+console.log('────────────────────');
+const keys = Object.keys(LABELS);
+const any = keys.some(k => counts[k]);
+if (!any) { console.log('  No hook events yet.'); }
+else { keys.forEach(k => { if (counts[k]) console.log('  ' + (LABELS[k] ?? k).padEnd(22) + counts[k]); }); }
+"
+```
+
+---
+
 ## Memory Decay Summary
 
 Always run, regardless of graph server status:

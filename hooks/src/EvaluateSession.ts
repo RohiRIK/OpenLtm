@@ -3,7 +3,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync } from 
 import { join } from "path";
 import { homedir } from "os";
 import { resolveProject, PROJECTS_DIR, CLAUDE_DIR, getDbPath } from "../lib/resolveProject.js";
-import { logHook } from "../lib/hookLogger.js";
+import { logHook, logEvent } from "../lib/hookLogger.js";
+import { EVENTS } from "../lib/eventNames.js";
 import { safeRun } from "../lib/hookUtils.js";
 import { extractProposals } from "../lib/llmExtract.js";
 import { writeProposals, type MemoryProposal } from "../lib/proposalQueue.js";
@@ -287,6 +288,8 @@ async function main() {
     } catch (cfgErr) {
       logHook("EvaluateSession", "warn", "Failed to read config for LLM extraction", String(cfgErr));
     }
+
+    logEvent("EvaluateSession", EVENTS.SESSION_EVALUATED, { project: projectName, count: messageCount });
 
     // Update Summary (deduplicate by sessionId)
     if (!existsSync(SUMMARY_FILE)) {
