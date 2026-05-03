@@ -3,7 +3,8 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "fs
 import { join } from "path";
 import { resolveProject, registerPath, PROJECTS_DIR, CLAUDE_DIR, getDbPath } from "../lib/resolveProject.js";
 import { readStdin, parseHookInput, trimToLines, readFileSafe, safeRun } from "../lib/hookUtils.js";
-import { logHook } from "../lib/hookLogger.js";
+import { logHook, logEvent } from "../lib/hookLogger.js";
+import { EVENTS } from "../lib/eventNames.js";
 import { spawnSync } from "child_process";
 import { getContextMerge, getSimilarMemories, getContextMergeWithGraph, computeDecayScore } from "../../src/db.js";
 import { embedText } from "../../src/embeddings.js";
@@ -204,6 +205,7 @@ async function main(): Promise<void> {
 
   process.stdout.write(output);
   logHook("SessionStart", "info", `Injected context for "${name}" (${registeredPath ? "registry" : "slug fallback"})`);
+  logEvent("SessionStart", EVENTS.SESSION_START, { project: name });
 }
 
 safeRun("SessionStart", main).then(result => {

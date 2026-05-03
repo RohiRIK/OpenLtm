@@ -43,19 +43,40 @@ export function getDb(): Database {
     });
     _initPromise.catch(() => {/* prevent unhandled rejection — sync fallback is active */});
   }
-  // For synchronous callers that call getDb() before the promise resolves on a
-  // cold start, open a temporary sync path: schema.sql only, no migrations.
-  // runPendingMigrations self-heals on the next async call and records versions.
+  // For synchronous callers on cold start: open a schema-only DB immediately.
+  // Migrations run via _initPromise (above) on a dedicated connection and swap
+  // _db once complete. Do NOT run runPendingMigrations here — that causes two
+  // concurrent runners on the same file and UNIQUE constraint races.
   if (!_db) {
     const dir = join(CLAUDE_DIR, "memory");
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     _db = new Database(DB_PATH, { create: true });
     _db.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;");
     _db.exec(readFileSync(SCHEMA_PATH, "utf-8"));
-    // Fire-and-forget: apply pending versioned migrations in background
-    runPendingMigrations(_db).catch(() => {/* self-heals on next call */});
   }
   return _db;
+}
+
+/**
+ * Await full DB initialisation (schema + all pending migrations).
+ * Use in async startup paths (tests, server boot) when migrated columns are
+ * needed before the first async tick completes.
+ */
+export async function waitForInit(): Promise<void> {
+  if (!_initPromise) getDb(); // ensure _initPromise is created
+  await _initPromise;
+}
+
+/**
+ * Test-only: inject a specific Database instance as the singleton.
+ * Closes any existing connection first. Never call in production code.
+ */
+export function _setDbForTesting(db: Database): void {
+  try { _db?.close(); } catch {}
+  _db = db;
+  // Resolve immediately — db is already fully migrated; prevents a second
+  // runPendingMigrations if getDb() or waitForInit() is called after injection.
+  _initPromise = Promise.resolve();
 }
 
 /** Retry helper for SQLITE_BUSY errors — wraps a function with automatic retry. */

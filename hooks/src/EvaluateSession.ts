@@ -3,7 +3,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync } from 
 import { join } from "path";
 import { homedir } from "os";
 import { resolveProject, PROJECTS_DIR, CLAUDE_DIR, getDbPath } from "../lib/resolveProject.js";
-import { logHook } from "../lib/hookLogger.js";
+import { logHook, logEvent } from "../lib/hookLogger.js";
+import { EVENTS } from "../lib/eventNames.js";
 import { safeRun } from "../lib/hookUtils.js";
 import { extractProposals } from "../lib/llmExtract.js";
 import { writeProposals, type MemoryProposal } from "../lib/proposalQueue.js";
@@ -218,10 +219,8 @@ async function main() {
 
     const projectName = resolveProject(input.cwd ?? "").name;
 
-    // Collect proposals instead of writing to DB
     const proposals: MemoryProposal[] = [];
 
-    // Error blocks → gotcha proposals (no DB write)
     for (const msg of errorBlocks.slice(0, 3)) {
       if (msg.trim().length > 20) {
         proposals.push({
@@ -233,14 +232,12 @@ async function main() {
       }
     }
 
-    // LLM extraction → proposals (no DB write)
     try {
       if ((readConfigSync() as Config).ltm?.evaluateSessionLlm) {
         const assistantText = extractAssistantText(messages);
         if (assistantText.length > 100) {
           extractProposals(assistantText, projectName, { source: "evaluate-session", sessionId })
             .then(({ proposals: llmProposals }) => {
-              // Merge LLM proposals and write the full set
               const merged = [...proposals, ...llmProposals];
               if (merged.length > 0) {
                 const sid = sessionId ?? `unknown-${Date.now()}`;
@@ -254,7 +251,6 @@ async function main() {
             })
             .catch((err: unknown) => {
               logHook("EvaluateSession", "warn", "LLM extraction failed", String(err));
-              // Still write error-block proposals if any
               if (proposals.length > 0) {
                 const sid = sessionId ?? `unknown-${Date.now()}`;
                 const proposalsPath = join(PROPOSALS_DIR, `${sid}.json`);
@@ -287,6 +283,8 @@ async function main() {
     } catch (cfgErr) {
       logHook("EvaluateSession", "warn", "Failed to read config for LLM extraction", String(cfgErr));
     }
+
+    logEvent("EvaluateSession", EVENTS.SESSION_EVALUATED, { project: projectName, count: messageCount });
 
     // Update Summary (deduplicate by sessionId)
     if (!existsSync(SUMMARY_FILE)) {

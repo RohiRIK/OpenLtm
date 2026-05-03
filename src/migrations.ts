@@ -76,6 +76,9 @@ export function computeChecksum(content: string): string {
 export async function backupDb(): Promise<string> {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const backupPath = `${DB_PATH}.bak-${timestamp}`;
+  // Skip backup when the source DB doesn't exist (e.g. in-process test DBs
+  // that were created on a different path than the module-level DB_PATH).
+  if (!existsSync(DB_PATH)) return backupPath;
   const bytes = await Bun.file(DB_PATH).arrayBuffer();
   await Bun.write(backupPath, bytes);
   return backupPath;

@@ -418,8 +418,14 @@ export async function recall(input: RecallInput = {}): Promise<MemoryWithRelatio
   }
 
   const where = `WHERE ${conditions.join(" AND ")}`;
+  // Explicit columns — excludes embedding blob (~260 KB/row) from hot recall path.
+  // Use getById(id, { withEmbedding: true }) when the blob is needed.
   const rows = db.query<Memory, typeof params>(
-    `SELECT * FROM memories ${where} LIMIT ${limit}`
+    `SELECT id, content, category, importance, confidence, source, project_scope, dedup_key,
+            created_at, last_confirmed_at, last_used_at, confirm_count, status,
+            first_recalled_at, last_recalled_at, recall_count, superseded_by, superseded_at,
+            workspace_id, agent_id
+     FROM memories ${where} LIMIT ${limit}`
   ).all(...params);
 
   let sorted: typeof rows;
@@ -509,12 +515,16 @@ export function getContextMerge(project: string): { globals: Memory[]; scoped: M
        .sort((a, b) => b.score - a.score)
        .map(({ m }) => m);
 
+  const SLIM = `id, content, category, importance, confidence, source, project_scope, dedup_key,
+               created_at, last_confirmed_at, last_used_at, confirm_count, status,
+               first_recalled_at, last_recalled_at, recall_count, superseded_by, superseded_at,
+               workspace_id, agent_id`;
   const globals = sortByDecay(db.query<Memory, []>(
-    `SELECT * FROM memories WHERE importance >= 4 AND project_scope IS NULL AND status = 'active'`
+    `SELECT ${SLIM} FROM memories WHERE importance >= 4 AND project_scope IS NULL AND status = 'active'`
   ).all());
 
   const scoped = sortByDecay(db.query<Memory, [string]>(
-    `SELECT * FROM memories WHERE project_scope=? AND importance >= 3 AND status = 'active' LIMIT 15`
+    `SELECT ${SLIM} FROM memories WHERE project_scope=? AND importance >= 3 AND status = 'active' LIMIT 15`
   ).all(project));
 
   const allIds = [...globals, ...scoped].map(m => m.id);
