@@ -3,7 +3,8 @@ import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import { resolveProject, getDbPath } from "../lib/resolveProject.js";
 import { readStdin, parseHookInput, readFileSafe, budgetSection, safeRun } from "../lib/hookUtils.js";
-import { logHook } from "../lib/hookLogger.js";
+import { logHook, logEvent } from "../lib/hookLogger.js";
+import { EVENTS } from "../lib/eventNames.js";
 import { getItems, exportContextMarkdown } from "../../src/context.js";
 
 const DB_PATH = getDbPath();
@@ -59,6 +60,7 @@ async function main(): Promise<void> {
 
   writeFileSync(join(projectDir, "context-summary.md"), finalSummary);
   logHook("PreCompact", "info", `Saved context summary for "${name}" (${finalSummary.split("\n").length} lines)`);
+  logEvent("PreCompact", EVENTS.COMPACT_PRE, { project: name });
 }
 
 await safeRun("PreCompact", main);

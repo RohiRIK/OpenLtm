@@ -4,8 +4,9 @@ import { homedir } from "os";
 import { join } from "path";
 import { resolveProject, PROJECTS_DIR, CLAUDE_DIR, getDbPath } from "../lib/resolveProject.js";
 import { readStdinPassthrough, parseHookInput, readFileSafe, appendLine, trimToLines, safeRun } from "../lib/hookUtils.js";
-import { logHook } from "../lib/hookLogger.js";
-import { addItem } from "../../src/context.js";
+import { logHook, logEvent } from "../lib/hookLogger.js";
+import { EVENTS } from "../lib/eventNames.js";
+import { appendProgress, addDecision, addGotcha } from "../../src/dao/index.js";
 
 const TOOL_NAMES = new Set(["Write", "Edit", "MultiEdit"]);
 const MAX_PROGRESS_LINES = 20;
@@ -109,13 +110,13 @@ async function main(): Promise<void> {
       if (prefixMatch) {
         const type = prefixMatch[1]!.toLowerCase() as "decision" | "gotcha";
         const strippedContent = sessionLine.slice(prefixMatch[0].length);
-        addItem(name, type, strippedContent, sessionTag ?? undefined);
-        // Phase 2: decisions/gotchas are auto-promoted to pending memories
-        // by the janitor's runPromote() — no direct promote() call needed.
+        if (type === "decision") addDecision(name, strippedContent);
+        else addGotcha(name, strippedContent);
       } else {
-        addItem(name, "progress", sessionLine, sessionTag ?? undefined);
+        appendProgress(name, sessionLine, sessionTag ?? undefined);
       }
       logHook("UpdateContext", "info", `context DB updated for ${name}`);
+      logEvent("UpdateContext", EVENTS.CONTEXT_UPDATED, { project: name });
       return;
     } catch (dbErr) {
       logHook("UpdateContext", "warn", "DB write failed, falling back to .md", String(dbErr));
