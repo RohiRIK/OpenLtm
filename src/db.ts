@@ -9,6 +9,8 @@ import { normalizeKey } from "./dedup.js";
 import { getDb, DB_PATH } from "./shared-db.js";
 import { CLAUDE_DIR } from "./paths.js";
 import { scrubSecrets } from "./secretsScrubber.js";
+import { insertProvenance, insertAudit, snapshotMemory, listProvenanceBatch } from "./dao/provenanceAudit.js";
+import type { ProvenanceSourceType } from "./dao/types.js";
 
 export { DB_PATH };
 const DOCS_DIR = join(CLAUDE_DIR, "docs");
@@ -50,6 +52,8 @@ export interface MemoryRelation {
 export interface MemoryWithRelations extends Memory {
   tags: string[];
   relations: Array<{ memory: Memory; relationship_type: RelationshipType; direction: "outgoing" | "incoming" }>;
+  /** Populated only when recall({ includeProvenance: true }) is requested. */
+  provenance?: import("./dao/types.js").ProvenanceRow[];
 }
 
 export interface LearnInput {
@@ -65,6 +69,12 @@ export interface LearnInput {
   relate_to?: Array<{ id: number; relationship_type: RelationshipType }>;
   /** Skip regenerating docs/memory-long-term.md (use during bulk imports) */
   skipExport?: boolean;
+  /** Audit/provenance — all optional; safe to omit from existing callers. */
+  actor?: string;
+  sessionId?: string;
+  provenanceSourceType?: ProvenanceSourceType;
+  provenanceSourceRef?: string;
+  provenanceMetadata?: string;
 }
 
 export interface LearnResult {
@@ -85,8 +95,14 @@ export interface RecallInput {
   limit?: number;
   workspace_id?: string;
   agent_id?: string;
+  /** When true, each result includes a `provenance` array. Off by default to preserve latency. */
+  includeProvenance?: boolean;
 }
 
+
+function tryAudit(fn: () => void): void {
+  try { fn(); } catch (e) { process.stderr.write(`[audit] write failed: ${e}\n`); }
+}
 
 function upsertTag(db: Database, name: string): number {
   db.run(`INSERT OR IGNORE INTO tags (name) VALUES (?)`, [name]);
@@ -271,7 +287,10 @@ export function learn(input: LearnInput): LearnResult {
 
   const existing = db.query<Memory, [string]>(`SELECT * FROM memories WHERE dedup_key=?`).get(dedupKey);
 
+  const actor = input.actor ?? "mcp:ltm_learn";
+
   if (existing) {
+    const beforeSnap = snapshotMemory(db, existing.id);
     db.run(
       `UPDATE memories SET confirm_count=confirm_count+1, last_confirmed_at=datetime('now'),
        confidence=MIN(1.0, confidence+0.05) WHERE id=?`,
@@ -283,6 +302,15 @@ export function learn(input: LearnInput): LearnResult {
         relate({ source_id: existing.id, target_id: rel.id, relationship_type: rel.relationship_type });
       }
     }
+    tryAudit(() => {
+      const afterSnap = snapshotMemory(db, existing.id);
+      insertAudit(db, {
+        memory_id: existing.id, op: "update", actor,
+        session_id: input.sessionId,
+        before_json: beforeSnap ? JSON.stringify(beforeSnap) : null,
+        after_json: afterSnap ? JSON.stringify(afterSnap) : null,
+      });
+    });
     if (!skipExport) exportMarkdown();
     const updated = db.query<{ confirm_count: number }, [number]>(
       `SELECT confirm_count FROM memories WHERE id=?`
@@ -312,6 +340,23 @@ export function learn(input: LearnInput): LearnResult {
       relate({ source_id: newId, target_id: rel.id, relationship_type: rel.relationship_type });
     }
   }
+
+  tryAudit(() => {
+    insertProvenance(db, {
+      memory_id: newId,
+      source_type: input.provenanceSourceType ?? "learn",
+      source_ref: input.provenanceSourceRef ?? input.sessionId ?? null,
+      actor,
+      metadata: input.provenanceMetadata ?? null,
+    });
+    const afterSnap = snapshotMemory(db, newId);
+    insertAudit(db, {
+      memory_id: newId, op: "insert", actor,
+      session_id: input.sessionId,
+      before_json: null,
+      after_json: afterSnap ? JSON.stringify(afterSnap) : null,
+    });
+  });
 
   if (!skipExport) exportMarkdown();
 
@@ -446,7 +491,14 @@ export async function recall(input: RecallInput = {}): Promise<MemoryWithRelatio
       sorted.map(m => m.id)
     );
   }
-  return sorted.map(m => enrichMemory(db, m));
+  const enriched = sorted.map(m => enrichMemory(db, m));
+  if (input.includeProvenance) {
+    const provMap = listProvenanceBatch(db, enriched.map(m => m.id));
+    for (const m of enriched) {
+      m.provenance = provMap.get(m.id) ?? [];
+    }
+  }
+  return enriched;
 }
 
 export function relate(input: {
@@ -468,12 +520,19 @@ export function relate(input: {
   );
 }
 
-export function forget(input: { id: number; reason?: string; skipExport?: boolean }): void {
+export function forget(input: { id: number; reason?: string; skipExport?: boolean; actor?: string; sessionId?: string }): void {
   const db = getDb();
-  if (!db.query<Memory, [number]>(`SELECT * FROM memories WHERE id=?`).get(input.id)) {
-    throw new Error(`Memory ${input.id} not found`);
-  }
+  const snap = snapshotMemory(db, input.id);
+  if (!snap) throw new Error(`Memory ${input.id} not found`);
   db.run(`DELETE FROM memories WHERE id=?`, [input.id]);
+  tryAudit(() => insertAudit(db, {
+    memory_id: input.id,
+    op: "forget",
+    actor: input.actor ?? "mcp:ltm_forget",
+    session_id: input.sessionId,
+    before_json: JSON.stringify(snap),
+    after_json: null,
+  }));
   if (!input.skipExport) exportMarkdown();
 }
 

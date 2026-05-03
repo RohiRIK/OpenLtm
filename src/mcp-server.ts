@@ -8,6 +8,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { getDb } from "./shared-db.js";
 import { learn, recall, relate, forget, getContextMerge, type Memory } from "./db.js";
+import { queryAudit } from "./dao/provenanceAudit.js";
 import { getItems } from "./context.js";
 import { traverseGraph, buildReasoningContext } from "./graph.js";
 
@@ -65,9 +66,10 @@ server.tool(
     sort_by: z.enum(["relevance", "created", "last_recalled", "recall_count"]).optional().describe("Sort results by"),
     workspace_id: z.string().optional().describe("Filter by workspace"),
     agent_id: z.string().optional().describe("Filter by agent"),
+    includeProvenance: z.boolean().optional().default(false).describe("Attach provenance chain to each result (off by default)"),
   },
-  async ({ query, project, limit, category, verbose, since, until, sort_by }) => {
-    const results = await recall({ query, project, limit, category, since, until, sort_by });
+  async ({ query, project, limit, category, verbose, since, until, sort_by, includeProvenance }) => {
+    const results = await recall({ query, project, limit, category, since, until, sort_by, includeProvenance });
     const payload = verbose ? strip(results) : compact(strip(results) as unknown[]);
     return { content: [{ type: "text", text: JSON.stringify(payload) }] };
   },
@@ -91,7 +93,9 @@ server.tool(
       category,
       importance,
       tags,
-      project_scope: project,    });
+      project_scope: project,
+      actor: "mcp:ltm_learn",
+    });
 
     try {
       server.server.notification({
@@ -126,8 +130,32 @@ server.tool(
     reason: z.string().optional().describe("Why this memory is being removed"),
   },
   async ({ id, reason }) => {
-    forget({ id, reason });
+    forget({ id, reason, actor: "mcp:ltm_forget" });
     return { content: [{ type: "text", text: JSON.stringify({ ok: true, id, reason }) }] };
+  },
+);
+
+server.tool(
+  "ltm_admin_audit",
+  "Query the memory audit log. Returns a list of audit events (insert, update, forget, redact, etc.) with before/after snapshots. Use for tracing who wrote or deleted a memory.",
+  {
+    memory_id: z.number().int().optional().describe("Filter to a specific memory ID"),
+    op: z.enum(["insert","update","forget","deprecate","supersede","redact","restore"]).optional().describe("Filter by operation type"),
+    session_id: z.string().optional().describe("Filter by session that triggered the op"),
+    since: z.string().optional().describe("ISO date — only events after this time"),
+    limit: z.number().int().min(1).max(200).optional().default(50).describe("Max rows (default 50)"),
+    verbose: z.boolean().optional().default(false).describe("Include full before/after JSON snapshots"),
+  },
+  async ({ memory_id, op, session_id, since, limit, verbose }) => {
+    const db = getDb();
+    const rows = queryAudit(db, { memoryId: memory_id, op, sessionId: session_id, since, limit });
+    const payload = verbose ? rows : rows.map(r => ({
+      id: r.id, memory_id: r.memory_id, op: r.op, actor: r.actor,
+      session_id: r.session_id, created_at: r.created_at,
+      before_preview: r.before_json ? r.before_json.slice(0, 120) : null,
+      after_preview: r.after_json ? r.after_json.slice(0, 120) : null,
+    }));
+    return { content: [{ type: "text", text: JSON.stringify(payload) }] };
   },
 );
 
