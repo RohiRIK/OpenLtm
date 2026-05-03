@@ -14,6 +14,14 @@ function getConfigPath(): string {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+export interface EmbeddingsConfig {
+  provider: "gemini" | "openai" | "ollama" | "disabled";
+  apiKey?: string;
+  model?: string;
+  baseUrl?: string;
+  confidenceThreshold: number;
+}
+
 export interface LtmConfig {
   dbPath: string;
   decayEnabled: boolean;
@@ -43,9 +51,15 @@ export interface Config {
   ltm: LtmConfig;
   server: ServerConfig;
   sync: SyncConfig;
+  embeddings: EmbeddingsConfig;
 }
 
 // ── Defaults ───────────────────────────────────────────────────────────────────
+
+const DEFAULT_EMBEDDINGS: EmbeddingsConfig = {
+  provider: "disabled",
+  confidenceThreshold: 0.6,
+};
 
 const DEFAULTS: Config = {
   ltm: {
@@ -70,6 +84,7 @@ const DEFAULTS: Config = {
     enabled: false,
     provider: null,
   },
+  embeddings: DEFAULT_EMBEDDINGS,
 };
 
 // ── Validation ──────────────────────────────────────────────────────────────
@@ -100,11 +115,11 @@ export function readConfigSync(): Partial<Config> {
 
 export async function loadConfig(): Promise<Config> {
   const configPath = getConfigPath();
-  if (!existsSync(configPath)) return { ...DEFAULTS };
+  if (!existsSync(configPath)) return { ...DEFAULTS, embeddings: { ...DEFAULT_EMBEDDINGS } };
 
   let raw: Record<string, unknown>;
   try { raw = JSON.parse(await Bun.file(configPath).text()) as Record<string, unknown>; }
-  catch { return { ...DEFAULTS }; }
+  catch { return { ...DEFAULTS, embeddings: { ...DEFAULT_EMBEDDINGS } }; }
 
   const { valid, errors } = validateConfig(raw);
   if (!valid) process.stderr.write(`[config] Validation: ${errors.join(", ")}\n`);
@@ -112,6 +127,13 @@ export async function loadConfig(): Promise<Config> {
   const ltm = (raw["ltm"] ?? {}) as Partial<LtmConfig>;
   const server = (raw["server"] ?? {}) as Partial<ServerConfig>;
   const sync = (raw["sync"] ?? {}) as Partial<SyncConfig>;
+  const emb = (raw["embeddings"] ?? {}) as Partial<EmbeddingsConfig>;
+
+  // Resolve apiKey from env when not set in config
+  const resolvedApiKey = emb.apiKey
+    ?? (emb.provider === "gemini" ? process.env["GEMINI_API_KEY"] : undefined)
+    ?? (emb.provider === "openai" ? process.env["OPENAI_API_KEY"] : undefined)
+    ?? (emb.provider === "ollama" ? process.env["OLLAMA_API_KEY"] : undefined);
 
   return {
     ltm: {
@@ -130,5 +152,12 @@ export async function loadConfig(): Promise<Config> {
     },
     server: { apiPort: server.apiPort ?? DEFAULTS.server.apiPort, uiPort: server.uiPort ?? DEFAULTS.server.uiPort },
     sync: { enabled: sync.enabled ?? DEFAULTS.sync.enabled, provider: sync.provider ?? DEFAULTS.sync.provider },
+    embeddings: {
+      provider: emb.provider ?? DEFAULT_EMBEDDINGS.provider,
+      apiKey: resolvedApiKey,
+      model: emb.model,
+      baseUrl: emb.baseUrl,
+      confidenceThreshold: emb.confidenceThreshold ?? DEFAULT_EMBEDDINGS.confidenceThreshold,
+    },
   };
 }
