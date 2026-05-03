@@ -6,3 +6,4 @@
 export * from "./types.js";
 export * from "./contextItems.js";
 export * from "./provenanceAudit.js";
+export * from "./embeddings.js";
