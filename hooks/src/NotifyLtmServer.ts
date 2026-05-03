@@ -4,7 +4,7 @@
  */
 import { join } from "path";
 import { CLAUDE_DIR } from "../lib/resolveProject.js";
-import { readStdin } from "../lib/hookUtils.js";
+import { readStdin, safeRun } from "../lib/hookUtils.js";
 
 const PID_PATH = join(CLAUDE_DIR, "tmp", "ltm-server.pid");
 const MEMORY_DIR = join(CLAUDE_DIR, "memory");
@@ -46,4 +46,4 @@ async function main(): Promise<void> {
   process.stdout.write(input);
 }
 
-main();
+await safeRun("NotifyLtmServer", main);

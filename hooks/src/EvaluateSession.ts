@@ -1,11 +1,12 @@
 #!/usr/bin/env bun
 import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync } from "fs";
 import { join } from "path";
+import { homedir } from "os";
 import { resolveProject, PROJECTS_DIR, CLAUDE_DIR, getDbPath } from "../lib/resolveProject.js";
 import { logHook } from "../lib/hookLogger.js";
-import { learn } from "../../src/db.js";
-import { addItem } from "../../src/context.js";
-import { extractAndLearn } from "../lib/llmExtract.js";
+import { safeRun } from "../lib/hookUtils.js";
+import { extractProposals } from "../lib/llmExtract.js";
+import { writeProposals, type MemoryProposal } from "../lib/proposalQueue.js";
 import { readConfigSync } from "../../src/config.js";
 import type { Config } from "../../src/config.js";
 
@@ -17,6 +18,11 @@ const HISTORY_FILE = join(CLAUDE_DIR, "history.jsonl");
 const MAX_SUMMARY_LINES = 50;
 const SUMMARY_HEADER_LINES = 10;
 const MIN_SESSION_MESSAGES = 5; // Lowered for testing
+
+// Proposals dir: ${CLAUDE_PLUGIN_DATA}/proposals/ or fallback to plugin data dir
+const PLUGIN_DATA_DIR = process.env.CLAUDE_PLUGIN_DATA
+  ?? join(homedir(), ".claude", "plugins", "data", "ltm-ltm");
+const PROPOSALS_DIR = join(PLUGIN_DATA_DIR, "proposals");
 
 async function findTranscript(sessionId: string | undefined): Promise<{ path: string, id: string } | null> {
   if (!existsSync(HISTORY_FILE)) return null;
@@ -35,13 +41,13 @@ async function findTranscript(sessionId: string | undefined): Promise<{ path: st
           historyEntry = line;
           break;
         }
-      } catch (e) {}
+      } catch (e) {} // silent: malformed JSONL lines are expected and safely skipped
     }
   } else {
     // Just take the last valid one
     try {
       historyEntry = JSON.parse(historyLines[historyLines.length - 1] ?? "");
-    } catch (e) {}
+    } catch (e) {} // silent: malformed JSONL line is safely skipped
   }
 
   if (!historyEntry) return null;
@@ -67,7 +73,7 @@ async function findTranscript(sessionId: string | undefined): Promise<{ path: st
           break;
         }
       }
-    } catch (_) {}
+    } catch (_) {} // silent: dir scan failure means we fall through to existsSync check
   }
 
   if (!existsSync(transcriptPath)) return null;
@@ -90,11 +96,6 @@ function extractAssistantText(messages: any[]): string {
   return full.length > 8000 ? full.slice(-8000) : full;
 }
 
-async function runLlmExtraction(text: string, projectName: string, sessionId?: string): Promise<void> {
-  const progress = await extractAndLearn(text, projectName, { source: "evaluate-session", sessionId });
-  if (progress) addItem(projectName, "progress", progress, sessionId);
-}
-
 async function main() {
   let inputStr = "";
   // Hook inputs are optional for this tool now, but we pass through stdin
@@ -104,16 +105,19 @@ async function main() {
       inputStr += text;
       process.stdout.write(chunk); // Pass through immediately
     }
-  } catch (e) {
-    // Stdin might be empty or closed
+  } catch (stdinErr) {
+    // Stdin might be empty or closed — non-fatal
+    logHook("EvaluateSession", "warn", "stdin read failed", String(stdinErr));
   }
 
+  let input: any = {};
   try {
-    let input: any = {};
-    try {
-      input = JSON.parse(inputStr);
-    } catch (e) {}
+    input = JSON.parse(inputStr);
+  } catch {
+    // Non-JSON input is acceptable — hooks may receive empty or plain-text stdin
+  }
 
+  {
     let transcriptPath = input.transcript_path;
     let sessionId = input.session_id;
 
@@ -138,7 +142,6 @@ async function main() {
     const messageCount = messages.length;
 
     if (messageCount < MIN_SESSION_MESSAGES) {
-    //   console.error(`[ContinuousLearning] Session too short (${messageCount} messages), skipping`);
       return;
     }
 
@@ -214,25 +217,76 @@ async function main() {
     writeFileSync(patternFile, fileContent);
 
     const projectName = resolveProject(input.cwd ?? "").name;
-    try {
-      for (const msg of errorBlocks.slice(0, 3)) {
-        if (msg.trim().length > 20) {
-          learn({ content: msg.trim(), category: "gotcha", importance: 3,
-                  project_scope: projectName, source: "evaluate-session" });
-        }
-      }
-    } catch { /* non-fatal */ }
 
+    // Collect proposals instead of writing to DB
+    const proposals: MemoryProposal[] = [];
+
+    // Error blocks → gotcha proposals (no DB write)
+    for (const msg of errorBlocks.slice(0, 3)) {
+      if (msg.trim().length > 20) {
+        proposals.push({
+          content: msg.trim(),
+          category: "gotcha",
+          importance: 3,
+          source: "evaluate-session",
+        });
+      }
+    }
+
+    // LLM extraction → proposals (no DB write)
     try {
       if ((readConfigSync() as Config).ltm?.evaluateSessionLlm) {
         const assistantText = extractAssistantText(messages);
         if (assistantText.length > 100) {
-          runLlmExtraction(assistantText, projectName, sessionId).catch((err: unknown) => {
-            logHook("EvaluateSession", "warn", "LLM extraction failed", String(err));
-          });
+          extractProposals(assistantText, projectName, { source: "evaluate-session", sessionId })
+            .then(({ proposals: llmProposals }) => {
+              // Merge LLM proposals and write the full set
+              const merged = [...proposals, ...llmProposals];
+              if (merged.length > 0) {
+                const sid = sessionId ?? `unknown-${Date.now()}`;
+                const proposalsPath = join(PROPOSALS_DIR, `${sid}.json`);
+                writeProposals(proposalsPath, merged);
+                process.stdout.write(
+                  JSON.stringify({ type: "ltm_proposal", count: merged.length, proposalsPath }) + "\n"
+                );
+                logHook("EvaluateSession", "info", `${merged.length} proposals written`, proposalsPath);
+              }
+            })
+            .catch((err: unknown) => {
+              logHook("EvaluateSession", "warn", "LLM extraction failed", String(err));
+              // Still write error-block proposals if any
+              if (proposals.length > 0) {
+                const sid = sessionId ?? `unknown-${Date.now()}`;
+                const proposalsPath = join(PROPOSALS_DIR, `${sid}.json`);
+                writeProposals(proposalsPath, proposals);
+                process.stdout.write(
+                  JSON.stringify({ type: "ltm_proposal", count: proposals.length, proposalsPath }) + "\n"
+                );
+              }
+            });
+        } else if (proposals.length > 0) {
+          // No LLM extraction but we have error-block proposals
+          const sid = sessionId ?? `unknown-${Date.now()}`;
+          const proposalsPath = join(PROPOSALS_DIR, `${sid}.json`);
+          writeProposals(proposalsPath, proposals);
+          process.stdout.write(
+            JSON.stringify({ type: "ltm_proposal", count: proposals.length, proposalsPath }) + "\n"
+          );
+          logHook("EvaluateSession", "info", `${proposals.length} proposals written`, proposalsPath);
         }
+      } else if (proposals.length > 0) {
+        // LLM disabled — write error-block proposals only
+        const sid = sessionId ?? `unknown-${Date.now()}`;
+        const proposalsPath = join(PROPOSALS_DIR, `${sid}.json`);
+        writeProposals(proposalsPath, proposals);
+        process.stdout.write(
+          JSON.stringify({ type: "ltm_proposal", count: proposals.length, proposalsPath }) + "\n"
+        );
+        logHook("EvaluateSession", "info", `${proposals.length} proposals written`, proposalsPath);
       }
-    } catch { /* non-fatal */ }
+    } catch (cfgErr) {
+      logHook("EvaluateSession", "warn", "Failed to read config for LLM extraction", String(cfgErr));
+    }
 
     // Update Summary (deduplicate by sessionId)
     if (!existsSync(SUMMARY_FILE)) {
@@ -251,12 +305,7 @@ async function main() {
         : summaryContent + newLine;
       writeFileSync(SUMMARY_FILE, newSummary);
     }
-
-  } catch (error) {
-    // Fail silently on parse error or logic error to not break hook
-    logHook("EvaluateSession", "error", "Error analyzing session", String(error));
-    console.error("[ContinuousLearning] Error analyzing session:", error);
   }
 }
 
-main();
+await safeRun("EvaluateSession", main);
