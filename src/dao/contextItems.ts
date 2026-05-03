@@ -50,20 +50,19 @@ export function appendProgress(project: string, content: string, sessionId?: str
   });
 }
 
-export function addDecision(project: string, content: string): void {
+function insertPermanent(project: string, type: ContextItemType, content: string): void {
   writeQueue.enqueue(() => {
     getDb().run(
-      `INSERT INTO context_items (project_name, type, content, permanent) VALUES (?, 'decision', ?, 1)`,
-      [project, content]
+      `INSERT INTO context_items (project_name, type, content, permanent) VALUES (?, ?, ?, 1)`,
+      [project, type, content]
     );
   });
 }
 
+export function addDecision(project: string, content: string): void {
+  insertPermanent(project, "decision", content);
+}
+
 export function addGotcha(project: string, content: string): void {
-  writeQueue.enqueue(() => {
-    getDb().run(
-      `INSERT INTO context_items (project_name, type, content, permanent) VALUES (?, 'gotcha', ?, 1)`,
-      [project, content]
-    );
-  });
+  insertPermanent(project, "gotcha", content);
 }

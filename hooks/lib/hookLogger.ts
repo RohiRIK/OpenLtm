@@ -28,9 +28,10 @@ export interface LogEntry {
 const LOG_PATH = join(homedir(), ".claude", "logs", "hooks.log");
 const MAX_BYTES = 500_000;   // 500 KB — rotate above this
 const KEEP_BYTES = 300_000;  // keep last 300 KB after rotation
+const ROTATE_INTERVAL_MS = 60_000; // check at most once per minute
 
-// Cache dir-creation so it only runs once per process
 let _dirEnsured = false;
+let _lastRotateCheckAt = 0;
 
 function ensureDir(): void {
   if (_dirEnsured) return;
@@ -39,9 +40,12 @@ function ensureDir(): void {
 }
 
 function rotate(): void {
+  const now = Date.now();
+  if (now - _lastRotateCheckAt < ROTATE_INTERVAL_MS) return;
+  _lastRotateCheckAt = now;
   try {
     let size: number;
-    try { size = statSync(LOG_PATH).size; } catch { return; } // file doesn't exist yet
+    try { size = statSync(LOG_PATH).size; } catch { return; }
     if (size <= MAX_BYTES) return;
     writeFileSync(LOG_PATH, readFileSync(LOG_PATH, "utf-8").slice(-KEEP_BYTES));
   } catch (_) {
