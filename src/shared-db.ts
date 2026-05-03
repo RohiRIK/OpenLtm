@@ -76,7 +76,7 @@ export function _setDbForTesting(db: Database): void {
   _db = db;
   // Resolve immediately — db is already fully migrated; prevents a second
   // runPendingMigrations if getDb() or waitForInit() is called after injection.
-  _initPromise = Promise.resolve();
+  _initPromise = Promise.resolve(db);
 }
 
 /** Retry helper for SQLITE_BUSY errors — wraps a function with automatic retry. */

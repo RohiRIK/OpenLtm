@@ -14,6 +14,8 @@ Usage: /ltm:admin <subcommand>
   migrate [status|up|down|reset|--legacy]   — schema migrations + legacy DB detection
   scan    [--project X] [--dry-run]         — scan memories for secrets and redact
   server  [start|stop|status]               — LTM graph visualization server (port 7331)
+  audit   [--memory-id N] [--op <op>] [--session <id>] [--since <iso>] [--limit N]
+                                            — query the memory write audit log
 ```
 
 ---
@@ -84,6 +86,32 @@ await (async () => {
 ```
 
 `--dry-run` is safe to run anytime.
+
+---
+
+## audit
+
+Query the append-only memory audit log (`memory_audit` table). Every write to `memories` (insert, update, forget, redact, etc.) produces a row.
+
+| Flag | Description |
+|------|-------------|
+| `--memory-id N` | Filter to a specific memory ID |
+| `--op <op>` | One of: `insert`, `update`, `forget`, `deprecate`, `supersede`, `redact`, `restore` |
+| `--session <id>` | Filter by session that triggered the write |
+| `--since <iso>` | Only events after this ISO date (e.g. `2026-05-01`) |
+| `--limit N` | Max rows to return (default 50) |
+
+Call `mcp__ltm__ltm_admin_audit` with the provided filters and display the result as a table:
+
+```
+ID | Memory | Op     | Actor            | Session   | When
+---|--------|--------|------------------|-----------|---------------------
+42 | 7      | insert | mcp:ltm_learn    | sess_abc  | 2026-05-03 14:22:01
+43 | 7      | update | mcp:ltm_learn    | sess_def  | 2026-05-03 15:01:44
+44 | 7      | forget | mcp:ltm_forget   | sess_ghi  | 2026-05-03 16:00:00
+```
+
+For before/after snapshots, add `--verbose` (maps to `verbose: true` in the MCP call).
 
 ---
 
