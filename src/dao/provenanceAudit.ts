@@ -79,8 +79,30 @@ export function queryAudit(db: Database, opts: QueryAuditOpts = {}): AuditRow[] 
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
   const limit = opts.limit ?? 50;
 
+  params.push(limit);
   return db.query<AuditRow, typeof params>(
     `SELECT id, memory_id, op, actor, session_id, before_json, after_json, created_at
-     FROM memory_audit ${where} ORDER BY created_at DESC LIMIT ${limit}`
+     FROM memory_audit ${where} ORDER BY created_at DESC LIMIT ?`
   ).all(...params);
+}
+
+/**
+ * Batch fetch provenance rows for multiple memory IDs — one query instead of N.
+ * Returns a Map keyed by memory_id; use to avoid N+1 in recall({ includeProvenance: true }).
+ */
+export function listProvenanceBatch(db: Database, memoryIds: number[]): Map<number, ProvenanceRow[]> {
+  if (memoryIds.length === 0) return new Map();
+  const placeholders = memoryIds.map(() => "?").join(",");
+  const rows = db.query<ProvenanceRow, number[]>(
+    `SELECT id, memory_id, source_type, source_ref, actor, created_at, metadata
+     FROM memory_provenance WHERE memory_id IN (${placeholders})
+     ORDER BY memory_id, created_at DESC, id DESC`
+  ).all(...memoryIds);
+  const map = new Map<number, ProvenanceRow[]>();
+  for (const row of rows) {
+    const arr = map.get(row.memory_id) ?? [];
+    arr.push(row);
+    map.set(row.memory_id, arr);
+  }
+  return map;
 }

@@ -8,6 +8,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { getDb } from "./shared-db.js";
 import { learn, recall, relate, forget, getContextMerge, type Memory } from "./db.js";
+import { queryAudit } from "./dao/provenanceAudit.js";
 import { getItems } from "./context.js";
 import { traverseGraph, buildReasoningContext } from "./graph.js";
 
@@ -146,8 +147,6 @@ server.tool(
     verbose: z.boolean().optional().default(false).describe("Include full before/after JSON snapshots"),
   },
   async ({ memory_id, op, session_id, since, limit, verbose }) => {
-    const { queryAudit } = await import("./dao/provenanceAudit.js");
-    const { getDb } = await import("./shared-db.js");
     const db = getDb();
     const rows = queryAudit(db, { memoryId: memory_id, op, sessionId: session_id, since, limit });
     const payload = verbose ? rows : rows.map(r => ({

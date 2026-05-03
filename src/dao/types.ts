@@ -106,26 +106,11 @@ export interface AuditInput {
   after_json?: string | null;
 }
 
-/** JSON-safe memory snapshot — excludes embedding blob. Used for audit before/after captures. */
-export interface MemorySnapshot {
-  id: number;
-  content: string;
+/**
+ * JSON-safe memory snapshot — excludes embedding blob. Used for audit before/after captures.
+ * Same shape as MemorySlim but with category/status widened to string (SQLite returns raw strings).
+ */
+export type MemorySnapshot = Omit<MemorySlim, "category" | "status"> & {
   category: string;
-  importance: number;
-  confidence: number;
-  source: string | null;
-  project_scope: string | null;
-  dedup_key: string | null;
-  created_at: string;
-  last_confirmed_at: string;
-  last_used_at: string;
-  confirm_count: number;
   status: string;
-  first_recalled_at?: string | null;
-  last_recalled_at?: string | null;
-  recall_count?: number | null;
-  superseded_by?: number | null;
-  superseded_at?: string | null;
-  workspace_id?: string | null;
-  agent_id?: string | null;
-}
+};
