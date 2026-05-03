@@ -74,7 +74,9 @@ export async function waitForInit(): Promise<void> {
 export function _setDbForTesting(db: Database): void {
   try { _db?.close(); } catch {}
   _db = db;
-  _initPromise = null;
+  // Resolve immediately — db is already fully migrated; prevents a second
+  // runPendingMigrations if getDb() or waitForInit() is called after injection.
+  _initPromise = Promise.resolve();
 }
 
 /** Retry helper for SQLITE_BUSY errors — wraps a function with automatic retry. */

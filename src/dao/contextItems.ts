@@ -23,11 +23,13 @@ export function listByProject(project: string, type?: ContextItemType): ContextI
 export function upsertGoal(project: string, content: string): void {
   writeQueue.enqueue(() => {
     const db = getDb();
-    db.run(`DELETE FROM context_items WHERE project_name=? AND type='goal'`, [project]);
-    db.run(
-      `INSERT INTO context_items (project_name, type, content, permanent) VALUES (?, 'goal', ?, 0)`,
-      [project, content]
-    );
+    db.transaction(() => {
+      db.run(`DELETE FROM context_items WHERE project_name=? AND type='goal'`, [project]);
+      db.run(
+        `INSERT INTO context_items (project_name, type, content, permanent) VALUES (?, 'goal', ?, 0)`,
+        [project, content]
+      );
+    })();
   });
 }
 
