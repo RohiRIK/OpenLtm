@@ -4,6 +4,35 @@
  */
 
 import { existsSync, readFileSync, writeFileSync } from "fs";
+import { logHook } from "./hookLogger.js";
+
+/**
+ * Run an async hook body safely. Never throws.
+ * Returns { ok: true, value } on success or { ok: false, error } on failure.
+ * On failure, writes structured JSON to stderr (Claude Code reads hook stderr)
+ * and records to the hook log.
+ */
+export async function safeRun<T>(
+  label: string,
+  fn: () => Promise<T>,
+): Promise<{ ok: true; value: T } | { ok: false; error: Error }> {
+  try {
+    const value = await fn();
+    return { ok: true, value };
+  } catch (err) {
+    const error = err instanceof Error ? err : new Error(String(err));
+    logHook(label, "error", error.message, error.stack);
+    process.stderr.write(
+      JSON.stringify({
+        hook: label,
+        error: error.message,
+        stack: error.stack,
+        timestamp: new Date().toISOString(),
+      }) + "\n",
+    );
+    return { ok: false, error };
+  }
+}
 
 /** Read stdin fully as a string. */
 export async function readStdin(): Promise<string> {

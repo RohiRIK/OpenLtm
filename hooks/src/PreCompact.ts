@@ -2,7 +2,7 @@
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import { resolveProject, getDbPath } from "../lib/resolveProject.js";
-import { readStdin, parseHookInput, readFileSafe, budgetSection } from "../lib/hookUtils.js";
+import { readStdin, parseHookInput, readFileSafe, budgetSection, safeRun } from "../lib/hookUtils.js";
 import { logHook } from "../lib/hookLogger.js";
 import { getItems, exportContextMarkdown } from "../../src/context.js";
 
@@ -38,32 +38,27 @@ function buildSummaryFromFiles(name: string, cwd: string, projectDir: string): s
 }
 
 async function main(): Promise<void> {
-  try {
-    const raw = await readStdin();
-    const parsed = parseHookInput(raw);
+  const raw = await readStdin();
+  const parsed = parseHookInput(raw);
 
-    if (!parsed) {
-      logHook("PreCompact", "warn", "No cwd found in input, skipping");
-      console.error("[PreCompact] No cwd found in input, skipping");
-      return;
-    }
-
-    const { cwd } = parsed;
-    const { name, projectDir } = resolveProject(cwd);
-
-    if (!existsSync(projectDir)) mkdirSync(projectDir, { recursive: true });
-
-    // Try DB first; fall back to .md files if DB doesn't exist yet
-    const finalSummary = existsSync(DB_PATH)
-      ? ((await buildSummaryFromDb(name, cwd)) ?? buildSummaryFromFiles(name, cwd, projectDir))
-      : buildSummaryFromFiles(name, cwd, projectDir);
-
-    writeFileSync(join(projectDir, "context-summary.md"), finalSummary);
-    logHook("PreCompact", "info", `Saved context summary for "${name}" (${finalSummary.split("\n").length} lines)`);
-  } catch (err) {
-    logHook("PreCompact", "error", "Failed to save context summary", String(err));
-    console.error("[PreCompact] Failed to save context summary:", err);
+  if (!parsed) {
+    logHook("PreCompact", "warn", "No cwd found in input, skipping");
+    process.stderr.write("[PreCompact] No cwd found in input, skipping\n");
+    return;
   }
+
+  const { cwd } = parsed;
+  const { name, projectDir } = resolveProject(cwd);
+
+  if (!existsSync(projectDir)) mkdirSync(projectDir, { recursive: true });
+
+  // Try DB first; fall back to .md files if DB doesn't exist yet
+  const finalSummary = existsSync(DB_PATH)
+    ? ((await buildSummaryFromDb(name, cwd)) ?? buildSummaryFromFiles(name, cwd, projectDir))
+    : buildSummaryFromFiles(name, cwd, projectDir);
+
+  writeFileSync(join(projectDir, "context-summary.md"), finalSummary);
+  logHook("PreCompact", "info", `Saved context summary for "${name}" (${finalSummary.split("\n").length} lines)`);
 }
 
-main();
+await safeRun("PreCompact", main);

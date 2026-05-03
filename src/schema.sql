@@ -2,6 +2,16 @@
 -- Two-table design: context_items (per-project context) + memories (global learned insights)
 
 -- ============================================================
+-- schema_migrations: versioned migration tracking
+-- ============================================================
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  version    TEXT    NOT NULL UNIQUE,
+  applied_at INTEGER NOT NULL DEFAULT (unixepoch()),
+  checksum   TEXT
+);
+
+-- ============================================================
 -- context_items: replaces the 4 per-project Markdown context files
 -- ============================================================
 CREATE TABLE IF NOT EXISTS context_items (
@@ -117,6 +127,5 @@ CREATE TABLE IF NOT EXISTS settings (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- T16: workspace_id + agent_id indexes (columns added via migrations in shared-db.ts)
-CREATE INDEX IF NOT EXISTS idx_memories_workspace ON memories(workspace_id);
-CREATE INDEX IF NOT EXISTS idx_memories_agent ON memories(agent_id);
+-- workspace_id + agent_id indexes are created by migration 007_workspaces.sql
+-- after the columns are added via ALTER TABLE. Do not add them here.

@@ -13,6 +13,12 @@ let relate: (input: { source_id: number; target_id: number; relationship_type: i
 let getContextMerge: (project: string) => { globals: import("../db.js").Memory[]; scoped: import("../db.js").Memory[] };
 
 beforeAll(async () => {
+  // Ensure migrations run before any test uses the DB (sync getDb() fallback
+  // in shared-db.ts applies schema.sql only; migrations run async and may not
+  // settle before the first learn() call).
+  const { initDb } = await import("../shared-db.js");
+  await initDb();
+
   const db = await import("../db.js");
   learn = db.learn;
   recall = db.recall;

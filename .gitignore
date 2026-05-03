@@ -22,3 +22,4 @@ node-compile-cache/
 # Per-project plugin settings (never commit)
 .claude/*.local.md
 .claude/*.local.json
+.dev-team/

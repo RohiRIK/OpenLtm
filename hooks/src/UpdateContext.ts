@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { homedir } from "os";
 import { join } from "path";
 import { resolveProject, PROJECTS_DIR, CLAUDE_DIR, getDbPath } from "../lib/resolveProject.js";
-import { readStdinPassthrough, parseHookInput, readFileSafe, appendLine, trimToLines } from "../lib/hookUtils.js";
+import { readStdinPassthrough, parseHookInput, readFileSafe, appendLine, trimToLines, safeRun } from "../lib/hookUtils.js";
 import { logHook } from "../lib/hookLogger.js";
 import { addItem } from "../../src/context.js";
 
@@ -77,71 +77,66 @@ function parseJsonLines(raw: string): Array<Record<string, unknown>> {
 async function main(): Promise<void> {
   const raw = await readStdinPassthrough();
 
-  try {
-    const parsed = parseHookInput(raw);
-    if (!parsed) return;
+  const parsed = parseHookInput(raw);
+  if (!parsed) return;
 
-    const { input, cwd } = parsed;
-    const { name, projectDir } = resolveProject(cwd);
-    if (!existsSync(projectDir)) mkdirSync(projectDir, { recursive: true });
+  const { input, cwd } = parsed;
+  const { name, projectDir } = resolveProject(cwd);
+  if (!existsSync(projectDir)) mkdirSync(projectDir, { recursive: true });
 
-    const tPath = findTranscriptPath(
-      input.transcript_path as string | undefined,
-      input.session_id as string | undefined
-    );
-    if (!tPath) return;
+  const tPath = findTranscriptPath(
+    input.transcript_path as string | undefined,
+    input.session_id as string | undefined
+  );
+  if (!tPath) return;
 
-    const messages = parseJsonLines(readFileSync(tPath, "utf-8"));
-    if (messages.length < 3) return;
+  const messages = parseJsonLines(readFileSync(tPath, "utf-8"));
+  if (messages.length < 3) return;
 
-    const sessionTag = input.session_id ? (input.session_id as string).substring(0, 8) : null;
-    const today = new Date().toISOString().split("T")[0];
-    const tagPart = sessionTag ? ` [${sessionTag}]` : "";
+  const sessionTag = input.session_id ? (input.session_id as string).substring(0, 8) : null;
+  const today = new Date().toISOString().split("T")[0];
+  const tagPart = sessionTag ? ` [${sessionTag}]` : "";
 
-    const filesModified = collectModifiedFiles(messages);
-    const sessionLine = filesModified.size > 0
-      ? `✓ [${today}]${tagPart} Modified: ${[...filesModified].slice(0, MAX_DISPLAY_FILES).map(f => f.replace(homedir(), "~")).join(", ")}`
-      : `✓ [${today}]${tagPart} Session (read-only, ${messages.length} messages)`;
+  const filesModified = collectModifiedFiles(messages);
+  const sessionLine = filesModified.size > 0
+    ? `✓ [${today}]${tagPart} Modified: ${[...filesModified].slice(0, MAX_DISPLAY_FILES).map(f => f.replace(homedir(), "~")).join(", ")}`
+    : `✓ [${today}]${tagPart} Session (read-only, ${messages.length} messages)`;
 
-    // Write to DB if available, fall back to .md file
-    if (existsSync(DB_PATH)) {
-      try {
-        const prefixMatch = sessionLine.match(/^\[(decision|gotcha)\]\s*/i);
-        if (prefixMatch) {
-          const type = prefixMatch[1]!.toLowerCase() as "decision" | "gotcha";
-          const strippedContent = sessionLine.slice(prefixMatch[0].length);
-          addItem(name, type, strippedContent, sessionTag ?? undefined);
-          // Phase 2: decisions/gotchas are auto-promoted to pending memories
-          // by the janitor's runPromote() — no direct promote() call needed.
-        } else {
-          addItem(name, "progress", sessionLine, sessionTag ?? undefined);
-        }
-        logHook("UpdateContext", "info", `context DB updated for ${name}`);
-        return;
-      } catch (dbErr) {
-        logHook("UpdateContext", "warn", "DB write failed, falling back to .md", String(dbErr));
-        console.error("[UpdateContext] DB write failed, falling back to .md:", dbErr);
+  // Write to DB if available, fall back to .md file
+  if (existsSync(DB_PATH)) {
+    try {
+      const prefixMatch = sessionLine.match(/^\[(decision|gotcha)\]\s*/i);
+      if (prefixMatch) {
+        const type = prefixMatch[1]!.toLowerCase() as "decision" | "gotcha";
+        const strippedContent = sessionLine.slice(prefixMatch[0].length);
+        addItem(name, type, strippedContent, sessionTag ?? undefined);
+        // Phase 2: decisions/gotchas are auto-promoted to pending memories
+        // by the janitor's runPromote() — no direct promote() call needed.
+      } else {
+        addItem(name, "progress", sessionLine, sessionTag ?? undefined);
       }
+      logHook("UpdateContext", "info", `context DB updated for ${name}`);
+      return;
+    } catch (dbErr) {
+      logHook("UpdateContext", "warn", "DB write failed, falling back to .md", String(dbErr));
+      process.stderr.write(`[UpdateContext] DB write failed, falling back to .md: ${dbErr}\n`);
     }
-
-    // Fallback: write to markdown file
-    const progressFile = join(projectDir, "context-progress.md");
-    const existing = readFileSafe(progressFile);
-    if (sessionTag && existing.includes(sessionTag)) return;
-
-    appendLine(progressFile, sessionLine);
-
-    const content = readFileSafe(progressFile);
-    const lines = content.split("\n").filter(Boolean);
-    if (lines.length > MAX_PROGRESS_LINES) {
-      writeFileSync(progressFile, trimToLines(content, MAX_PROGRESS_LINES));
-    }
-
-    logHook("UpdateContext", "info", `context-progress.md updated for ${name}`);
-  } catch (err) {
-    logHook("UpdateContext", "error", "Unhandled error", String(err));
-    console.error("[UpdateContext] Error:", err);
   }
+
+  // Fallback: write to markdown file
+  const progressFile = join(projectDir, "context-progress.md");
+  const existing = readFileSafe(progressFile);
+  if (sessionTag && existing.includes(sessionTag)) return;
+
+  appendLine(progressFile, sessionLine);
+
+  const content = readFileSafe(progressFile);
+  const lines = content.split("\n").filter(Boolean);
+  if (lines.length > MAX_PROGRESS_LINES) {
+    writeFileSync(progressFile, trimToLines(content, MAX_PROGRESS_LINES));
+  }
+
+  logHook("UpdateContext", "info", `context-progress.md updated for ${name}`);
 }
 
-main();
+await safeRun("UpdateContext", main);
