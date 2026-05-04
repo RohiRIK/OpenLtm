@@ -10,6 +10,7 @@ import { getContextMerge, getSimilarMemories, getContextMergeWithGraph, computeD
 import { embedText } from "../../src/embeddings.js";
 import { getDb } from "../../src/shared-db.js";
 import { readConfigSync } from "../../src/config.js";
+import { listMemoryIdsMissingEmbedding } from "../../src/dao/embeddings.js";
 import { exportContextMarkdown } from "../../src/context.js";
 import { runPendingMigrations } from "../../src/migrations.js";
 
@@ -100,6 +101,33 @@ function buildConflictSection(project: string): string {
   }
 }
 
+const BACKFILL_HINT_FILE = join(TMP_DIR, "ltm-backfill-hint.flag");
+
+function buildBackfillHint(): string {
+  if (!existsSync(DB_PATH)) return "";
+  try {
+    const cfg = readConfigSync();
+    if (!cfg.embeddings || cfg.embeddings.provider === "disabled") return "";
+
+    // Throttle: show at most once per day
+    const today = new Date().toISOString().slice(0, 10);
+    if (existsSync(BACKFILL_HINT_FILE)) {
+      try {
+        if (readFileSync(BACKFILL_HINT_FILE, "utf-8").trim() === today) return "";
+      } catch {}
+    }
+
+    const db = getDb();
+    const missing = listMemoryIdsMissingEmbedding(db, 1);
+    if (missing.length === 0) return "";
+
+    writeFileSync(BACKFILL_HINT_FILE, today);
+    return `\n💡 Embedding backfill: ${cfg.embeddings.provider} provider is configured but some memories lack embeddings. Run \`/ltm:admin backfill\` to enable semantic recall.\n`;
+  } catch {
+    return "";
+  }
+}
+
 function refreshMarketplaceClone(): void {
   const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
   if (!pluginRoot) return;
@@ -186,6 +214,7 @@ async function main(): Promise<void> {
   const ltmSection = await buildLtmSection(name, sessionContext);
   const directive = useDirective ? LTM_DIRECTIVE : "";
   const conflictSection = buildConflictSection(name);
+  const backfillHint = buildBackfillHint();
 
   // Count memories for status line
   const memoryCount = ltmSection
@@ -193,7 +222,7 @@ async function main(): Promise<void> {
     : 0;
   const statusLine = `**Context restored:** ${memoryCount} memories loaded for project "${name}"\n`;
 
-  // Build output: status line + injected + directive + ltmSection + conflicts + reminder
+  // Build output: status line + injected + directive + ltmSection + conflicts + reminder + backfill hint
   let output = statusLine + "\n" + injected;
   if (ltmSection) {
     output += `\n\n${directive}${ltmSection}`;
@@ -202,6 +231,7 @@ async function main(): Promise<void> {
   } else {
     output += `\n${directive}${LTM_REMINDER}`;
   }
+  if (backfillHint) output += backfillHint;
 
   process.stdout.write(output);
   logHook("SessionStart", "info", `Injected context for "${name}" (${registeredPath ? "registry" : "slug fallback"})`);
