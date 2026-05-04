@@ -91,18 +91,18 @@ server.tool(
     workspace_id: z.string().optional().describe("Workspace for this memory"),
     agent_id: z.string().optional().describe("Agent ID for this memory"),
   },
-  async ({ content, category, importance, tags, project }) => {
+  async ({ content, category, importance, tags, project, workspace_id, agent_id }) => {
     let resolvedCategory = category;
     let categoriseSource: string | undefined;
 
     if (!resolvedCategory) {
       try {
-        const { readConfigSync } = await import("./config.js");
+        const [{ readConfigSync }, { categorise }] = await Promise.all([
+          import("./config.js"),
+          import("./recall/categorise.js"),
+        ]);
         const cfg = readConfigSync();
-        const threshold = (cfg as Record<string, unknown>).embeddings
-          ? ((cfg as Record<string, unknown>).embeddings as Record<string, unknown>).confidenceThreshold as number ?? 0.6
-          : 0.6;
-        const { categorise } = await import("./recall/categorise.js");
+        const threshold = cfg.embeddings?.confidenceThreshold ?? 0.6;
         const result = await categorise(content, threshold);
         resolvedCategory = result.category;
         categoriseSource = result.source;
@@ -117,6 +117,8 @@ server.tool(
       importance,
       tags,
       project_scope: project,
+      workspace_id,
+      agent_id,
       actor: "mcp:ltm_learn",
     });
 

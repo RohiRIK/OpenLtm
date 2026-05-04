@@ -8,7 +8,7 @@
  *   4. If LLM call fails, fall back to the best heuristic guess.
  */
 
-import type { MemoryCategory } from "../db.js";
+import type { MemoryCategory } from "../dao/types.js";
 
 export interface CategoriseResult {
   category: MemoryCategory;
