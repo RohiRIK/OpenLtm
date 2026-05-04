@@ -54,6 +54,8 @@ export interface MemoryWithRelations extends Memory {
   relations: Array<{ memory: Memory; relationship_type: RelationshipType; direction: "outgoing" | "incoming" }>;
   /** Populated only when recall({ includeProvenance: true }) is requested. */
   provenance?: import("./dao/types.js").ProvenanceRow[];
+  /** Score breakdown + temperature — always populated by recall(). */
+  explainer?: import("./recall/explainer.js").RecallExplainer;
 }
 
 export interface LearnInput {
@@ -374,6 +376,8 @@ export async function recall(input: RecallInput = {}): Promise<MemoryWithRelatio
   const limit = input.limit ?? 10;
 
   let ids: Set<number> | null = null;
+  const ftsRanks = new Map<number, number>();      // id → normalized [0,1]
+  const semanticScores = new Map<number, number>(); // id → cosine similarity [0,1]
 
   if (input.query) {
     // Sanitize for FTS5: quote each token (prevents reserved-word errors) and join with OR
@@ -383,10 +387,16 @@ export async function recall(input: RecallInput = {}): Promise<MemoryWithRelatio
       .filter(Boolean)
       .map(t => `"${t.replace(/"/g, '""')}"`)
       .join(" OR ");
-    const ftsResults = db.query<{ rowid: number }, [string]>(
-      `SELECT rowid FROM memories_fts WHERE memories_fts MATCH ? ORDER BY rank LIMIT 50`
+    const ftsResults = db.query<{ rowid: number; rank: number }, [string]>(
+      `SELECT rowid, rank FROM memories_fts WHERE memories_fts MATCH ? ORDER BY rank LIMIT 50`
     ).all(ftsQuery);
-    ids = new Set(ftsResults.map(r => r.rowid));
+    ids = new Set<number>();
+    for (const r of ftsResults) {
+      ids.add(r.rowid);
+      // FTS5 BM25 rank is a negative number (closer to 0 = better).
+      // Math.exp maps it to (0, 1] where 1 is a perfect match.
+      ftsRanks.set(r.rowid, Math.exp(r.rank));
+    }
 
     // Semantic fallback: if FTS5 returned fewer results than requested, augment with vector search
     if (ids.size < limit) {
@@ -397,7 +407,10 @@ export async function recall(input: RecallInput = {}): Promise<MemoryWithRelatio
         try {
           const { getSimilarMemories } = await import("./embeddings.js");
           const semantic = await getSimilarMemories(input.query, limit * 2, 0.5);
-          for (const m of semantic) ids.add(m.id);
+          for (const m of semantic) {
+            ids.add(m.id);
+            semanticScores.set(m.id, m.similarity);
+          }
         } catch (err) {
           process.stderr.write(`[recall] Semantic fallback failed: ${err}\n`);
         }
@@ -498,6 +511,21 @@ export async function recall(input: RecallInput = {}): Promise<MemoryWithRelatio
       m.provenance = provMap.get(m.id) ?? [];
     }
   }
+
+  // Attach explainer (pure function — no extra DB calls).
+  if (enriched.length > 0) {
+    const { buildExplainer } = await import("./recall/explainer.js");
+    for (const m of enriched) {
+      m.explainer = buildExplainer({
+        importance: m.importance,
+        recall_count: m.recall_count ?? 0,
+        last_recalled_at: m.last_recalled_at,
+        ftsRank: ftsRanks.get(m.id) ?? null,
+        semanticScore: semanticScores.get(m.id) ?? null,
+      });
+    }
+  }
+
   return enriched;
 }
 
