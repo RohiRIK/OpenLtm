@@ -39,7 +39,11 @@ function compact(memories: unknown[]): unknown[] {
     const relations = Array.isArray(mem.relations) && mem.relations.length > 0
       ? { relations: mem.relations.map((r: Record<string, unknown>) => ({ id: (r.memory as Record<string, unknown>)?.id, type: r.relationship_type, dir: r.direction })) }
       : {};
-    return { id: mem.id, content, category: mem.category, importance: mem.importance, tags: mem.tags, project_scope: mem.project_scope, ...relations };
+    const exp = mem.explainer as Record<string, unknown> | undefined;
+    const score = exp
+      ? { temperature: exp.temperature, score: typeof exp.totalScore === "number" ? Math.round(exp.totalScore * 100) / 100 : undefined }
+      : {};
+    return { id: mem.id, content, category: mem.category, importance: mem.importance, tags: mem.tags, project_scope: mem.project_scope, ...score, ...relations };
   });
 }
 
@@ -80,7 +84,7 @@ server.tool(
   "MUST call after discovering a non-obvious pattern, gotcha, or architectural decision. Stores or reinforces a memory. Call whenever you learn something worth preserving across sessions.",
   {
     content: z.string().describe("The insight, pattern, or decision to store"),
-    category: z.enum(["preference", "architecture", "gotcha", "pattern", "workflow", "constraint"]),
+    category: z.enum(["preference", "architecture", "gotcha", "pattern", "workflow", "constraint"]).optional().describe("Category (auto-detected when omitted)"),
     importance: z.number().int().min(1).max(5).optional().describe("Importance 1-5 (default 3, 5=never decays)"),
     tags: z.array(z.string()).optional().describe("Tags for categorization"),
     project: z.string().optional().describe("Scope to a specific project"),
@@ -88,9 +92,28 @@ server.tool(
     agent_id: z.string().optional().describe("Agent ID for this memory"),
   },
   async ({ content, category, importance, tags, project }) => {
+    let resolvedCategory = category;
+    let categoriseSource: string | undefined;
+
+    if (!resolvedCategory) {
+      try {
+        const { readConfigSync } = await import("./config.js");
+        const cfg = readConfigSync();
+        const threshold = (cfg as Record<string, unknown>).embeddings
+          ? ((cfg as Record<string, unknown>).embeddings as Record<string, unknown>).confidenceThreshold as number ?? 0.6
+          : 0.6;
+        const { categorise } = await import("./recall/categorise.js");
+        const result = await categorise(content, threshold);
+        resolvedCategory = result.category;
+        categoriseSource = result.source;
+      } catch {
+        resolvedCategory = "pattern";
+      }
+    }
+
     const result = learn({
       content,
-      category,
+      category: resolvedCategory,
       importance,
       tags,
       project_scope: project,
@@ -100,11 +123,11 @@ server.tool(
     try {
       server.server.notification({
         method: "notifications/message",
-        params: { level: "info", logger: "ltm", data: `memory_stored: id=${result.id} category=${category} importance=${importance ?? 3} action=${result.action}` },
+        params: { level: "info", logger: "ltm", data: `memory_stored: id=${result.id} category=${resolvedCategory}${categoriseSource ? ` (auto:${categoriseSource})` : ""} importance=${importance ?? 3} action=${result.action}` },
       });
     } catch { /* notifications not supported by this client — ignore */ }
 
-    return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    return { content: [{ type: "text", text: JSON.stringify({ ...result, category: resolvedCategory, categoriseSource }) }] };
   },
 );
 
