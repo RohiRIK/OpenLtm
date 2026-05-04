@@ -1,12 +1,13 @@
 /**
  * embeddings.ts — Provider-agnostic embedding utilities for LTM semantic search.
- * Reads provider config from ltm.db settings table (same source as the graph UI).
- * Supported providers: gemini | openai | openrouter | cohere | ollama
+ * Embedding writes/reads now go through src/dao/embeddings.ts (memory_embeddings table).
+ * Embedding generation now goes through src/providers/embeddingProvider.ts.
  * Falls back gracefully (returns null) when no provider is configured.
  */
 import type { Database } from "bun:sqlite";
+import type { EmbeddingProvider } from "./providers/embeddingProvider.js";
 
-// --- Provider config ---
+// --- Provider config (retained for LLM/auto-relate path) ---
 
 type EmbedProvider = "gemini" | "openai" | "openrouter" | "cohere" | "ollama";
 
@@ -17,9 +18,9 @@ interface ProviderConfig {
   baseUrl?: string;
 }
 
-// Module-level config caches — stable within a process lifetime
-let _embedConfigCache: ProviderConfig | null | undefined = undefined;
+// Caches — stable within a process lifetime (restart required for config changes)
 let _llmConfigCache: ProviderConfig | null | undefined = undefined;
+let _embeddingProviderCache: Promise<EmbeddingProvider> | null = null;
 
 /** Shared loader for both embed and llm provider configs. */
 function loadConfig(type: "embed" | "llm"): ProviderConfig | null {
@@ -71,10 +72,19 @@ function loadConfig(type: "embed" | "llm"): ProviderConfig | null {
   }
 }
 
-function getProviderConfig(): ProviderConfig | null {
-  if (_embedConfigCache !== undefined) return _embedConfigCache;
-  _embedConfigCache = loadConfig("embed");
-  return _embedConfigCache;
+/** Returns the embedding provider, lazily initialised once per process. */
+async function getEmbeddingProvider(): Promise<EmbeddingProvider> {
+  if (!_embeddingProviderCache) {
+    _embeddingProviderCache = (async () => {
+      const [{ loadConfig }, { loadProvider }] = await Promise.all([
+        import("./config.js"),
+        import("./providers/embeddingProvider.js"),
+      ]);
+      const cfg = await loadConfig();
+      return loadProvider(cfg.embeddings);
+    })();
+  }
+  return _embeddingProviderCache;
 }
 
 export function getLlmConfig(): ProviderConfig | null {
@@ -168,30 +178,22 @@ async function embedOllama(text: string, cfg: ProviderConfig): Promise<Float32Ar
 // --- Public API ---
 
 /**
- * Embed text using the configured provider (reads from ltm.db settings).
- * Returns null on missing config or API error — enables graceful fallback.
+ * Embed text using the configured provider (from config.json embeddings block).
+ * Returns null when provider is disabled or the API call fails.
  */
 export async function embedText(text: string): Promise<Float32Array | null> {
-  const cfg = getProviderConfig();
-  if (!cfg) return null;
-
   try {
-    switch (cfg.provider) {
-      case "gemini":    return await embedGemini(text, cfg);
-      case "openai":    return await embedOpenAICompat(text, cfg);
-      case "openrouter": return await embedOpenAICompat(text, cfg);
-      case "cohere":    return await embedCohere(text, cfg);
-      case "ollama":    return await embedOllama(text, cfg);
-      default:          return null;
-    }
+    const provider = await getEmbeddingProvider();
+    if (!await provider.available()) return null;
+    return provider.generate(text);
   } catch (e) {
-    process.stderr.write(`[embeddings] embedText error (${cfg.provider}): ${e}\n`);
+    process.stderr.write(`[embeddings] embedText error: ${e}\n`);
     return null;
   }
 }
 
 /**
- * Embed a memory by ID and write the embedding BLOB back to DB.
+ * Embed a memory by ID and write the embedding to the memory_embeddings table.
  */
 export async function embedMemory(db: Database, id: number): Promise<void> {
   const row = db.query<{ content: string }, [number]>(
@@ -202,34 +204,42 @@ export async function embedMemory(db: Database, id: number): Promise<void> {
   const vec = await embedText(row.content);
   if (!vec) return;
 
-  db.run(`UPDATE memories SET embedding=? WHERE id=?`, [vecToBlob(vec), id]);
+  const [{ setEmbedding }, provider] = await Promise.all([
+    import("./dao/embeddings.js"),
+    getEmbeddingProvider(),
+  ]);
+  await setEmbedding(db, id, vecToBlob(vec), provider.model, provider.dim);
 }
 
 /**
- * Back-fill: embed all memories with embedding IS NULL.
+ * Back-fill: embed all active memories that have no row in memory_embeddings.
  */
 export async function backfill(db: Database): Promise<void> {
-  const rows = db.query<{ id: number; content: string }, []>(
-    `SELECT id, content FROM memories WHERE embedding IS NULL AND status='active'`
-  ).all();
+  const { listMemoryIdsMissingEmbedding, setEmbedding } = await import("./dao/embeddings.js");
+  const provider = await getEmbeddingProvider();
 
-  process.stderr.write(`[embeddings] Back-filling ${rows.length} memories...\n`);
+  const ids = listMemoryIdsMissingEmbedding(db, 1000);
+  process.stderr.write(`[embeddings] Back-filling ${ids.length} memories...\n`);
 
   const BATCH = 20;
   let done = 0;
-  for (let i = 0; i < rows.length; i += BATCH) {
-    const batch = rows.slice(i, i + BATCH);
-    await Promise.all(batch.map(async row => {
+  for (let i = 0; i < ids.length; i += BATCH) {
+    const batch = ids.slice(i, i + BATCH);
+    await Promise.all(batch.map(async id => {
+      const row = db.query<{ content: string }, [number]>(
+        `SELECT content FROM memories WHERE id=?`
+      ).get(id);
+      if (!row) return;
       const vec = await embedText(row.content);
       if (vec) {
-        db.run(`UPDATE memories SET embedding=? WHERE id=?`, [vecToBlob(vec), row.id]);
+        await setEmbedding(db, id, vecToBlob(vec), provider.model, provider.dim);
         done++;
       }
     }));
-    process.stderr.write(`[embeddings] ${Math.min(i + BATCH, rows.length)}/${rows.length} done\n`);
-    if (i + BATCH < rows.length) await Bun.sleep(200);
+    process.stderr.write(`[embeddings] ${Math.min(i + BATCH, ids.length)}/${ids.length} done\n`);
+    if (i + BATCH < ids.length) await Bun.sleep(200);
   }
-  process.stderr.write(`[embeddings] Back-fill complete: ${done}/${rows.length} embedded\n`);
+  process.stderr.write(`[embeddings] Back-fill complete: ${done}/${ids.length} embedded\n`);
 }
 
 // --- Semantic similarity search ---
@@ -243,19 +253,19 @@ export async function getSimilarMemories(text: string, topN = 5, threshold = 0.5
   const vec = await embedText(text);
   if (!vec) return [];
 
-  const { getDb } = require("./shared-db.js") as typeof import("./shared-db.js");
+  const { getDb } = await import("./shared-db.js");
   const db = getDb();
   const rows = db.query<{ id: number; content: string; embedding: Buffer }, []>(
-    `SELECT id, content, embedding FROM memories WHERE embedding IS NOT NULL AND status='active'`
+    `SELECT m.id, m.content, e.embedding
+     FROM memories m JOIN memory_embeddings e ON e.memory_id = m.id
+     WHERE m.status = 'active'`
   ).all();
 
-  const scored = rows
+  return rows
     .map(row => ({ id: row.id, content: row.content, similarity: cosineSimilarity(vec, blobToVec(row.embedding)) }))
     .filter(r => r.similarity >= threshold)
     .sort((a, b) => b.similarity - a.similarity)
     .slice(0, topN);
-
-  return scored;
 }
 
 // --- Relation classification ---
