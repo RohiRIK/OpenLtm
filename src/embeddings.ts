@@ -6,6 +6,7 @@
  */
 import type { Database } from "bun:sqlite";
 import type { EmbeddingProvider } from "./providers/embeddingProvider.js";
+import { setEmbedding, listMemoryIdsMissingEmbedding } from "./dao/embeddings.js";
 
 // --- Provider config (retained for LLM/auto-relate path) ---
 
@@ -201,13 +202,12 @@ export async function embedMemory(db: Database, id: number): Promise<void> {
   ).get(id);
   if (!row) return;
 
-  const vec = await embedText(row.content);
+  const provider = await getEmbeddingProvider();
+  if (!await provider.available()) return;
+
+  const vec = await provider.generate(row.content);
   if (!vec) return;
 
-  const [{ setEmbedding }, provider] = await Promise.all([
-    import("./dao/embeddings.js"),
-    getEmbeddingProvider(),
-  ]);
   await setEmbedding(db, id, vecToBlob(vec), provider.model, provider.dim);
 }
 
@@ -215,8 +215,11 @@ export async function embedMemory(db: Database, id: number): Promise<void> {
  * Back-fill: embed all active memories that have no row in memory_embeddings.
  */
 export async function backfill(db: Database): Promise<void> {
-  const { listMemoryIdsMissingEmbedding, setEmbedding } = await import("./dao/embeddings.js");
   const provider = await getEmbeddingProvider();
+  if (!await provider.available()) {
+    process.stderr.write(`[embeddings] Back-fill skipped: provider '${provider.name}' not available\n`);
+    return;
+  }
 
   const ids = listMemoryIdsMissingEmbedding(db, 1000);
   process.stderr.write(`[embeddings] Back-filling ${ids.length} memories...\n`);
@@ -230,7 +233,7 @@ export async function backfill(db: Database): Promise<void> {
         `SELECT content FROM memories WHERE id=?`
       ).get(id);
       if (!row) return;
-      const vec = await embedText(row.content);
+      const vec = await provider.generate(row.content);
       if (vec) {
         await setEmbedding(db, id, vecToBlob(vec), provider.model, provider.dim);
         done++;

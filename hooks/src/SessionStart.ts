@@ -109,13 +109,10 @@ function buildBackfillHint(): string {
     const cfg = readConfigSync();
     if (!cfg.embeddings || cfg.embeddings.provider === "disabled") return "";
 
-    // Throttle: show at most once per day
     const today = new Date().toISOString().slice(0, 10);
-    if (existsSync(BACKFILL_HINT_FILE)) {
-      try {
-        if (readFileSync(BACKFILL_HINT_FILE, "utf-8").trim() === today) return "";
-      } catch {}
-    }
+    try {
+      if (readFileSync(BACKFILL_HINT_FILE, "utf-8").trim() === today) return "";
+    } catch { /* file absent — first run today */ }
 
     const db = getDb();
     const missing = listMemoryIdsMissingEmbedding(db, 1);

@@ -26,14 +26,14 @@ export class OllamaProvider implements EmbeddingProvider {
 
   async generate(text: string): Promise<Float32Array | null> {
     try {
-      const res = await fetch(`${this.baseUrl}/api/embeddings`, {
+      const res = await fetch(`${this.baseUrl}/api/embed`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: this.model, prompt: text }),
+        body: JSON.stringify({ model: this.model, input: text }),
       });
       if (!res.ok) return null;
-      const json = await res.json() as { embedding?: number[] };
-      const values = json?.embedding;
+      const json = await res.json() as { embeddings?: number[][] };
+      const values = json?.embeddings?.[0];
       if (!values) return null;
       return new Float32Array(values);
     } catch {

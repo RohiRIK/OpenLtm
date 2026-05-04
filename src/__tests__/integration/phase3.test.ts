@@ -112,7 +112,7 @@ describe("recall() explainer", () => {
   });
 
   it("recall() result rows have no embedding field", async () => {
-    const results = await recall({ limit: 5 }) as Array<Record<string, unknown>>;
+    const results = await recall({ limit: 5 }) as unknown as Array<Record<string, unknown>>;
     expect(results.length).toBeGreaterThan(0);
     for (const m of results) {
       expect(m).not.toHaveProperty("embedding");
