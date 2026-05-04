@@ -1,9 +1,10 @@
 /**
  * embeddings.ts — Embedding generation + cosine similarity for semantic search.
- * Stores embeddings as BLOB (Float32Array) in the memories table.
+ * Stores embeddings in the memory_embeddings side-table (since migration 010).
  * Provider-agnostic: delegates to whichever EmbeddingProvider is configured.
  */
 import { getDb, getSetting } from "../shared-db.js";
+import { setEmbedding, getEmbedding, listMemoryIdsMissingEmbedding } from "../dao/embeddings.js";
 import { cohereEmbedding } from "./providers/cohere.js";
 import { geminiEmbedding } from "./providers/gemini.js";
 import { ollamaEmbedding } from "./providers/ollama.js";
@@ -88,33 +89,32 @@ export async function embedMissingMemories(
   const db = getDb();
   const provider = getEmbeddingProvider();
 
+  const missingIds = listMemoryIdsMissingEmbedding(db, 10_000);
+  if (missingIds.length === 0) return 0;
+
+  // Fetch content for missing IDs in one query
+  const placeholders = missingIds.map(() => "?").join(",");
   const rows = db
-    .query<{ id: number; content: string }, []>(
-      `SELECT id, content FROM memories WHERE embedding IS NULL AND status IN ('active', 'pending') ORDER BY id ASC`,
+    .query<{ id: number; content: string }, number[]>(
+      `SELECT id, content FROM memories WHERE id IN (${placeholders}) AND status IN ('active', 'pending') ORDER BY id ASC`,
     )
-    .all();
+    .all(...missingIds);
 
   if (rows.length === 0) return 0;
 
   let totalEmbedded = 0;
 
-  // Process in batches
   for (let i = 0; i < rows.length; i += batchSize) {
     const batch = rows.slice(i, i + batchSize);
     const texts = batch.map((r) => r.content);
 
     const result = await provider.embed({ texts });
 
-    // Store each embedding as a BLOB
-    const stmt = db.prepare(
-      "UPDATE memories SET embedding = ? WHERE id = ?",
-    );
-
     for (let j = 0; j < batch.length; j++) {
       const vector = result.vectors[j];
       if (!vector) continue;
       const blob = vectorToBlob(vector);
-      stmt.run(blob, batch[j]!.id);
+      await setEmbedding(db, batch[j]!.id, blob, result.model, result.dimensions);
     }
 
     totalEmbedded += batch.length;
@@ -143,13 +143,15 @@ export async function semanticSearch(
   const queryVector = result.vectors[0];
   if (!queryVector) throw new Error("Failed to generate query embedding");
 
-  // Load all memories with embeddings
+  // Load all memories that have embeddings (join with side-table)
   const rows = db
     .query<
       { id: number; content: string; category: string; importance: number; project_scope: string | null; embedding: Buffer },
       []
     >(
-      `SELECT id, content, category, importance, project_scope, embedding FROM memories WHERE embedding IS NOT NULL AND status = 'active'`,
+      `SELECT m.id, m.content, m.category, m.importance, m.project_scope, e.embedding
+       FROM memories m JOIN memory_embeddings e ON e.memory_id = m.id
+       WHERE m.status = 'active'`,
     )
     .all();
 
@@ -179,22 +181,19 @@ export function findSimilarMemories(
 ): Array<{ id: number; content: string; category: string; similarity: number }> {
   const db = getDb();
 
-  const source = db
-    .query<{ embedding: Buffer }, [number]>(
-      "SELECT embedding FROM memories WHERE id = ? AND embedding IS NOT NULL",
-    )
-    .get(memoryId);
+  const sourceBlob = getEmbedding(db, memoryId);
+  if (!sourceBlob) return [];
 
-  if (!source) return [];
-
-  const sourceVector = blobToVector(source.embedding);
+  const sourceVector = blobToVector(sourceBlob);
 
   const rows = db
     .query<
       { id: number; content: string; category: string; embedding: Buffer },
       [number]
     >(
-      `SELECT id, content, category, embedding FROM memories WHERE id != ? AND embedding IS NOT NULL AND status = 'active'`,
+      `SELECT m.id, m.content, m.category, e.embedding
+       FROM memories m JOIN memory_embeddings e ON e.memory_id = m.id
+       WHERE m.id != ? AND m.status = 'active'`,
     )
     .all(memoryId);
 
