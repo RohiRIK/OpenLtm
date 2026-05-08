@@ -103,6 +103,11 @@ export const SETTING_KEYS = {
   // Promote & Janitor
   PROMOTE_MIN_IMPORTANCE: "ltm.promote.minImportance",
   JANITOR_INTERVAL_MINUTES: "ltm.janitor.intervalMinutes",
+  // Janitor run tracking (Phase 4)
+  JANITOR_LAST_RUN_AT:          "ltm.janitor.lastRunAt",
+  JANITOR_LAST_DECAY_REFRESHED: "ltm.janitor.lastDecayRefreshed",
+  JANITOR_LAST_DEPRECATED:      "ltm.janitor.lastDeprecated",
+  JANITOR_LAST_ARCHIVED:        "ltm.janitor.lastArchived",
 } as const;
 
 /** Default values for all settings. */
@@ -131,6 +136,10 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   [SETTING_KEYS.DECAY_MIN_CONFIDENCE]: "0.2",
   [SETTING_KEYS.PROMOTE_MIN_IMPORTANCE]: "3",
   [SETTING_KEYS.JANITOR_INTERVAL_MINUTES]: "0",
+  [SETTING_KEYS.JANITOR_LAST_RUN_AT]:          "",
+  [SETTING_KEYS.JANITOR_LAST_DECAY_REFRESHED]: "0",
+  [SETTING_KEYS.JANITOR_LAST_DEPRECATED]:      "0",
+  [SETTING_KEYS.JANITOR_LAST_ARCHIVED]:        "0",
 };
 
 /** Provider type identifiers. */

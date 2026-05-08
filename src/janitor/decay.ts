@@ -1,71 +1,60 @@
 /**
- * decay.ts — Memory decay logic using half-life model.
- * Uses computeDecayScore from src/db.ts for unified decay calculation.
+ * decay.ts — Batch decay refresh using materialised decay_score column (Phase 4).
+ * Two SQL UPDATE statements inside one transaction replace the old O(N) JS loop.
  */
 import { getDb } from "../shared-db.js";
-import { computeDecayScore, type Memory } from "../db.js";
-
-/** Canonical deprecation threshold - must match src/db.ts */
-const DEPRECATION_THRESHOLD = 0.25;
 
 export interface DecayResult {
-  /** Number of memories that crossed the threshold and were deprecated. */
+  /** Memories whose decay_score was refreshed. */
+  refreshed: number;
+  /** Memories that crossed the deprecation threshold this run. */
   deprecated: number;
-  /** Total active memories scanned. */
-  scanned: number;
 }
 
-/**
- * Run decay on all active memories using unified half-life model.
- *
- * Logic:
- * 1. For each active memory, compute decay score using computeDecayScore()
- * 2. If score < threshold, mark as deprecated
- * 3. High-importance (5) memories never decay (half-life = Infinity)
- * 4. Memories with confirm_count >= 10 never decay (protected from decay)
- */
+const SQL_REFRESH = `
+  UPDATE memories
+  SET decay_score = CASE
+    WHEN importance = 5       THEN CAST(importance AS REAL) * confidence
+    WHEN confirm_count >= 10  THEN CAST(importance AS REAL) * confidence
+    WHEN importance = 4 THEN CAST(importance AS REAL) * confidence
+                           * power(0.5, (julianday('now') - julianday(COALESCE(last_used_at, last_confirmed_at, created_at))) / 180.0)
+    WHEN importance = 3 THEN CAST(importance AS REAL) * confidence
+                           * power(0.5, (julianday('now') - julianday(COALESCE(last_used_at, last_confirmed_at, created_at))) / 90.0)
+    WHEN importance = 2 THEN CAST(importance AS REAL) * confidence
+                           * power(0.5, (julianday('now') - julianday(COALESCE(last_used_at, last_confirmed_at, created_at))) / 30.0)
+    ELSE                      CAST(importance AS REAL) * confidence
+                           * power(0.5, (julianday('now') - julianday(COALESCE(last_used_at, last_confirmed_at, created_at))) / 14.0)
+  END
+  WHERE status = 'active'
+`;
+
+const SQL_DEPRECATE = `
+  UPDATE memories
+  SET status = 'deprecated'
+  WHERE status = 'active'
+    AND importance < 5
+    AND confirm_count < 10
+    AND decay_score < 0.25
+`;
+
 export function runDecay(): DecayResult {
   const db = getDb();
-  const result: DecayResult = { deprecated: 0, scanned: 0 };
 
-  const memories = db
-    .query<
-      Memory,
-      []
-    >(
-      `SELECT * FROM memories WHERE status = 'active'`,
-    )
-    .all();
+  const run = db.transaction(() => {
+    db.run(SQL_REFRESH);
+    const refreshed = db.query<{ n: number }, []>("SELECT changes() AS n").get()!.n;
 
-  result.scanned = memories.length;
+    db.run(SQL_DEPRECATE);
+    const deprecated = db.query<{ n: number }, []>("SELECT changes() AS n").get()!.n;
 
-  for (const mem of memories) {
-    // Protected from decay: confirm_count >= 10 OR importance = 5
-    if (mem.confirm_count >= 10 || mem.importance === 5) continue;
+    return { refreshed, deprecated };
+  });
 
-    const score = computeDecayScore(mem);
-
-    if (score < DEPRECATION_THRESHOLD) {
-      // Mark as deprecated
-      db.run(
-        `UPDATE memories SET status = 'deprecated' WHERE id = ?`,
-        [mem.id],
-      );
-      result.deprecated++;
-    }
-  }
-
-  return result;
+  return run();
 }
 
-/**
- * Touch a memory's last_used_at timestamp.
- * Called when a memory is recalled/used in a session.
- */
+/** Touch a memory's last_used_at timestamp when it is recalled or confirmed. */
 export function touchMemory(memoryId: number): void {
   const db = getDb();
-  db.run(
-    `UPDATE memories SET last_used_at = datetime('now') WHERE id = ?`,
-    [memoryId],
-  );
+  db.run(`UPDATE memories SET last_used_at = datetime('now') WHERE id = ?`, [memoryId]);
 }
