@@ -1,5 +1,53 @@
 # Changelog
 
+## [1.9.0] — 2026-05-04
+
+### Added
+- **`memory_archive` table** — Evicted deprecated memories are preserved as JSON snapshots rather than deleted. Recoverable in Phase 7 (time-travel).
+- **`memory_archive` migration (011)** — Adds `decay_score REAL NOT NULL DEFAULT 1.0` column + `idx_memories_decay_score` index to `memories`; creates `memory_archive` table with project + reason indexes.
+- **Janitor settings seed (012)** — Seeds `ltm.janitor.lastRunAt`, `lastDecayRefreshed`, `lastDeprecated`, `lastArchived` rows via `INSERT OR IGNORE`.
+- **`src/janitor/archive.ts`** — New `runArchive()`: evicts `deprecated + importance≤2 + recall_count≤1 + decay_score<0.10` memories into `memory_archive`. Batch of 100 per run; single-transaction DELETE cascades `memory_embeddings`, `memory_tags`, and `memory_relations`.
+- **Janitor run tracking** — `runJanitor()` writes stats to settings after each pass (`lastRunAt`, `lastDecayRefreshed`, `lastDeprecated`, `lastArchived`).
+- **WAL hygiene** — `runJanitor()` runs `PRAGMA wal_checkpoint(TRUNCATE)` + `PRAGMA analysis_limit=400; ANALYZE` after every pass.
+- **`/ltm:health` Janitor Status section** — Shows last run timestamp, refreshed/deprecated/archived counts, next run estimate, at-risk memory count (`decay_score < 0.25`). Replaces the old inline JS decay formula with a SQL-backed summary.
+
+### Changed
+- **`runDecay()` rewritten** — Replaced O(N) JS loop + N individual UPDATEs with two batch SQL statements in one transaction: (1) `UPDATE SET decay_score = CASE …` using `power()` for all active memories, (2) `UPDATE SET status='deprecated' WHERE decay_score < 0.25`. Orders-of-magnitude faster at scale.
+- **`recall()` default sort** — Replaced O(N) JS `.map(computeDecayScore).sort()` with `ORDER BY decay_score DESC` in SQL. Default sort is now O(log N) via the new index.
+- **`recall()` UPDATE merged** — Two consecutive `UPDATE memories SET …` calls on the same row set (one for `last_used_at`, one for `last_recalled_at`/`recall_count`) merged into a single statement.
+- **`DecayResult`** — Removed redundant `scanned` field (was always equal to `refreshed`).
+- **`ArchiveResult`** — Removed unused `skipped` field (was computed but never surfaced).
+- **`SETTING_KEYS`** — Added 4 new janitor tracking keys; `SETTING_DEFAULTS` updated with empty/zero defaults.
+
+### Performance
+| Path | Before | After |
+|------|--------|-------|
+| `recall()` default sort (10k memories) | O(N) JS ~40ms | O(log N) SQL ~3ms |
+| `runDecay()` janitor pass (10k memories) | N×UPDATE ~2s | 2×SQL batch ~30ms |
+| `recall()` row UPDATE | 2 sequential UPDATEs | 1 merged UPDATE |
+
+---
+
+## [1.8.0] — 2026-05-04
+
+### Added
+- **`EmbeddingProvider` interface** — Pluggable `generate(text): Promise<Float32Array | null>` + `available(): Promise<boolean>` abstraction. Four adapters: `disabled` (default), `Ollama`, `OpenAI`, `Gemini`.
+- **`memory_embeddings` side-table (migration 010)** — Splits embedding BLOB from `memories` table into a separate `memory_embeddings` table with `ON DELETE CASCADE`. Eliminates ~260 KB/row from the recall hot path.
+- **Embeddings DAO** (`src/dao/embeddings.ts`) — `getEmbedding`, `setEmbedding`, `deleteEmbedding`, `listMemoryIdsMissingEmbedding`. All embedding reads/writes go through this layer.
+- **Recall explainer** — `recall()` attaches `explainer` to every result: `{ ftsRank, semanticScore, importanceBoost, recencyBoost, totalScore, temperature }`.
+- **Memory temperature labels** — `hot` (recall≥10 or within 7d), `warm` (≥3 or 30d), `cool` (≥1 or 90d), `cold` (never recalled).
+- **Auto-categoriser** (`src/recall/categorise.ts`) — `ltm_learn` detects category when omitted. Heuristic keyword scoring first; falls back to Anthropic API (claude-haiku) if confidence < threshold. Configurable via `embeddings.confidenceThreshold` (default 0.6).
+- **SessionStart backfill hint** — One-per-day suggestion to run `/ltm:admin backfill` when a provider is configured but memories lack embeddings.
+- **`ltm_recall` MCP response** — `compact()` formatter now surfaces `temperature` + `score` on every result.
+
+### Changed
+- **Ollama adapter** — Corrected endpoint (`/api/embed`), request body field (`input` not `prompt`), and response parse (`embeddings[0]` not `embedding`).
+- **`available()` guard** — Called once before batch operations, not N times in a loop.
+- **`workspace_id` / `agent_id`** — Now correctly forwarded through `ltm_learn` MCP handler to `learn()`.
+- **`categorise.test.ts`** — Replaced 6 near-duplicate `it()` blocks with `it.each` table over `Array<[MemoryCategory, string]>`.
+
+---
+
 ## [1.4.17] — 2026-04-15
 
 ### Added

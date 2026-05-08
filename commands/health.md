@@ -72,7 +72,7 @@ else { keys.forEach(k => { if (counts[k]) console.log('  ' + (LABELS[k] ?? k).pa
 
 ---
 
-## Memory Decay Summary
+## Janitor Status
 
 Always run, regardless of graph server status:
 
@@ -80,18 +80,37 @@ Always run, regardless of graph server status:
 bun --eval "
 import { Database } from 'bun:sqlite';
 const db = new Database(process.env.LTM_DB_PATH);
-const all = db.query(\"SELECT importance, confidence, confirm_count, last_used_at, created_at FROM memories WHERE status='active'\").all();
-const dep = db.query(\"SELECT COUNT(*) as n FROM memories WHERE status='deprecated'\").get();
-const lastRun = db.query(\"SELECT value FROM settings WHERE key='decay_last_run'\").get()?.value ?? 'never';
-const now = Date.now();
-const atRisk = all.filter(m => {
-  const ageDays = (now - new Date(m.last_used_at ?? m.created_at).getTime()) / 86400000;
-  const score = (m.importance ?? 1) * (m.confidence ?? 1) * Math.exp(-ageDays / 30) * (1 + (m.confirm_count ?? 0) * 0.1);
-  return score < 0.25;
-}).length;
-console.log('Memory Decay Summary');
-console.log('────────────────────');
-console.log('Active: ' + all.length + '  |  Deprecated: ' + (dep?.n ?? 0) + '  |  Last decay run: ' + lastRun);
-console.log('At-risk (score < 0.25): ' + atRisk + ' memories');
+const get = k => db.query('SELECT value FROM settings WHERE key=?').get(k)?.value ?? '';
+const lastRunAt  = get('ltm.janitor.lastRunAt');
+const refreshed  = get('ltm.janitor.lastDecayRefreshed');
+const deprecated = get('ltm.janitor.lastDeprecated');
+const archived   = get('ltm.janitor.lastArchived');
+const intervalM  = get('ltm.janitor.intervalMinutes') || '0';
+const active     = db.query(\"SELECT COUNT(*) as n FROM memories WHERE status='active'\").get()?.n ?? 0;
+const dep        = db.query(\"SELECT COUNT(*) as n FROM memories WHERE status='deprecated'\").get()?.n ?? 0;
+const archTotal  = db.query(\"SELECT COUNT(*) as n FROM memory_archive\").get()?.n ?? 0;
+const atRisk     = db.query(\"SELECT COUNT(*) as n FROM memories WHERE status='active' AND decay_score < 0.25\").get()?.n ?? 0;
+let ago = 'never run';
+let nextRun = '--';
+if (lastRunAt) {
+  const diffMs = Date.now() - new Date(lastRunAt).getTime();
+  const h = Math.floor(diffMs / 3600000);
+  ago = h < 1 ? 'just now' : h + ' h ago';
+  if (Number(intervalM) > 0) {
+    const nextMs = new Date(lastRunAt).getTime() + Number(intervalM) * 60000;
+    const inH = Math.round((nextMs - Date.now()) / 3600000);
+    nextRun = 'in ~' + inH + ' h';
+  }
+}
+console.log('Janitor Status');
+console.log('──────────────');
+console.log('Last run:    ' + (lastRunAt || 'never') + '  (' + ago + ')');
+console.log('Refreshed:   ' + refreshed + ' memories  |  Deprecated: ' + deprecated + '  |  Archived: ' + archived);
+console.log('Next run:    ' + nextRun);
+console.log('');
+console.log('Memory totals');
+console.log('─────────────');
+console.log('Active: ' + active + '  |  Deprecated: ' + dep + '  |  Archived (all-time): ' + archTotal);
+console.log('At-risk (decay_score < 0.25): ' + atRisk + ' memories');
 "
 ```

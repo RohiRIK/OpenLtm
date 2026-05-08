@@ -39,6 +39,7 @@ export interface Memory {
   superseded_at?: string;
   workspace_id?: string;
   agent_id?: string;
+  decay_score?: number;
 }
 
 export interface MemoryRelation {
@@ -478,30 +479,42 @@ export async function recall(input: RecallInput = {}): Promise<MemoryWithRelatio
   const where = `WHERE ${conditions.join(" AND ")}`;
   // Explicit columns — excludes embedding blob (~260 KB/row) from hot recall path.
   // Use getById(id, { withEmbedding: true }) when the blob is needed.
+  // default sort (no query): ORDER BY decay_score DESC pushed to SQL → O(log N)
+  const defaultSqlSort = (!input.sort_by || input.sort_by === "relevance") && ids === null;
+  const orderBy = defaultSqlSort ? "ORDER BY decay_score DESC" : "";
   const rows = db.query<Memory, typeof params>(
     `SELECT id, content, category, importance, confidence, source, project_scope, dedup_key,
             created_at, last_confirmed_at, last_used_at, confirm_count, status,
             first_recalled_at, last_recalled_at, recall_count, superseded_by, superseded_at,
-            workspace_id, agent_id
-     FROM memories ${where} LIMIT ${limit}`
+            workspace_id, agent_id, decay_score
+     FROM memories ${where} ${orderBy} LIMIT ${limit}`
   ).all(...params);
 
   let sorted: typeof rows;
-  if (input.sort_by === "created") {
+  if (defaultSqlSort) {
+    sorted = rows; // already ordered by decay_score DESC in SQL
+  } else if (input.sort_by === "created") {
     sorted = rows.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   } else if (input.sort_by === "last_recalled") {
     sorted = rows.sort((a, b) => new Date(b.last_recalled_at ?? "1970").getTime() - new Date(a.last_recalled_at ?? "1970").getTime());
   } else if (input.sort_by === "recall_count") {
     sorted = rows.sort((a, b) => (b.recall_count ?? 0) - (a.recall_count ?? 0));
   } else {
-    sorted = rows.map(m => ({ m, score: computeDecayScore(m) })).sort((a, b) => b.score - a.score).map(({ m }) => m);
+    // FTS/semantic path: small result set (≤50), JS sort is O(k log k) — negligible.
+    // Use materialised decay_score if available, fall back to computing it.
+    sorted = rows
+      .map(m => ({ m, score: m.decay_score ?? computeDecayScore(m) }))
+      .sort((a, b) => b.score - a.score)
+      .map(({ m }) => m);
   }
-  updateLastUsed(sorted.map(m => m.id));
   if (sorted.length > 0) {
     const placeholders = sorted.map(() => "?").join(",");
     db.run(
-      `UPDATE memories SET last_recalled_at = datetime('now'), recall_count = recall_count + 1, first_recalled_at = COALESCE(first_recalled_at, datetime('now')) WHERE id IN (${placeholders})`,
-      sorted.map(m => m.id)
+      `UPDATE memories SET last_used_at = datetime('now'), last_recalled_at = datetime('now'),
+              recall_count = recall_count + 1,
+              first_recalled_at = COALESCE(first_recalled_at, datetime('now'))
+       WHERE id IN (${placeholders})`,
+      sorted.map(m => m.id),
     );
   }
   const enriched = sorted.map(m => enrichMemory(db, m));

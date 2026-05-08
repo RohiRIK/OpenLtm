@@ -3,11 +3,12 @@
  * Runs inside the server.ts process, sharing the DB instance.
  * Coordinates decay, promote, dedup, and embedding generation.
  */
-import { getSetting } from "../shared-db.js";
+import { getSetting, setSetting, getDb } from "../shared-db.js";
 import { runDecay, type DecayResult } from "./decay.js";
 import { findDuplicates, saveDedupCandidates, type DedupResult } from "./dedup.js";
 import { embedMissingMemories } from "./embeddings.js";
 import { runPromote, type PromoteResult } from "./promote.js";
+import { runArchive, type ArchiveResult } from "./archive.js";
 import { SETTING_KEYS, getDefault } from "./providers/types.js";
 
 export interface JanitorStatus {
@@ -29,6 +30,7 @@ export interface JanitorRunResult {
   durationMs: number;
   embed: { embedded: number };
   decay: DecayResult;
+  archive: ArchiveResult;
   promote: PromoteResult;
   dedup: { pairsCompared: number; candidatesFound: number };
   errors: string[];
@@ -56,7 +58,8 @@ export async function runJanitor(): Promise<JanitorRunResult> {
   const errors: string[] = [];
 
   let embedCount = 0;
-  let decayResult: DecayResult = { deprecated: 0, scanned: 0 };
+  let decayResult: DecayResult = { refreshed: 0, deprecated: 0 };
+  let archiveResult: ArchiveResult = { archived: 0 };
   let promoteResult: PromoteResult = {
     promoted: 0,
     skipped: 0,
@@ -76,21 +79,28 @@ export async function runJanitor(): Promise<JanitorRunResult> {
       errors.push(`embed: ${String(e)}`);
     }
 
-    // 2. Decay stale memories
+    // 2. Decay stale memories (batch SQL refresh + deprecation)
     try {
       decayResult = runDecay();
     } catch (e) {
       errors.push(`decay: ${String(e)}`);
     }
 
-    // 3. Promote context_items
+    // 3. Archive evicted deprecated memories
+    try {
+      archiveResult = runArchive();
+    } catch (e) {
+      errors.push(`archive: ${String(e)}`);
+    }
+
+    // 4. Promote context_items
     try {
       promoteResult = runPromote();
     } catch (e) {
       errors.push(`promote: ${String(e)}`);
     }
 
-    // 4. Find duplicates and save as pending for review
+    // 5. Find duplicates and save as pending for review
     try {
       dedupResult = await findDuplicates(0.85, true);
       if (dedupResult.candidates.length > 0) {
@@ -108,6 +118,7 @@ export async function runJanitor(): Promise<JanitorRunResult> {
     durationMs: Date.now() - startTime,
     embed: { embedded: embedCount },
     decay: decayResult,
+    archive: archiveResult,
     promote: promoteResult,
     dedup: {
       pairsCompared: dedupResult.pairsCompared,
@@ -115,6 +126,22 @@ export async function runJanitor(): Promise<JanitorRunResult> {
     },
     errors,
   };
+
+  // Persist run stats to settings for /ltm:health
+  await Promise.all([
+    setSetting(SETTING_KEYS.JANITOR_LAST_RUN_AT,          result.timestamp),
+    setSetting(SETTING_KEYS.JANITOR_LAST_DECAY_REFRESHED, String(decayResult.refreshed)),
+    setSetting(SETTING_KEYS.JANITOR_LAST_DEPRECATED,      String(decayResult.deprecated)),
+    setSetting(SETTING_KEYS.JANITOR_LAST_ARCHIVED,        String(archiveResult.archived)),
+  ]);
+
+  // WAL hygiene + query planner refresh
+  try {
+    const db = getDb();
+    db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+    db.exec("PRAGMA analysis_limit=400");
+    db.exec("ANALYZE");
+  } catch { /* non-fatal — next run will retry */ }
 
   _lastRun = result.timestamp;
   _lastResult = result;
@@ -185,3 +212,4 @@ export { mergeMemories, parseDedupSource } from "./dedup.js";
 export { supersede } from "./supersedes.js";
 export { touchMemory } from "./decay.js";
 export { getEmbeddingProvider, semanticSearch } from "./embeddings.js";
+export { runArchive } from "./archive.js";
