@@ -4,7 +4,7 @@
 
 **Long-Term Memory for Claude Code**
 
-[![Version](https://img.shields.io/badge/version-1.4.20-blue?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.9.1-blue?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Runtime](https://img.shields.io/badge/runtime-Bun-f472b6?style=flat-square&logo=bun)](https://bun.sh)
 [![Database](https://img.shields.io/badge/database-SQLite-003B57?style=flat-square&logo=sqlite)](https://sqlite.org)
@@ -83,7 +83,7 @@ claude plugin install ltm
          |
          +---> MCP server auto-wired                   ok
          +---> 6 hooks auto-wired                      ok
-         +---> 4 commands loaded (+ 11 aliases)        ok
+         +---> 4 commands loaded                         ok
          +---> 5 skills loaded                         ok
          +---> CLAUDE.md loaded                        ok
          +---> ltm.db migrated/created                 ok
@@ -182,7 +182,7 @@ Shows plugin versions, DB status, hook health, and a memory decay summary — al
 
 ## Commands
 
-4 commands cover everything. Old flat commands still work as deprecated aliases until v1.6.0.
+4 commands cover everything.
 
 ### `/ltm:memory` — store and search memories
 
@@ -235,31 +235,6 @@ Runs the full health suite: plugin versions, bun runtime, DB connectivity, hook 
 /ltm:admin scan --dry-run
 /ltm:admin server start
 ```
-
-<details>
-<summary><b>Legacy aliases (deprecated — removing in v1.6.0)</b></summary>
-
-All old flat commands still execute but show a deprecation notice.
-
-| Old command | Use instead |
-|-------------|-------------|
-| `/ltm:recall` | `/ltm:memory recall` |
-| `/ltm:learn` | `/ltm:memory learn` |
-| `/ltm:forget` | `/ltm:memory forget` |
-| `/ltm:relate` | `/ltm:memory relate` |
-| `/ltm:capture` | `/ltm:memory learn --save-context` |
-| `/ltm:init-context` | `/ltm:project init` |
-| `/ltm:analyze-context` | `/ltm:project analyze` |
-| `/ltm:register-project` | `/ltm:project register` |
-| `/ltm:doctor` | `/ltm:health` |
-| `/ltm:hook-doctor` | `/ltm:health` |
-| `/ltm:decay-report` | `/ltm:health` |
-| `/ltm:migrate` | `/ltm:admin migrate` |
-| `/ltm:migrate-db` | `/ltm:admin migrate --legacy` |
-| `/ltm:secrets-scan` | `/ltm:admin scan` |
-| `/ltm:ltm-server` | `/ltm:admin server` |
-
-</details>
 
 ---
 
@@ -443,7 +418,7 @@ hooks/src/            6 lifecycle hooks (SessionStart, Stop x2, PreCompact, GitC
 hooks/lib/            Shared hook utilities (resolveProject, llmExtract)
 hooks/bin/            run-hook.sh — bun resolver wrapper for stripped-PATH environments
 hooks/hooks.json      Hook registrations (auto-wired on install)
-commands/             4 slash commands + 11 deprecated aliases
+commands/             4 slash commands
 skills/               5 Claude Code skills
 scripts/              install-wiring.ts, update-wiring.ts
 graph-app/            Next.js memory graph visualizer (port 7332)

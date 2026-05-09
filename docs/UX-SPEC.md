@@ -1,6 +1,6 @@
 # UX Specification — Claude LTM Plugin
 
-**Version:** 1.0 (against plugin v1.4.20)
+**Version:** 1.0 (against plugin v1.9.0)
 **Owner:** ui-ux-designer (dev-team)
 **Status:** Vision document for system-architect + frontend-developer hand-off
 **Last updated:** 2026-04-28

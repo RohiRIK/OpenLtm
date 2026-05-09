@@ -2,7 +2,7 @@
 
 **Feature slug:** readme-overhaul
 **Date:** 2026-04-16
-**Status:** Draft
+**Status:** Complete (applied in v1.4.20, version refs updated to v1.9.0)
 **Depends on:** v1.4.17–v1.4.20 command system overhaul
 
 ---

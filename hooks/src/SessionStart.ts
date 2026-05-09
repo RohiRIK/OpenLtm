@@ -237,6 +237,6 @@ async function main(): Promise<void> {
 
 safeRun("SessionStart", main).then(result => {
   if (!result.ok) {
-    process.stdout.write("**Context not restored:** database error (check /ltm:doctor)\n");
+    process.stdout.write("**Context not restored:** database error (check /ltm:health)\n");
   }
 });
