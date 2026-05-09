@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.9.1] — 2026-05-09
+
+### Removed
+- **15 deprecated command aliases** — `recall`, `learn`, `forget`, `relate`, `capture`, `init-context`, `analyze-context`, `register-project`, `doctor`, `hook-doctor`, `decay-report`, `migrate`, `migrate-db`, `secrets-scan`, `ltm-server`. Use the 4 grouped commands: `/ltm:memory`, `/ltm:project`, `/ltm:health`, `/ltm:admin`.
+
+### Fixed
+- **README version badge** — Updated from stale `1.4.20` to current version.
+- **SessionStart error message** — Referenced deprecated `/ltm:doctor`; now points to `/ltm:health`.
+- **docs version headers** — `ARCHITECTURE.md`, `UX-SPEC.md`, `PRD.md` updated from `v1.4.20`.
+- **Install diagram** — Removed "(+ 11 aliases)" from command count.
+
+### Added
+- **`scripts/verify-version-sync.ts`** — Checks that `package.json`, `.claude-plugin/plugin.json`, `README.md` badge, and `docs/ARCHITECTURE.md` all reference the same version.
+
+---
+
 ## [1.9.0] — 2026-05-04
 
 ### Added

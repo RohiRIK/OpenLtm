@@ -1,6 +1,6 @@
 # PRD — Claude LTM Plugin (Long-Term Memory for Claude Code)
 
-**Version:** 1.0 (PRD baseline against plugin v1.4.20)
+**Version:** 1.0 (PRD baseline against plugin v1.9.0)
 **Owner:** product-manager (dev-team)
 **Status:** Draft for system-architect + ui-ux-designer hand-off
 **Last updated:** 2026-04-28
