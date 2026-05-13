@@ -7,6 +7,7 @@ import { readStdinPassthrough, parseHookInput, readFileSafe, appendLine, trimToL
 import { logHook, logEvent } from "../lib/hookLogger.js";
 import { EVENTS } from "../lib/eventNames.js";
 import { appendProgress, addDecision, addGotcha } from "../../src/dao/index.js";
+import { emitEvent } from "../../src/lib/jsonlLogger.js";
 
 const TOOL_NAMES = new Set(["Write", "Edit", "MultiEdit"]);
 const MAX_PROGRESS_LINES = 20;
@@ -117,6 +118,7 @@ async function main(): Promise<void> {
       }
       logHook("UpdateContext", "info", `context DB updated for ${name}`);
       logEvent("UpdateContext", EVENTS.CONTEXT_UPDATED, { project: name });
+      emitEvent({ hook: "UpdateContext", event: EVENTS.CONTEXT_UPDATED, project: name, ts: new Date().toISOString() });
       return;
     } catch (dbErr) {
       logHook("UpdateContext", "warn", "DB write failed, falling back to .md", String(dbErr));

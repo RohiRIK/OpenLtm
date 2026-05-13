@@ -114,3 +114,11 @@ export type MemorySnapshot = Omit<MemorySlim, "category" | "status"> & {
   category: string;
   status: string;
 };
+
+/** A superseded-memory conflict row returned by getRecentConflicts(). */
+export interface ConflictRow {
+  olderId: number;
+  olderContent: string;
+  newerId: number;
+  newerContent: string;
+}

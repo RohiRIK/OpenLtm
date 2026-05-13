@@ -6,6 +6,7 @@ import { readStdin, parseHookInput, readFileSafe, budgetSection, safeRun } from 
 import { logHook, logEvent } from "../lib/hookLogger.js";
 import { EVENTS } from "../lib/eventNames.js";
 import { getItems, exportContextMarkdown } from "../../src/context.js";
+import { emitEvent } from "../../src/lib/jsonlLogger.js";
 
 const DB_PATH = getDbPath();
 
@@ -61,6 +62,7 @@ async function main(): Promise<void> {
   writeFileSync(join(projectDir, "context-summary.md"), finalSummary);
   logHook("PreCompact", "info", `Saved context summary for "${name}" (${finalSummary.split("\n").length} lines)`);
   logEvent("PreCompact", EVENTS.COMPACT_PRE, { project: name });
+  emitEvent({ hook: "PreCompact", event: EVENTS.COMPACT_PRE, project: name, ts: new Date().toISOString() });
 }
 
 await safeRun("PreCompact", main);
