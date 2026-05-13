@@ -165,7 +165,7 @@ server.tool(
   "Query the memory audit log. Returns a list of audit events (insert, update, forget, redact, etc.) with before/after snapshots. Use for tracing who wrote or deleted a memory.",
   {
     memory_id: z.number().int().optional().describe("Filter to a specific memory ID"),
-    op: z.enum(["insert","update","forget","deprecate","supersede","redact","restore"]).optional().describe("Filter by operation type"),
+    op: z.enum(["insert","update","forget","deprecate","supersede","redact","restore","archive"]).optional().describe("Filter by operation type"),
     session_id: z.string().optional().describe("Filter by session that triggered the op"),
     since: z.string().optional().describe("ISO date — only events after this time"),
     limit: z.number().int().min(1).max(200).optional().default(50).describe("Max rows (default 50)"),
@@ -353,6 +353,61 @@ server.prompt(
         text: `Use ltm_recall to find memories related to "${question}", then use ltm_graph on the top result IDs to traverse connected memories. Synthesize the chain of reasoning, conflicts, and reinforcements into a coherent answer.`,
       },
     }],
+  }),
+);
+
+server.prompt(
+  "learn_after_decision",
+  "Store an architectural decision or key choice in long-term memory with full context",
+  {
+    decision: z.string().describe("The architectural decision or key choice that was made"),
+    rationale: z.string().describe("Why this decision was made"),
+    project: z.string().optional().describe("Project this decision belongs to"),
+  },
+  ({ decision, rationale, project }) => ({
+    messages: [
+      {
+        role: "user",
+        content: {
+          type: "text",
+          text: `We just made an architectural decision that should be preserved for future sessions. Store it using ltm_learn.\n\nDecision: ${decision}\nRationale: ${rationale}${project ? `\nProject: ${project}` : ""}\n\nStore with category=architecture, importance=4, and include the rationale in the content so future recall explains the "why".`,
+        },
+      },
+      {
+        role: "assistant",
+        content: {
+          type: "text",
+          text: `I'll store this decision now using ltm_learn with category=architecture and importance=4 so it persists across sessions and surfaces in future context loads.`,
+        },
+      },
+    ],
+  }),
+);
+
+server.prompt(
+  "context_before_work",
+  "Get full project context before starting work — combines ltm_context and ltm_recall for a complete picture",
+  {
+    project: z.string().describe("Project name from the LTM registry"),
+    topic: z.string().describe("What you are about to work on"),
+  },
+  ({ project, topic }) => ({
+    messages: [
+      {
+        role: "user",
+        content: {
+          type: "text",
+          text: `Before starting work on "${topic}" in project "${project}", gather full context:\n\n1. Call ltm_context(project="${project}") to load goals, decisions, and gotchas.\n2. Call ltm_recall(query="${topic}", project="${project}") to surface relevant past patterns.\n3. Synthesize: list any active decisions, known gotchas, or prior work that affects this task.`,
+        },
+      },
+      {
+        role: "assistant",
+        content: {
+          type: "text",
+          text: `I'll call ltm_context and ltm_recall now, then synthesize the relevant context before proceeding with "${topic}".`,
+        },
+      },
+    ],
   }),
 );
 
