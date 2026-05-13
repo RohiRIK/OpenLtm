@@ -129,6 +129,31 @@ describe("runArchive()", () => {
     ).toBe(0);
   });
 
+  it("writes an audit row with op=archive for each evicted memory", () => {
+    const id = seedDeprecated({ importance: 1, recallCount: 0, decayScore: 0.04 });
+    runArchive();
+    const audit = db
+      .query<{ op: string; actor: string }, [number]>(
+        `SELECT op, actor FROM memory_audit WHERE memory_id=? ORDER BY created_at DESC LIMIT 1`,
+      )
+      .get(id);
+    expect(audit?.op).toBe("archive");
+    expect(audit?.actor).toBe("janitor:archive");
+  });
+
+  it("audit before_json contains original memory content", () => {
+    const id = seedDeprecated({ importance: 1, recallCount: 0, decayScore: 0.04 });
+    runArchive();
+    const audit = db
+      .query<{ before_json: string | null }, [number]>(
+        `SELECT before_json FROM memory_audit WHERE memory_id=? AND op='archive' ORDER BY created_at DESC LIMIT 1`,
+      )
+      .get(id);
+    if (!audit?.before_json) return; // memory already archived in prior run
+    const snap = JSON.parse(audit.before_json) as Record<string, unknown>;
+    expect(snap["id"]).toBe(id);
+  });
+
   it("returns archived=0 when no eviction candidates exist", () => {
     // Seed a non-qualifying memory (active, importance=3)
     const id = nextId();

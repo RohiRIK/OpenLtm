@@ -18,7 +18,7 @@ export function snapshotMemory(db: Database, memoryId: number): MemorySnapshot |
     `SELECT id, content, category, importance, confidence, source, project_scope, dedup_key,
             created_at, last_confirmed_at, last_used_at, confirm_count, status,
             first_recalled_at, last_recalled_at, recall_count, superseded_by, superseded_at,
-            workspace_id, agent_id
+            workspace_id, agent_id, created_by
      FROM memories WHERE id=?`
   ).get(memoryId) ?? null;
 }
