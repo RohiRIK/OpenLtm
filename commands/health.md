@@ -1,5 +1,5 @@
 ---
-description: "Show project health scores and memory decay summary. Graph server data is additive — decay always shown."
+description: "USE WHEN checking memory health, reviewing project scores, inspecting janitor status, or diagnosing why memories are decaying. Shows health scores, decay summary, activity log, and log health."
 allowed-tools: ["Bash"]
 ---
 

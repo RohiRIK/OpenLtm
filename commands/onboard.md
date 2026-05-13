@@ -1,5 +1,5 @@
 ---
-description: "Run the LTM onboarding wizard to set up memory for a new project"
+description: "USE WHEN setting up LTM for a new project, diagnosing hook or plugin issues, or running first-time setup. Runs the onboarding wizard with doctor checks."
 allowed-tools: ["Bash"]
 ---
 
