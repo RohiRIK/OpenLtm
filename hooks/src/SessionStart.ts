@@ -158,6 +158,19 @@ async function main(): Promise<void> {
   const { cwd } = parsed;
   const { name, projectDir, isNew, registeredPath } = resolveProject(cwd);
 
+  // P5-0.5: auto-onboard on first SessionStart (global flag, fire-once)
+  const pluginData = process.env.CLAUDE_PLUGIN_DATA ?? join(CLAUDE_DIR, "plugins", "data", "ltm-ltm");
+  const onboardedFlagPath = join(pluginData, "onboarded.flag");
+  if (!existsSync(onboardedFlagPath)) {
+    const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
+    if (pluginRoot) {
+      spawnSync("bun", ["run", join(pluginRoot, "src", "onboard.ts"), "--non-interactive"],
+        { stdio: "pipe", timeout: 30_000 });
+    }
+    const displayName = isNew ? defaultName(cwd) : name;
+    process.stdout.write(`LTM: auto-onboarded "${displayName}" — run /ltm:onboard to customize\n`);
+  }
+
   if (isNew) {
     const suggested = defaultName(cwd);
     registerPath(cwd, suggested);
