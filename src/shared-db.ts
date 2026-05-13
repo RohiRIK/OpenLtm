@@ -126,7 +126,7 @@ export function setSetting(key: string, value: string): Promise<void> {
        ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at`,
       [key, value],
     );
-  });
+  }, db);
 }
 
 export function getAllSettings(): Record<string, string> {
