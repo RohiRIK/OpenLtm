@@ -12,6 +12,7 @@
  */
 import { getDb } from "../shared-db.js";
 import type { Memory } from "../db.js";
+import { insertAudit, snapshotMemory } from "../dao/provenanceAudit.js";
 
 const BATCH_SIZE = 100;
 
@@ -43,11 +44,19 @@ export function runArchive(): ArchiveResult {
 
   const archive = db.transaction((mems: Memory[]) => {
     for (const mem of mems) {
+      const beforeSnap = snapshotMemory(db, mem.id);
       db.run(
         `INSERT OR IGNORE INTO memory_archive (id, memory_json, reason, decay_score, project_scope)
          VALUES (?, ?, 'decay', ?, ?)`,
         [mem.id, JSON.stringify(mem), mem.decay_score ?? null, mem.project_scope ?? null],
       );
+      insertAudit(db, {
+        memory_id: mem.id,
+        op: "archive",
+        actor: "janitor:archive",
+        before_json: beforeSnap ? JSON.stringify(beforeSnap) : null,
+        after_json: null,
+      });
     }
     db.run(`DELETE FROM memories WHERE id IN (${placeholders})`, ids);
     return db.query<{ n: number }, []>("SELECT changes() AS n").get()!.n;

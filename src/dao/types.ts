@@ -32,6 +32,7 @@ export interface MemorySlim {
   superseded_at?: string | null;
   workspace_id?: string | null;
   agent_id?: string | null;
+  created_by?: string | null;
 }
 
 /** Full memory row — includes embedding blob. Internal use only (embeddings.ts). */
@@ -66,7 +67,7 @@ export type ProvenanceSourceType =
   | "user-promotion" | "janitor-rollup" | "legacy";
 
 export type AuditOp =
-  | "insert" | "update" | "forget" | "deprecate" | "supersede" | "redact" | "restore";
+  | "insert" | "update" | "forget" | "deprecate" | "supersede" | "redact" | "restore" | "archive";
 
 export interface ProvenanceRow {
   id: number;
