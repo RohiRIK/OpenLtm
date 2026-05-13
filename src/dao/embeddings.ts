@@ -40,14 +40,14 @@ export function setEmbedding(
          created_at=excluded.created_at`,
       [memoryId, blob, model, dim],
     );
-  });
+  }, db);
 }
 
 /** Remove the embedding for a memory. Serialised through the write queue. */
 export function deleteEmbedding(db: Database, memoryId: number): Promise<void> {
   return writeQueue.enqueue(() => {
     db.run(`DELETE FROM memory_embeddings WHERE memory_id=?`, [memoryId]);
-  });
+  }, db);
 }
 
 /**
