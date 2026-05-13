@@ -33,25 +33,18 @@ If the server is NOT running, show: `(graph server offline — start with /ltm:a
 
 ## Activity (last 24 h)
 
-Aggregate structured events from `~/.claude/logs/hooks.log`:
+Prefer `ltm.jsonl` (structured JSONL log) when available; fall back to `hooks.log`.
 
 ```bash
 bun --eval "
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, statSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
-const LOG = join(homedir(), '.claude', 'logs', 'hooks.log');
-if (!existsSync(LOG)) { console.log('No hooks.log yet — hooks have not fired.'); process.exit(0); }
-const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-const counts = {};
-readFileSync(LOG, 'utf-8').trim().split('\n').forEach(line => {
-  try {
-    const e = JSON.parse(line);
-    if (e.level !== 'event' || !e.event) return;
-    if (new Date(e.ts).getTime() < cutoff) return;
-    counts[e.event] = (counts[e.event] ?? 0) + 1;
-  } catch {}
-});
+
+const PLUGIN_DATA = process.env.CLAUDE_PLUGIN_DATA ?? join(homedir(), '.claude', 'plugins', 'data', 'ltm-ltm');
+const JSONL_LOG = join(PLUGIN_DATA, 'logs', 'ltm.jsonl');
+const HOOKS_LOG = join(homedir(), '.claude', 'logs', 'hooks.log');
+
 const LABELS = {
   'session.start':     'Sessions started',
   'session.evaluated': 'Sessions evaluated',
@@ -60,13 +53,103 @@ const LABELS = {
   'recall.hit':        'Recall hits',
   'learn.write':       'Memories learned',
   'wizard.complete':   'Wizard completions',
+  'git.commit':        'Git commits tracked',
+  'server.notify':     'Server notifies',
 };
+
+const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+const counts = {};
+const hookCounts = {};
+const errors = [];
+
+if (existsSync(JSONL_LOG)) {
+  // Primary: ltm.jsonl — structured LtmEvent lines
+  readFileSync(JSONL_LOG, 'utf-8').trim().split('\n').slice(-100).forEach(line => {
+    try {
+      const e = JSON.parse(line);
+      if (!e.event || !e.ts) return;
+      if (new Date(e.ts).getTime() < cutoff) return;
+      counts[e.event] = (counts[e.event] ?? 0) + 1;
+      if (e.hook) hookCounts[e.hook] = (hookCounts[e.hook] ?? 0) + 1;
+      if (e.level === 'error') errors.push(e);
+    } catch {}
+  });
+} else if (existsSync(HOOKS_LOG)) {
+  // Fallback: hooks.log — event-level entries only
+  readFileSync(HOOKS_LOG, 'utf-8').trim().split('\n').forEach(line => {
+    try {
+      const e = JSON.parse(line);
+      if (e.level !== 'event' || !e.event) return;
+      if (new Date(e.ts).getTime() < cutoff) return;
+      counts[e.event] = (counts[e.event] ?? 0) + 1;
+      if (e.hook) hookCounts[e.hook] = (hookCounts[e.hook] ?? 0) + 1;
+    } catch {}
+  });
+} else {
+  console.log('No log files yet — hooks have not fired.');
+  process.exit(0);
+}
+
 console.log('Activity (last 24 h)');
 console.log('────────────────────');
-const keys = Object.keys(LABELS);
-const any = keys.some(k => counts[k]);
-if (!any) { console.log('  No hook events yet.'); }
-else { keys.forEach(k => { if (counts[k]) console.log('  ' + (LABELS[k] ?? k).padEnd(22) + counts[k]); }); }
+const eventKeys = Object.keys(LABELS);
+const anyEvent = eventKeys.some(k => counts[k]);
+if (!anyEvent) { console.log('  No hook events yet.'); }
+else { eventKeys.forEach(k => { if (counts[k]) console.log('  ' + (LABELS[k] ?? k).padEnd(26) + counts[k]); }); }
+
+if (Object.keys(hookCounts).length) {
+  console.log('');
+  console.log('Per-hook counts');
+  console.log('───────────────');
+  Object.entries(hookCounts).sort((a,b) => b[1]-a[1]).forEach(([h,n]) => console.log('  ' + h.padEnd(22) + n));
+}
+
+if (errors.length) {
+  console.log('');
+  console.log('Last errors (up to 5)');
+  console.log('─────────────────────');
+  errors.slice(-5).forEach(e => console.log('  [' + e.ts + '] ' + e.hook + ': ' + (e.detail ?? e.event)));
+}
+"
+```
+
+---
+
+## Log Health
+
+```bash
+bun --eval "
+import { existsSync, statSync } from 'fs';
+import { join } from 'path';
+import { homedir } from 'os';
+
+const PLUGIN_DATA = process.env.CLAUDE_PLUGIN_DATA ?? join(homedir(), '.claude', 'plugins', 'data', 'ltm-ltm');
+const JSONL_LOG = join(PLUGIN_DATA, 'logs', 'ltm.jsonl');
+const HOOKS_LOG = join(homedir(), '.claude', 'logs', 'hooks.log');
+
+function fileInfo(label, path) {
+  if (!existsSync(path)) { console.log('  ' + label.padEnd(14) + 'not found'); return; }
+  const s = statSync(path);
+  const kb = (s.size / 1024).toFixed(1);
+  const ago = Math.round((Date.now() - s.mtimeMs) / 60000);
+  console.log('  ' + label.padEnd(14) + kb + ' KB  (modified ' + (ago < 2 ? 'just now' : ago + ' min ago') + ')');
+  console.log('  ' + ' '.repeat(14) + path);
+}
+
+console.log('Log Health');
+console.log('──────────');
+fileInfo('ltm.jsonl', JSONL_LOG);
+fileInfo('hooks.log', HOOKS_LOG);
+
+// Last event timestamp from JSONL
+if (existsSync(JSONL_LOG)) {
+  try {
+    const { readFileSync } = await import('fs');
+    const lines = readFileSync(JSONL_LOG, 'utf-8').trim().split('\n').filter(Boolean);
+    const last = JSON.parse(lines[lines.length - 1]);
+    console.log('  Last event:   ' + last.ts + '  (' + last.hook + ' / ' + last.event + ')');
+  } catch {}
+}
 "
 ```
 
