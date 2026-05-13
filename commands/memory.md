@@ -1,6 +1,6 @@
 ---
-description: "USE WHEN recalling past decisions, storing new insights, forgetting stale memories, or linking memories. Groups recall | learn (with optional --save-context) | forget | relate."
-argument-hint: "<recall|learn|forget|relate> [args]"
+description: "USE WHEN recalling past decisions, storing new insights, forgetting stale memories, linking memories, or reviewing pending memory proposals. Groups recall | learn (with optional --save-context) | forget | relate | propose."
+argument-hint: "<recall|learn|forget|relate|propose> [args]"
 ---
 
 Parse the first word of the arguments as `<subcommand>`. Pass remaining words as `<args>`.
@@ -10,17 +10,23 @@ If no subcommand given, show:
 ```
 Usage: /ltm:memory <subcommand>
 
-  recall  — search memories
-             /ltm:memory recall [query] [--category X] [--project X] [--limit N]
+  recall   — search memories
+              /ltm:memory recall [query] [--category X] [--project X] [--limit N]
 
-  learn   — store insight
-             /ltm:memory learn [insight] [--category X] [--importance N] [--save-context]
+  learn    — store insight
+              /ltm:memory learn [insight] [--category X] [--importance N] [--save-context]
 
-  forget  — delete memory by ID
-             /ltm:memory forget <id> [reason]
+  forget   — delete memory by ID
+              /ltm:memory forget <id> [reason]
 
-  relate  — link two memories
-             /ltm:memory relate <src-id> <tgt-id> <type>
+  relate   — link two memories
+              /ltm:memory relate <src-id> <tgt-id> <type>
+
+  propose  — review pending memory proposals from EvaluateSession
+              /ltm:memory propose            — list all pending proposals
+              /ltm:memory propose review     — show proposals interactively
+              /ltm:memory propose accept <session-id> <index>
+              /ltm:memory propose reject <session-id> <index>
 ```
 
 ---
@@ -104,3 +110,51 @@ Call `mcp__ltm__ltm_relate` with `{ source_id, target_id, relationship_type }`.
 | `supersedes` | Source replaces target (target outdated) |
 
 Report: `Linked [src] → [tgt] (type)`. Duplicates are silently ignored.
+
+---
+
+## propose
+
+Review pending memory proposals written by the `EvaluateSession` hook after sessions end.
+
+Proposals are stored as JSON files in `${CLAUDE_PLUGIN_DATA}/proposals/<session-id>.json`.
+
+### propose (no args) / propose review
+
+List all pending proposals using:
+
+```bash
+bun --eval "
+import { listPendingProposals } from './src/proposals.js';
+const ps = listPendingProposals();
+if (ps.length === 0) { console.log('No pending proposals.'); process.exit(0); }
+for (const p of ps) {
+  console.log(\`[\${p.sessionId}:\${p.index}] [\${p.category}] ★\${p.importance} \${p.content}\`);
+}
+console.log(\`\nTotal: \${ps.length}\`);
+"
+```
+
+Display each as: `[session-id:index] [category] ★importance content`. Offer to accept or reject each.
+
+### propose accept \<session-id\> \<index\>
+
+```bash
+bun --eval "
+import { acceptProposal } from './src/proposals.js';
+const ok = acceptProposal('<session-id>', <index>);
+console.log(ok ? 'Accepted and stored.' : 'Not found.');
+"
+```
+
+### propose reject \<session-id\> \<index\>
+
+```bash
+bun --eval "
+import { rejectProposal } from './src/proposals.js';
+const ok = rejectProposal('<session-id>', <index>);
+console.log(ok ? 'Rejected and removed.' : 'Not found.');
+"
+```
+
+Rejection removes the proposal without writing to the DB.

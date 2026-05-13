@@ -158,7 +158,7 @@ async function main(): Promise<void> {
 
   if (!parsed) {
     process.stderr.write("[SessionStart] No cwd in input, skipping context injection\n");
-    process.stdout.write("**Context not restored:** no project match found\n");
+    process.stdout.write("**Context not restored:** registry_miss\n");
     return;
   }
   const { cwd } = parsed;
@@ -169,7 +169,7 @@ async function main(): Promise<void> {
     registerPath(cwd, suggested);
     mkdirSync(join(PROJECTS_DIR, suggested), { recursive: true });
     process.stdout.write(
-      `**Context not restored:** no project match found\n\n` +
+      `**Context not restored:** fresh_project\n\n` +
       `# New Project Detected\n\nNo context files found for: \`${cwd}\`\n\n` +
       `I've registered this project as **"${suggested}"**.\n` +
       `Should I create the 4 context files now? (yes/no)\n`,
@@ -184,18 +184,18 @@ async function main(): Promise<void> {
     const contextFiles = ["context-goals.md", "context-decisions.md", "context-progress.md", "context-gotchas.md"];
     if (!contextFiles.some(f => existsSync(join(projectDir, f)))) {
       process.stdout.write(
-        `**Context not restored:** no project match found\n\n` +
+        `**Context not restored:** fresh_project\n\n` +
         `# Project Registered — No Context Files Yet\n\nProject **"${name}"** has no context files.\nShould I create them now? (yes/no)\n`,
       );
     } else {
-      process.stdout.write(`**Context not restored:** no project match found\n`);
+      process.stdout.write(`**Context not restored:** fresh_project\n`);
     }
     return;
   }
 
   if (Date.now() - statSync(summaryPath).mtimeMs > MAX_AGE_MS) {
     process.stderr.write(`[SessionStart] Context for "${name}" is older than 30 days — skipping\n`);
-    process.stdout.write(`**Context not restored:** no project match found\n`);
+    process.stdout.write(`**Context not restored:** stale_context\n`);
     return;
   }
 
@@ -213,11 +213,13 @@ async function main(): Promise<void> {
   const conflictSection = buildConflictSection(name);
   const backfillHint = buildBackfillHint();
 
-  // Count memories for status line
+  // Count memories for panel header
   const memoryCount = ltmSection
     ? ltmSection.split("\n").filter(l => l.startsWith("- [")).length
     : 0;
-  const statusLine = `**Context restored:** ${memoryCount} memories loaded for project "${name}"\n`;
+  const ctxLines = trimToLines(summaryText, MAX_INJECT_LINES).split("\n").filter(Boolean).length;
+  const slug = name.slice(0, 24);
+  const statusLine = `## LTM Session: ${slug} | restored: ${ctxLines} ctx items, ${memoryCount} top memories\n`;
 
   // Build output: status line + injected + directive + ltmSection + conflicts + reminder + backfill hint
   let output = statusLine + "\n" + injected;
@@ -237,6 +239,6 @@ async function main(): Promise<void> {
 
 safeRun("SessionStart", main).then(result => {
   if (!result.ok) {
-    process.stdout.write("**Context not restored:** database error (check /ltm:health)\n");
+    process.stdout.write("**Context not restored:** hook_error (check /ltm:health)\n");
   }
 });
