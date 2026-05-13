@@ -16,6 +16,7 @@ data/*.bak*
 .env.local
 # Orchestration artifacts
 .sisyphus/
+specs/
 node-compile-cache/
 *.tmp
 
