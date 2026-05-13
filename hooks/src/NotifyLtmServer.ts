@@ -5,6 +5,8 @@
 import { join } from "path";
 import { CLAUDE_DIR } from "../lib/resolveProject.js";
 import { readStdin, safeRun } from "../lib/hookUtils.js";
+import { emitEvent } from "../../src/lib/jsonlLogger.js";
+import { EVENTS } from "../lib/eventNames.js";
 
 const PID_PATH = join(CLAUDE_DIR, "tmp", "ltm-server.pid");
 const MEMORY_DIR = join(CLAUDE_DIR, "memory");
@@ -41,6 +43,7 @@ async function main(): Promise<void> {
   // Notify server to broadcast refresh — ignore errors silently
   try {
     await fetch("http://localhost:7331/api/reload", { method: "POST", signal: AbortSignal.timeout(1000) });
+    emitEvent({ hook: "NotifyLtmServer", event: EVENTS.SERVER_NOTIFY, ts: new Date().toISOString() });
   } catch {} // silent: server may not be running; graph app refresh is best-effort
 
   process.stdout.write(input);

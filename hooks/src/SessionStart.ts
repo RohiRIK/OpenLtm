@@ -13,6 +13,8 @@ import { readConfigSync } from "../../src/config.js";
 import { listMemoryIdsMissingEmbedding } from "../../src/dao/embeddings.js";
 import { exportContextMarkdown } from "../../src/context.js";
 import { runPendingMigrations } from "../../src/migrations.js";
+import { getRecentConflicts } from "../../src/dao/conflicts.js";
+import { emitEvent } from "../../src/lib/jsonlLogger.js";
 
 const TMP_DIR      = join(CLAUDE_DIR, "tmp");
 const COUNTER_FILE = join(TMP_DIR, "session-tool-count.txt");
@@ -75,15 +77,7 @@ function buildConflictSection(project: string): string {
   if (!existsSync(DB_PATH)) return "";
   try {
     const db = getDb();
-    // T13: Query recently superseded memories (last 7 days)
-    const conflicts = db.query(
-      `SELECT m1.id as olderId, m1.content as olderContent, m2.id as newerId, m2.content as newerContent
-       FROM memories m1
-       JOIN memories m2 ON m1.superseded_by = m2.id
-       WHERE (m1.project_scope = ? OR (m1.project_scope IS NULL AND ? IS NULL))
-         AND m1.superseded_at > datetime('now', '-7 days')
-       LIMIT ?`
-    ).all(project, project, MAX_CONFLICT_LINES) as Array<{ olderId: number; olderContent: string; newerId: number; newerContent: string }>;
+    const conflicts = getRecentConflicts(db, project, MAX_CONFLICT_LINES);
 
     if (conflicts.length === 0) return "";
 
@@ -235,6 +229,7 @@ async function main(): Promise<void> {
   process.stdout.write(output);
   logHook("SessionStart", "info", `Injected context for "${name}" (${registeredPath ? "registry" : "slug fallback"})`);
   logEvent("SessionStart", EVENTS.SESSION_START, { project: name });
+  emitEvent({ hook: "SessionStart", event: EVENTS.SESSION_START, project: name, count: memoryCount, ts: new Date().toISOString() });
 }
 
 safeRun("SessionStart", main).then(result => {

@@ -10,6 +10,7 @@ import { extractProposals } from "../lib/llmExtract.js";
 import { writeProposals, type MemoryProposal } from "../lib/proposalQueue.js";
 import { readConfigSync } from "../../src/config.js";
 import type { Config } from "../../src/config.js";
+import { emitEvent } from "../../src/lib/jsonlLogger.js";
 
 const PLUGIN_ROOT = process.env.CLAUDE_PLUGIN_ROOT ?? join(CLAUDE_DIR, "memory");
 const LEARNED_DIR = join(PLUGIN_ROOT, "skills", "Learned");
@@ -285,6 +286,7 @@ async function main() {
     }
 
     logEvent("EvaluateSession", EVENTS.SESSION_EVALUATED, { project: projectName, count: messageCount });
+    emitEvent({ hook: "EvaluateSession", event: EVENTS.SESSION_EVALUATED, project: projectName, count: messageCount, ts: new Date().toISOString() });
 
     // Update Summary (deduplicate by sessionId)
     if (!existsSync(SUMMARY_FILE)) {

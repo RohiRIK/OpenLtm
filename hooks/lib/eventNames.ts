@@ -7,6 +7,8 @@ export const EVENTS = {
   RECALL_HIT:         "recall.hit",
   LEARN_WRITE:        "learn.write",
   WIZARD_COMPLETE:    "wizard.complete",
+  GIT_COMMIT:         "git.commit",
+  SERVER_NOTIFY:      "server.notify",
 } as const;
 
 export type EventName = typeof EVENTS[keyof typeof EVENTS];
