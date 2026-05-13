@@ -41,7 +41,7 @@ async function main(): Promise<void> {
   // Notify server to broadcast refresh — ignore errors silently
   try {
     await fetch("http://localhost:7331/api/reload", { method: "POST", signal: AbortSignal.timeout(1000) });
-  } catch {}
+  } catch {} // silent: server may not be running; graph app refresh is best-effort
 
   process.stdout.write(input);
 }

@@ -11,7 +11,7 @@
  * Format: { "/abs/path": "friendly-name" }
  */
 
-import { existsSync, readFileSync, writeFileSync, renameSync, openSync, fsyncSync, closeSync, mkdirSync, copyFileSync } from "fs";
+import { existsSync, readFileSync, writeFileSync, renameSync, openSync, fsyncSync, closeSync, mkdirSync, copyFileSync, unlinkSync, statSync } from "fs";
 import { join, sep } from "path";
 import { homedir } from "os";
 
@@ -53,17 +53,51 @@ function loadRegistry(): Record<string, string> {
   }
 }
 
-export function writeRegistryAtomic(registryPath: string, data: unknown): void {
-  const tmp = registryPath + ".tmp";
-  const json = JSON.stringify(data, null, 2);
-  writeFileSync(tmp, json, "utf8");
-  const fd = openSync(tmp, "r+");
-  try {
-    fsyncSync(fd);
-  } finally {
-    closeSync(fd);
+const LOCK_STALE_MS = 5000;
+const LOCK_RETRIES = 5;
+const LOCK_BASE_DELAY_MS = 50;
+
+function acquireLock(lockPath: string): void {
+  for (let i = 0; i < LOCK_RETRIES; i++) {
+    // Reclaim stale lock (process died before cleanup)
+    if (existsSync(lockPath)) {
+      try {
+        const age = Date.now() - statSync(lockPath).mtimeMs;
+        if (age > LOCK_STALE_MS) unlinkSync(lockPath);
+      } catch { /* lock removed by another process — retry */ }
+    }
+    try {
+      // O_EXCL: atomic creation — fails if file already exists
+      const fd = openSync(lockPath, "wx");
+      closeSync(fd);
+      return; // lock acquired
+    } catch {
+      // Another process holds the lock — exponential backoff
+      const delay = LOCK_BASE_DELAY_MS * Math.pow(2, i);
+      const start = Date.now();
+      while (Date.now() - start < delay) { /* spin-wait */ }
+    }
   }
-  renameSync(tmp, registryPath);
+  throw new Error(`[writeRegistryAtomic] could not acquire lock after ${LOCK_RETRIES} retries`);
+}
+
+export function writeRegistryAtomic(registryPath: string, data: unknown): void {
+  const lockPath = registryPath + ".lock";
+  acquireLock(lockPath);
+  try {
+    const tmp = registryPath + ".tmp";
+    const json = JSON.stringify(data, null, 2);
+    writeFileSync(tmp, json, "utf8");
+    const fd = openSync(tmp, "r+");
+    try {
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+    renameSync(tmp, registryPath);
+  } finally {
+    try { unlinkSync(lockPath); } catch { /* already removed — harmless */ }
+  }
 }
 
 export function saveRegistry(registry: Record<string, string>): void {

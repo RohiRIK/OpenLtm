@@ -46,7 +46,7 @@ export async function extractAndLearn(
   try {
     extracted = JSON.parse(raw.replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim());
   } catch {
-    return undefined;
+    return undefined; // silent: LLM returned non-JSON; caller treats undefined as no learnings
   }
 
   for (const { key, category, importance } of LEARN_ITEMS) {
@@ -86,7 +86,7 @@ export async function extractProposals(
   try {
     extracted = JSON.parse(raw.replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim());
   } catch {
-    return { proposals: [], progress: undefined };
+    return { proposals: [], progress: undefined }; // silent: same as extractAndLearn — non-JSON LLM response
   }
 
   const proposals: MemoryProposal[] = [];
