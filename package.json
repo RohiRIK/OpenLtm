@@ -4,6 +4,8 @@
   "description": "Long-Term Memory plugin for Claude Code",
   "type": "module",
   "scripts": {
+    "bump": "bun run scripts/bump-version.ts",
+    "verify-version": "bun run scripts/verify-version-sync.ts",
     "typecheck": "bunx tsc --noEmit",
     "dev:mcp": "bun run src/mcp-server.ts",
     "dev:server": "LTM_DB_PATH=./data/ltm.db bun run src/graph-server.ts",
