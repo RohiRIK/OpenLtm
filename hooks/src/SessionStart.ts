@@ -177,7 +177,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (existsSync(DB_PATH)) { try { exportContextMarkdown(name); } catch (_) {} }
+  if (existsSync(DB_PATH)) { try { exportContextMarkdown(name); } catch (_) {} } // silent: export failure doesn't block context injection
 
   const summaryPath = join(projectDir, "context-summary.md");
   if (!existsSync(summaryPath)) {
@@ -204,7 +204,7 @@ async function main(): Promise<void> {
   const sessionContext = summaryText.slice(0, 500).trim() || undefined;
 
   let useDirective = true;
-  try { const cfg = readConfigSync(); useDirective = cfg?.ltm?.autoRecall !== false; } catch (_) {}
+  try { const cfg = readConfigSync(); useDirective = cfg?.ltm?.autoRecall !== false; } catch (_) {} // silent: missing/malformed config falls back to default (autoRecall=true)
 
   // Override injectTopN from project settings if set
   const injectTopN = readConfigSync().ltm?.injectTopN ?? 15;

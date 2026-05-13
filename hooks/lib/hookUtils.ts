@@ -41,7 +41,7 @@ export async function readStdin(): Promise<string> {
     for await (const chunk of Bun.stdin.stream()) {
       result += new TextDecoder().decode(chunk);
     }
-  } catch {}
+  } catch {} // silent: stdin may be closed or absent in non-interactive hook invocations
   return result;
 }
 
@@ -53,14 +53,14 @@ export async function readStdinPassthrough(): Promise<string> {
       result += new TextDecoder().decode(chunk);
       process.stdout.write(chunk);
     }
-  } catch {}
+  } catch {} // silent: same as readStdin — stream may close unexpectedly
   return result;
 }
 
 /** Parse JSON input and extract cwd. Returns { input, cwd } or null if no cwd. */
 export function parseHookInput(raw: string): { input: Record<string, any>; cwd: string } | null {
   let input: Record<string, any> = {};
-  try { input = JSON.parse(raw); } catch {}
+  try { input = JSON.parse(raw); } catch {} // silent: malformed stdin yields empty input; cwd check below handles it
 
   const cwd: string = input.cwd || input.working_directory || input.session?.cwd || "";
   if (!cwd) return null;

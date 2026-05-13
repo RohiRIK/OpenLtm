@@ -68,7 +68,7 @@ function parseLog(): LogEntry[] {
     }
     return entries;
   } catch {
-    return [];
+    return []; // silent: log file unreadable (permissions or partial write); report will show zero entries
   }
 }
 
@@ -76,7 +76,7 @@ function buildReport(): void {
   // Load settings
   let settings: Record<string, unknown> = {};
   if (existsSync(SETTINGS_PATH)) {
-    try { settings = JSON.parse(readFileSync(SETTINGS_PATH, "utf-8")); } catch {}
+    try { settings = JSON.parse(readFileSync(SETTINGS_PATH, "utf-8")); } catch {} // silent: malformed settings.json; hook list will be empty
   } else {
     console.log("⚠  settings.json not found at", SETTINGS_PATH);
   }
