@@ -22,8 +22,7 @@ let getOnboardedFlagPath: typeof import("../onboard.js").getOnboardedFlagPath;
 beforeAll(async () => {
   mkdirSync(PLUGIN_DATA, { recursive: true });
 
-  const { runPendingMigrations } = await import("../migrations.js");
-  const { _setDbForTesting } = await import("../shared-db.js");
+  const { runPendingMigrations, _setDbForTesting } = await import("@rohirik/ltm-core");
 
   const db = new Database(DB_PATH, { create: true });
   db.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;");

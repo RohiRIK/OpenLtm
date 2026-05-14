@@ -10,7 +10,7 @@ import { extractProposals } from "../lib/llmExtract.js";
 import { writeProposals, type MemoryProposal } from "../lib/proposalQueue.js";
 import { readConfigSync } from "../../src/config.js";
 import type { Config } from "../../src/config.js";
-import { emitEvent } from "../../src/lib/jsonlLogger.js";
+import { emitEvent } from "@rohirik/ltm-core";
 
 const PLUGIN_ROOT = process.env.CLAUDE_PLUGIN_ROOT ?? join(CLAUDE_DIR, "memory");
 const LEARNED_DIR = join(PLUGIN_ROOT, "skills", "Learned");

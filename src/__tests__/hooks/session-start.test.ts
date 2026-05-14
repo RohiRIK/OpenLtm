@@ -38,7 +38,7 @@ async function runHook(
 beforeAll(async () => {
   // Trigger DB creation by importing shared-db (ensures the DB file exists)
   process.env.LTM_DB_PATH = dbPath;
-  await import("../../shared-db.js");
+  await import("@rohirik/ltm-core");
 });
 
 afterAll(() => {

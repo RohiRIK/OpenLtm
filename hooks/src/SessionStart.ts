@@ -6,15 +6,10 @@ import { readStdin, parseHookInput, trimToLines, readFileSafe, safeRun } from ".
 import { logHook, logEvent } from "../lib/hookLogger.js";
 import { EVENTS } from "../lib/eventNames.js";
 import { spawnSync } from "child_process";
-import { getContextMerge, getSimilarMemories, getContextMergeWithGraph, computeDecayScore } from "../../src/db.js";
-import { embedText } from "../../src/embeddings.js";
-import { getDb } from "../../src/shared-db.js";
+import { getContextMerge, getSimilarMemories, getContextMergeWithGraph, computeDecayScore,
+         embedText, getDb, listMemoryIdsMissingEmbedding, exportContextMarkdown,
+         runPendingMigrations, getRecentConflicts, emitEvent } from "@rohirik/ltm-core";
 import { readConfigSync } from "../../src/config.js";
-import { listMemoryIdsMissingEmbedding } from "../../src/dao/embeddings.js";
-import { exportContextMarkdown } from "../../src/context.js";
-import { runPendingMigrations } from "../../src/migrations.js";
-import { getRecentConflicts } from "../../src/dao/conflicts.js";
-import { emitEvent } from "../../src/lib/jsonlLogger.js";
 
 const TMP_DIR      = join(CLAUDE_DIR, "tmp");
 const COUNTER_FILE = join(TMP_DIR, "session-tool-count.txt");

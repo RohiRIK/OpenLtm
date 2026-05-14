@@ -2,11 +2,9 @@
  * llmExtract.ts — Shared LLM extraction logic for EvaluateSession and GitCommit.
  * Sends text to an LLM and stores extracted decisions/gotchas/patterns as LTM memories.
  */
-import { learn } from "../../src/db.js";
-import { getLlmConfig, callLlm } from "../../src/embeddings.js";
-import type { MemoryCategory } from "../../src/db.js";
 import type { MemoryProposal } from "./proposalQueue.js";
 
+import { learn, getLlmConfig, callLlm, type MemoryCategory } from "@rohirik/ltm-core";
 const SYSTEM_PROMPT = `Extract learnings from the provided text. Return ONLY valid JSON:
 {"decisions":["..."],"gotchas":["..."],"patterns":["..."],"progress":"..."}
 - decisions: architectural choices made (max 5, <120 chars each)
