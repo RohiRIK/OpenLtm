@@ -1,0 +1,30 @@
+{
+  "name": "@rohirik/pi-ltm",
+  "version": "2.0.0",
+  "description": "LTM (Long-Term Memory) native extension for Pi — share memories with Claude Code and OpenCode",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "bunx tsc --noEmit",
+    "test": "bun test"
+  },
+  "keywords": ["pi", "pi-coding-agent", "ltm", "long-term-memory", "extension"],
+  "license": "MIT",
+  "dependencies": {
+    "@rohirik/ltm-core": "workspace:*"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": ">=1.0.0",
+    "bun-types": ">=1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-ai": { "optional": false },
+    "bun-types": { "optional": true }
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}
