@@ -7,6 +7,24 @@
  * install strategies.
  */
 
+// ── Agent detection ───────────────────────────────────────────────────────────
+
+/** Result of the auto-detect probe: which AI coding agents are installed. */
+export interface DetectResult {
+  claude: boolean;
+  opencode: boolean;
+  pi: boolean;
+}
+
+// ── Install result (per-target installer) ─────────────────────────────────────
+
+/** Returned by per-target install functions (claude.ts, opencode.ts, pi.ts). */
+export interface InstallResult {
+  target: string;
+  status: "installed" | "skipped" | "error";
+  detail?: string;
+}
+
 // ── Install targets ────────────────────────────────────────────────────────────
 
 /** Canonical string identifiers for supported host environments. */
