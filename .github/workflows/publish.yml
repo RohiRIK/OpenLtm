@@ -34,20 +34,28 @@ jobs:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
 
+      # workspace:* → concrete version before publishing
+      - name: Resolve workspace dependencies
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          for f in packages/adapter-opencode/package.json packages/adapter-pi/package.json; do
+            sed -i "s|\"workspace:\*\"|\"^${VERSION}\"|g" "$f"
+          done
+
       - name: Publish ltm-core
         working-directory: packages/ltm-core
-        run: npm publish --access public --provenance
+        run: npm publish --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish opencode adapter
         working-directory: packages/adapter-opencode
-        run: npm publish --access public --provenance
+        run: npm publish --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish pi extension
         working-directory: packages/adapter-pi
-        run: npm publish --access public --provenance
+        run: npm publish --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

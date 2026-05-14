@@ -13,6 +13,9 @@
   },
   "keywords": ["pi", "pi-coding-agent", "ltm", "long-term-memory", "extension"],
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "@rohirik/ltm-core": "workspace:*"
   },
