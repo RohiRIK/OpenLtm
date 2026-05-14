@@ -11,6 +11,10 @@
     "typecheck": "bunx tsc --noEmit",
     "test": "bun test"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/RohiRIK/claude-ltm-plugin"
+  },
   "keywords": ["pi", "pi-coding-agent", "ltm", "long-term-memory", "extension"],
   "license": "MIT",
   "publishConfig": {

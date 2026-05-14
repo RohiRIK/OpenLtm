@@ -11,6 +11,10 @@
     "typecheck": "bunx tsc --noEmit",
     "test": "bun test"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/RohiRIK/claude-ltm-plugin"
+  },
   "keywords": ["opencode", "ltm", "long-term-memory", "plugin"],
   "license": "MIT",
   "publishConfig": {
