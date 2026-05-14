@@ -5,8 +5,7 @@ import { resolveProject, getDbPath } from "../lib/resolveProject.js";
 import { readStdin, parseHookInput, readFileSafe, budgetSection, safeRun } from "../lib/hookUtils.js";
 import { logHook, logEvent } from "../lib/hookLogger.js";
 import { EVENTS } from "../lib/eventNames.js";
-import { getItems, exportContextMarkdown } from "../../src/context.js";
-import { emitEvent } from "../../src/lib/jsonlLogger.js";
+import { getItems, exportContextMarkdown, emitEvent } from "@rohirik/ltm-core";
 
 const DB_PATH = getDbPath();
 

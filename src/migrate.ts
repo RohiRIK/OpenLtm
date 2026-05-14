@@ -18,8 +18,8 @@ const CLAUDE_DIR   = join(homedir(), ".claude");
 const PROJECTS_DIR = join(CLAUDE_DIR, "projects");
 const LEARNED_DIR  = join(CLAUDE_DIR, "skills/Learned");
 
-const { addItem, exportContextMarkdown } = await import("./context.js");
-const { learn, exportMarkdown }          = await import("./db.js");
+const { addItem, exportContextMarkdown } = await import("@rohirik/ltm-core");
+const { learn, exportMarkdown }          = await import("@rohirik/ltm-core");
 
 function readFileSafe(p: string): string {
   try { return existsSync(p) ? readFileSync(p, "utf-8") : ""; } catch { return ""; }

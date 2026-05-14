@@ -16,9 +16,7 @@ import * as p from "@clack/prompts";
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from "fs";
 import { join, basename, dirname } from "path";
 import { homedir } from "os";
-import { getDb } from "./shared-db.js";
-import { upsertGoal } from "./dao/contextItems.js";
-import { learn } from "./db.js";
+import { getDb, upsertGoal, learn } from "@rohirik/ltm-core";
 
 const CLAUDE_DIR = join(homedir(), ".claude");
 const PROJECTS_DIR = join(CLAUDE_DIR, "projects");

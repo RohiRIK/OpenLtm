@@ -5,7 +5,7 @@
 import { join } from "path";
 import { CLAUDE_DIR } from "../lib/resolveProject.js";
 import { readStdin, safeRun } from "../lib/hookUtils.js";
-import { emitEvent } from "../../src/lib/jsonlLogger.js";
+import { emitEvent } from "@rohirik/ltm-core";
 import { EVENTS } from "../lib/eventNames.js";
 
 const PID_PATH = join(CLAUDE_DIR, "tmp", "ltm-server.pid");

@@ -15,7 +15,7 @@ import { homedir } from "os";
 import { spawnSync } from "child_process";
 import { resolveProject, CLAUDE_DIR } from "../lib/resolveProject.js";
 import { safeRun } from "../lib/hookUtils.js";
-import { emitEvent } from "../../src/lib/jsonlLogger.js";
+import { emitEvent } from "@rohirik/ltm-core";
 import { EVENTS } from "../lib/eventNames.js";
 import { readConfigSync } from "../../src/config.js";
 import type { Config } from "../../src/config.js";

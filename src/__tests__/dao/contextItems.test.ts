@@ -8,12 +8,12 @@ const dbPath = `/tmp/test-ltm-dao-${process.pid}-${Date.now()}.db`;
 const schemaPath = join(import.meta.dir, "..", "..", "..", "src", "schema.sql");
 
 // Deferred — imported after the DB is injected
-let listByProject: typeof import("../../dao/contextItems.js").listByProject;
-let appendProgress: typeof import("../../dao/contextItems.js").appendProgress;
-let upsertGoal: typeof import("../../dao/contextItems.js").upsertGoal;
-let addDecision: typeof import("../../dao/contextItems.js").addDecision;
-let addGotcha: typeof import("../../dao/contextItems.js").addGotcha;
-let writeQueue: typeof import("../../lib/writeQueue.js").writeQueue;
+let listByProject: typeof import("@rohirik/ltm-core").listByProject;
+let appendProgress: typeof import("@rohirik/ltm-core").appendProgress;
+let upsertGoal: typeof import("@rohirik/ltm-core").upsertGoal;
+let addDecision: typeof import("@rohirik/ltm-core").addDecision;
+let addGotcha: typeof import("@rohirik/ltm-core").addGotcha;
+let writeQueue: typeof import("@rohirik/ltm-core").writeQueue;
 
 async function drain() {
   await writeQueue.enqueue(() => {});
@@ -22,8 +22,8 @@ async function drain() {
 beforeAll(async () => {
   // Create a fully-migrated test DB without touching the shared-db singleton env var.
   // This avoids the process.env.LTM_DB_PATH race when test files run concurrently.
-  const { runPendingMigrations } = await import("../../migrations.js");
-  const { _setDbForTesting } = await import("../../shared-db.js");
+  const { runPendingMigrations } = await import("@rohirik/ltm-core");
+  const { _setDbForTesting } = await import("@rohirik/ltm-core");
 
   const testDb = new Database(dbPath, { create: true });
   testDb.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;");
@@ -33,8 +33,8 @@ beforeAll(async () => {
   // Inject the fresh DB so all DAO functions use it
   _setDbForTesting(testDb);
 
-  const dao = await import("../../dao/contextItems.js");
-  const wq = await import("../../lib/writeQueue.js");
+  const dao = await import("@rohirik/ltm-core");
+  const wq = await import("@rohirik/ltm-core");
   listByProject = dao.listByProject;
   appendProgress = dao.appendProgress;
   upsertGoal = dao.upsertGoal;

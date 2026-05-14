@@ -1,7 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { DisabledProvider } from "../../providers/disabled.js";
-import { loadProvider } from "../../providers/embeddingProvider.js";
 
+import { DisabledProvider, loadProvider } from "@rohirik/ltm-core";
 describe("DisabledProvider", () => {
   it("name is disabled", () => {
     expect(new DisabledProvider().name).toBe("disabled");

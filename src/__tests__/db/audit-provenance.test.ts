@@ -10,11 +10,11 @@ import { join } from "path";
 const dbPath = `/tmp/test-ltm-audit-int-${process.pid}-${Date.now()}.db`;
 const schemaPath = join(import.meta.dir, "..", "..", "..", "src", "schema.sql");
 
-let learn: typeof import("../../db.js").learn;
-let forget: typeof import("../../db.js").forget;
-let recall: typeof import("../../db.js").recall;
-let queryAudit: typeof import("../../dao/provenanceAudit.js").queryAudit;
-let listProvenance: typeof import("../../dao/provenanceAudit.js").listProvenance;
+let learn: typeof import("@rohirik/ltm-core").learn;
+let forget: typeof import("@rohirik/ltm-core").forget;
+let recall: typeof import("@rohirik/ltm-core").recall;
+let queryAudit: typeof import("@rohirik/ltm-core").queryAudit;
+let listProvenance: typeof import("@rohirik/ltm-core").listProvenance;
 let db: Database;
 
 beforeAll(async () => {
@@ -22,18 +22,18 @@ beforeAll(async () => {
   db.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
   db.exec(readFileSync(schemaPath, "utf-8"));
 
-  const { _setDbForTesting } = await import("../../shared-db.js");
+  const { _setDbForTesting } = await import("@rohirik/ltm-core");
   _setDbForTesting(db);
 
-  const { runPendingMigrations } = await import("../../migrations.js");
+  const { runPendingMigrations } = await import("@rohirik/ltm-core");
   await runPendingMigrations(db);
 
-  const dbMod = await import("../../db.js");
+  const dbMod = await import("@rohirik/ltm-core");
   learn = dbMod.learn;
   forget = dbMod.forget;
   recall = dbMod.recall;
 
-  const daoMod = await import("../../dao/provenanceAudit.js");
+  const daoMod = await import("@rohirik/ltm-core");
   queryAudit = daoMod.queryAudit;
   listProvenance = daoMod.listProvenance;
 }, 30_000);

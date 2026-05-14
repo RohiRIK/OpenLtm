@@ -37,9 +37,9 @@ describe("structured event emission", () => {
     expect(src).toContain("EVENTS.CONTEXT_UPDATED");
   });
 
-  it("UpdateContext imports from dao/index.js not context.js for writes", () => {
+  it("UpdateContext imports from ltm-core not direct context.js for writes", () => {
     const src = hookSrc("UpdateContext.ts");
-    expect(src).toContain("dao/index.js");
+    expect(src).toContain("ltm-core");
     expect(src).not.toContain('from "../../src/context.js"');
   });
 

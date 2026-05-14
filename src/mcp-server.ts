@@ -6,11 +6,8 @@
 import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { getDb } from "./shared-db.js";
-import { learn, recall, relate, forget, getContextMerge, type Memory } from "./db.js";
-import { queryAudit } from "./dao/provenanceAudit.js";
-import { getItems } from "./context.js";
-import { traverseGraph, buildReasoningContext } from "./graph.js";
+import { getDb, learn, recall, relate, forget, getContextMerge, type Memory,
+         queryAudit, getItems, traverseGraph, buildReasoningContext } from "@rohirik/ltm-core";
 
 // ─── Config check ────────────────────────────────────────────────────────────
 
@@ -99,7 +96,7 @@ server.tool(
       try {
         const [{ readConfigSync }, { categorise }] = await Promise.all([
           import("./config.js"),
-          import("./recall/categorise.js"),
+          import("@rohirik/ltm-core"),
         ]);
         const cfg = readConfigSync();
         const threshold = cfg.embeddings?.confidenceThreshold ?? 0.6;

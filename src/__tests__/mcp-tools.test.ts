@@ -1,31 +1,33 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { unlinkSync } from "fs";
+import { readFileSync, unlinkSync } from "fs";
+import { join } from "path";
+import { Database } from "bun:sqlite";
 
-const dbPath = `/tmp/test-ltm-mcp-tools-${Date.now()}.db`;
+const dbPath = `/tmp/test-ltm-mcp-tools-${process.pid}-${Date.now()}.db`;
+const SCHEMA_PATH = join(import.meta.dir, "..", "..", "src", "schema.sql");
 
-// Must set env BEFORE any dynamic import that triggers getDb()
-process.env.LTM_DB_PATH = dbPath;
-
-let learn: (input: import("../db.js").LearnInput) => import("../db.js").LearnResult;
-let recall: (input?: import("../db.js").RecallInput) => Promise<import("../db.js").MemoryWithRelations[]>;
+let learn: (input: import("@rohirik/ltm-core").LearnInput) => import("@rohirik/ltm-core").LearnResult;
+let recall: (input?: import("@rohirik/ltm-core").RecallInput) => Promise<import("@rohirik/ltm-core").MemoryWithRelations[]>;
 let forget: (input: { id: number; reason?: string; skipExport?: boolean }) => void;
-let relate: (input: { source_id: number; target_id: number; relationship_type: import("../db.js").RelationshipType }) => void;
-let getContextMerge: (project: string) => { globals: import("../db.js").Memory[]; scoped: import("../db.js").Memory[] };
+let relate: (input: { source_id: number; target_id: number; relationship_type: import("@rohirik/ltm-core").RelationshipType }) => void;
+let getContextMerge: (project: string) => { globals: import("@rohirik/ltm-core").Memory[]; scoped: import("@rohirik/ltm-core").Memory[] };
 
 beforeAll(async () => {
-  // Ensure migrations run before any test uses the DB (sync getDb() fallback
-  // in shared-db.ts applies schema.sql only; migrations run async and may not
-  // settle before the first learn() call).
-  const { initDb } = await import("../shared-db.js");
-  await initDb();
+  const { runPendingMigrations, _setDbForTesting } = await import("@rohirik/ltm-core");
 
-  const db = await import("../db.js");
-  learn = db.learn;
-  recall = db.recall;
-  forget = db.forget;
-  relate = db.relate;
-  getContextMerge = db.getContextMerge;
-});
+  const db = new Database(dbPath, { create: true });
+  db.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;");
+  db.exec(readFileSync(SCHEMA_PATH, "utf-8"));
+  await runPendingMigrations(db);
+  _setDbForTesting(db);
+
+  const mod = await import("@rohirik/ltm-core");
+  learn = mod.learn;
+  recall = mod.recall;
+  forget = mod.forget;
+  relate = mod.relate;
+  getContextMerge = mod.getContextMerge;
+}, 30_000);
 
 afterAll(() => {
   try { unlinkSync(dbPath); } catch {}

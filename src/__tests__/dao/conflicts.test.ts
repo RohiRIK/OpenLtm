@@ -6,12 +6,12 @@ import { join } from "path";
 const dbPath = `/tmp/test-ltm-conflicts-${process.pid}-${Date.now()}.db`;
 const schemaPath = join(import.meta.dir, "..", "..", "..", "src", "schema.sql");
 
-let getRecentConflicts: typeof import("../../dao/conflicts.js").getRecentConflicts;
+let getRecentConflicts: typeof import("@rohirik/ltm-core").getRecentConflicts;
 let db: Database;
 
 beforeAll(async () => {
-  const { runPendingMigrations } = await import("../../migrations.js");
-  const { _setDbForTesting } = await import("../../shared-db.js");
+  const { runPendingMigrations } = await import("@rohirik/ltm-core");
+  const { _setDbForTesting } = await import("@rohirik/ltm-core");
 
   db = new Database(dbPath, { create: true });
   db.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;");
@@ -19,7 +19,7 @@ beforeAll(async () => {
   await runPendingMigrations(db);
   _setDbForTesting(db);
 
-  ({ getRecentConflicts } = await import("../../dao/conflicts.js"));
+  ({ getRecentConflicts } = await import("@rohirik/ltm-core"));
 }, 30_000);
 
 afterAll(() => {

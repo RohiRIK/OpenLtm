@@ -18,7 +18,7 @@ const dbPath = `/tmp/test-ltm-archive-unit-${process.pid}-${Date.now()}.db`;
 const schemaPath = join(import.meta.dir, "..", "..", "..", "src", "schema.sql");
 
 let db: Database;
-let runArchive: typeof import("../../janitor/archive.js").runArchive;
+let runArchive: typeof import("@rohirik/ltm-core").runArchive;
 
 let idSeq = 9000;
 function nextId(): number { return idSeq++; }
@@ -52,13 +52,13 @@ beforeAll(async () => {
   db.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
   db.exec(readFileSync(schemaPath, "utf-8"));
 
-  const { _setDbForTesting } = await import("../../shared-db.js");
+  const { _setDbForTesting } = await import("@rohirik/ltm-core");
   _setDbForTesting(db);
 
-  const { runPendingMigrations } = await import("../../migrations.js");
+  const { runPendingMigrations } = await import("@rohirik/ltm-core");
   await runPendingMigrations(db);
 
-  const mod = await import("../../janitor/archive.js");
+  const mod = await import("@rohirik/ltm-core");
   runArchive = mod.runArchive;
 }, 30_000);
 
