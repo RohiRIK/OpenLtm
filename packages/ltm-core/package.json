@@ -7,8 +7,12 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "keywords": ["ltm", "long-term-memory", "claude-code", "sqlite", "memory"],
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "bun-types": "^1.0.0"
-  },
-  "private": true
+  }
 }
