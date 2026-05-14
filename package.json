@@ -31,6 +31,7 @@
   "overrides": {
     "path-to-regexp": "^8.4.0",
     "hono": "^4.12.12",
-    "@hono/node-server": "^1.19.13"
+    "@hono/node-server": "^1.19.13",
+    "fast-uri": "^3.1.2"
   }
 }
