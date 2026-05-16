@@ -1,7 +1,7 @@
 {
   "name": "ltm",
   "description": "Long-Term Memory system for Claude Code \u2014 semantic search, context injection, session learning",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "author": {
     "name": "RohiRIK"
   },
