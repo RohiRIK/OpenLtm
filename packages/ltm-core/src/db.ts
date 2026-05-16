@@ -70,6 +70,8 @@ export interface MemoryWithRelations extends Memory {
 
 export interface LearnInput {
   content: string;
+  /** Short human-readable label (≤60 chars). Agent-supplied; falls back to heuristic. */
+  title?: string;
   category: MemoryCategory;
   importance?: number;
   confidence?: number;
@@ -111,6 +113,19 @@ export interface RecallInput {
   includeProvenance?: boolean;
 }
 
+
+/** Derive a short title from content when none is agent-supplied. */
+export function deriveTitle(content: string): string {
+  const trimmed = content.trim();
+  const dot = trimmed.indexOf('.');
+  const nl = trimmed.indexOf('\n');
+  const boundary = [dot, nl].filter(i => i > 1 && i <= 60).sort((a, b) => a - b)[0];
+  if (boundary !== undefined) return trimmed.slice(0, boundary).trim();
+  if (trimmed.length <= 60) return trimmed;
+  const cut = trimmed.slice(0, 57);
+  const lastSpace = cut.lastIndexOf(' ');
+  return (lastSpace > 20 ? cut.slice(0, lastSpace) : cut) + '…';
+}
 
 function tryAudit(fn: () => void): void {
   try { fn(); } catch (e) { process.stderr.write(`[audit] write failed: ${e}\n`); }
@@ -330,11 +345,14 @@ export function learn(input: LearnInput): LearnResult {
     return { action: "reinforced", id: existing.id, confirm_count: updated?.confirm_count ?? existing.confirm_count + 1 };
   }
 
+  const title = input.title?.trim().slice(0, 60) || deriveTitle(content);
+
   const result = db.run(
-    `INSERT INTO memories (content, category, importance, confidence, source, project_scope, dedup_key, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO memories (content, title, category, importance, confidence, source, project_scope, dedup_key, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       content,
+      title,
       input.category,
       input.importance ?? 3,
       input.confidence ?? 1.0,

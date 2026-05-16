@@ -28,20 +28,22 @@ export function buildTools(_dbPath: string): ToolDefinition[] {
 
     {
       name: "ltm_learn",
-      description: "Store or reinforce a memory. Call after discovering a non-obvious pattern, gotcha, or architectural decision.",
+      description: "Store or reinforce a memory. Call after discovering a non-obvious pattern, gotcha, or architectural decision. Always provide a title: a concise noun-phrase label (≤60 chars).",
       parameters: {
         type: "object",
         properties: {
           content: { type: "string", description: "The insight, pattern, or decision to store" },
+          title: { type: "string", description: "Short label (≤60 chars, noun-phrase). Always provide this.", maxLength: 60 },
           category: { type: "string", enum: ["preference", "architecture", "gotcha", "pattern", "workflow", "constraint"] },
           importance: { type: "number", description: "Importance 1-5 (default 3)", minimum: 1, maximum: 5 },
           project: { type: "string", description: "Scope to a specific project" },
         },
         required: ["content"],
       },
-      async execute({ content, category, importance, project }: Record<string, unknown>) {
+      async execute({ content, title, category, importance, project }: Record<string, unknown>) {
         const result = learn({
           content: content as string,
+          title: title as string | undefined,
           category: category as string | undefined,
           importance: importance as number | undefined,
           project_scope: project as string | undefined,

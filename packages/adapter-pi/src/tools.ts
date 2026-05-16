@@ -42,11 +42,12 @@ export function registerTools(pi: PiAny): void {
     name: "ltm_learn",
     label: "ltm_learn",
     description:
-      "Store or reinforce a memory. Call after discovering a non-obvious pattern, gotcha, or architectural decision.",
+      "Store or reinforce a memory. Call after discovering a non-obvious pattern, gotcha, or architectural decision. Always provide a title: a concise noun-phrase label (≤60 chars).",
     parameters: {
       type: "object",
       properties: {
         content: { type: "string", description: "The insight, pattern, or decision to store" },
+        title: { type: "string", description: "Short label (≤60 chars, noun-phrase). Always provide this.", maxLength: 60 },
         category: {
           type: "string",
           enum: ["preference", "architecture", "gotcha", "pattern", "workflow", "constraint"],
@@ -59,6 +60,7 @@ export function registerTools(pi: PiAny): void {
     async execute(_toolCallId: string, params: Record<string, unknown>) {
       const result = learn({
         content: params["content"] as string,
+        title: params["title"] as string | undefined,
         category: params["category"] as string | undefined,
         importance: params["importance"] as number | undefined,
         project_scope: params["project"] as string | undefined,
