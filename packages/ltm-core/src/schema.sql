@@ -71,7 +71,6 @@ CREATE INDEX IF NOT EXISTS idx_memories_status     ON memories(status);
 CREATE INDEX IF NOT EXISTS idx_memories_last_used  ON memories(last_used_at);
 CREATE INDEX IF NOT EXISTS idx_memories_superseded ON memories(superseded_by);
 CREATE INDEX IF NOT EXISTS idx_memories_recall_count ON memories(recall_count DESC);
-CREATE INDEX IF NOT EXISTS idx_memories_hidden     ON memories(hidden) WHERE hidden = 1;
 
 -- ============================================================
 -- tags + memory_tags: many-to-many tagging for memories
