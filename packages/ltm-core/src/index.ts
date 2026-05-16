@@ -62,6 +62,13 @@ export {
   getEmbeddingProvider, semanticSearch,
 } from "./janitor/index.js";
 export { runDecay } from "./janitor/decay.js";
+export { SETTING_KEYS, SETTING_DEFAULTS } from "./janitor/providers/types.js";
+export { anthropicLLM } from "./janitor/providers/anthropic.js";
+export { cohereEmbedding } from "./janitor/providers/cohere.js";
+export { geminiEmbedding, geminiLLM } from "./janitor/providers/gemini.js";
+export { ollamaEmbedding } from "./janitor/providers/ollama.js";
+export { openaiEmbedding } from "./janitor/providers/openai.js";
+export { openrouterEmbedding } from "./janitor/providers/openrouter.js";
 
 // Graph
 export { traverseGraph, buildReasoningContext } from "./graph.js";
