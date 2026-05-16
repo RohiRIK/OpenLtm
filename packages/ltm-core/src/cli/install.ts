@@ -162,7 +162,7 @@ export async function runInstallCli(opts: CliRunOpts): Promise<CliRunResult> {
   if (targets.pi) {
     const s = silent ? null : clack.spinner();
     if (s) s.start("Installing into Pi…");
-    const r = await installPi({ homedir, dryRun });
+    const r = await installPi({ dryRun });
     results.push(r);
     if (s) {
       if (r.status === "installed") {
