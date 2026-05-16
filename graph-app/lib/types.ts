@@ -77,7 +77,7 @@ export interface Tag {
 }
 
 export interface MemoryDetail extends MemoryNode {
-  relations: Array<{ related_id: number; type: string; direction: string }>;
+  relations: Array<{ relation_id: number; related_id: number; type: string; direction: string }>;
 }
 
 export interface SearchResult {
