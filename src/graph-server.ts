@@ -8,34 +8,23 @@ import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, watch } from "fs";
 import { dirname, join } from "path";
 
-import { CLAUDE_DIR } from "../hooks/lib/resolveProject.js";
-import { getAllSettings, getDb, getSetting, setSetting } from "./shared-db.js";
+import { homedir } from "os";
 import {
-  approveMemory,
-  getEmbeddingProvider,
-  getJanitorStatus,
-  getPendingMemories,
-  mergeMemories,
-  parseDedupSource,
-  rejectMemory,
-  runJanitor,
-  startAutoRun,
-  supersede,
-} from "./janitor/index.js";
-import { semanticSearch } from "./janitor/embeddings.js";
-import { SETTING_DEFAULTS, SETTING_KEYS } from "./janitor/providers/types.js";
-import { anthropicLLM } from "./janitor/providers/anthropic.js";
-import { traverseGraph, buildReasoningContext } from "./graph.js";
+  getAllSettings, getDb, getSetting, setSetting,
+  approveMemory, getEmbeddingProvider, getJanitorStatus, getPendingMemories,
+  mergeMemories, parseDedupSource, rejectMemory, runJanitor, startAutoRun, supersede,
+  semanticSearch,
+  SETTING_DEFAULTS, SETTING_KEYS,
+  anthropicLLM,
+  traverseGraph, buildReasoningContext,
+  embedText, getSimilarMemories,
+  cohereEmbedding, geminiEmbedding, ollamaEmbedding, openaiEmbedding, openrouterEmbedding,
+} from "@rohirik/ltm-core";
 import { detectCommunities, generateClusterLabel, assignClusterColors } from "./cluster.js";
 import { getDbPath, getSchemaPath } from "./paths.js";
 import type { Cluster } from "./graph-app/lib/types.js";
-import { embedText } from "./embeddings.js";
-import { getSimilarMemories } from "./db.js";
-import { cohereEmbedding } from "./janitor/providers/cohere.js";
-import { geminiEmbedding } from "./janitor/providers/gemini.js";
-import { ollamaEmbedding } from "./janitor/providers/ollama.js";
-import { openaiEmbedding } from "./janitor/providers/openai.js";
-import { openrouterEmbedding } from "./janitor/providers/openrouter.js";
+
+const CLAUDE_DIR = join(homedir(), ".claude");
 
 /** Parse a clamped integer from URL search params. */
 function parseClampedInt(params: URLSearchParams, key: string, defaultVal: number, min: number, max: number): number {
