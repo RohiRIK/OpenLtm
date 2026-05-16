@@ -342,7 +342,7 @@ function MemoryPanel({ node, onRelationClick, nodeLabelById, onUpdated, onClose 
               const isActive = i === relationIdx;
               return (
                 <button
-                  key={r.related_id}
+                  key={r.relation_id ?? `${r.related_id}-${i}`}
                   onClick={() => { setRelationIdx(i); onRelationClick?.(r.related_id); }}
                   className={`w-full flex items-center gap-2 text-[11px] rounded px-2.5 py-1.5 border transition-colors cursor-pointer text-left ${
                     isActive
@@ -636,6 +636,7 @@ export default function Sidebar({ node, onClose, onRelationClick, nodeLabelById,
   return (
     <div
       className={`transition-all duration-200 overflow-hidden shrink-0 ${node ? "w-80" : "w-0"}`}
+      data-testid="sidebar"
     >
       {node && (
         <div className="min-w-[280px] bg-[var(--bg-primary)] border-l border-[var(--border)] flex flex-col overflow-hidden h-full">

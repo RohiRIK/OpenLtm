@@ -425,10 +425,10 @@ function getMemoryById(id: number) {
     `SELECT t.name FROM tags t JOIN memory_tags mt ON t.id=mt.tag_id WHERE mt.memory_id=?`,
     [id]
   ).map(r => r.name);
-  const relations = queryDb<{ related_id: number; type: string; direction: string }>(`
-    SELECT target_memory_id as related_id, relationship_type as type, 'outgoing' as direction FROM memory_relations WHERE source_memory_id=?
+  const relations = queryDb<{ relation_id: number; related_id: number; type: string; direction: string }>(`
+    SELECT id as relation_id, target_memory_id as related_id, relationship_type as type, 'outgoing' as direction FROM memory_relations WHERE source_memory_id=?
     UNION ALL
-    SELECT source_memory_id as related_id, relationship_type as type, 'incoming' as direction FROM memory_relations WHERE target_memory_id=?
+    SELECT id as relation_id, source_memory_id as related_id, relationship_type as type, 'incoming' as direction FROM memory_relations WHERE target_memory_id=?
   `, [id, id]);
   return { ...m, tags, relations };
 }
