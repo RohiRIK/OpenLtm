@@ -54,6 +54,10 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
+      - name: Build pi extension
+        working-directory: packages/adapter-pi
+        run: bun run build
+
       - name: Publish pi extension
         working-directory: packages/adapter-pi
         run: npm publish --provenance
