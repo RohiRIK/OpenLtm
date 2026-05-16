@@ -19,6 +19,7 @@ import {
   traverseGraph, buildReasoningContext,
   embedText, getSimilarMemories,
   cohereEmbedding, geminiEmbedding, ollamaEmbedding, openaiEmbedding, openrouterEmbedding,
+  runPendingMigrations,
 } from "@rohirik/ltm-core";
 import { detectCommunities, generateClusterLabel, assignClusterColors } from "./cluster.js";
 import { getDbPath, getSchemaPath } from "./paths.js";
@@ -172,10 +173,6 @@ const PORT = 7331;
 // Cache schema at startup — it never changes at runtime
 const SCHEMA = readFileSync(SCHEMA_PATH, "utf-8");
 
-// Migration 005: cluster tables
-const MIGRATION_005_PATH = join(import.meta.dir, "..", "migrations", "005_clusters.sql");
-const MIGRATION_005 = readFileSync(MIGRATION_005_PATH, "utf-8");
-
 // Ensure tmp dir and write PID
 mkdirSync(join(CLAUDE_DIR, "tmp"), { recursive: true });
 await Bun.write(PID_PATH, String(process.pid));
@@ -185,7 +182,8 @@ const db = new Database(DB_PATH);
 db.exec("PRAGMA journal_mode=WAL;");
 db.exec("PRAGMA foreign_keys=ON;");
 db.exec(SCHEMA);
-db.exec(MIGRATION_005);
+// Run all pending migrations (idempotent — adds Phase 7 columns to existing DBs)
+await runPendingMigrations(db);
 
 type Params = SQLQueryBindings[];
 
