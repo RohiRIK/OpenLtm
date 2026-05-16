@@ -39,6 +39,10 @@ export async function installPi(opts: {
   const dryRun = opts.dryRun ?? false;
   const piCmd = opts._piCmd ?? findPiCli();
 
+  if (piCmd && !/^[a-zA-Z0-9/_.-]+$/.test(piCmd)) {
+    throw new Error(`Invalid piCmd — unexpected characters: ${piCmd}`);
+  }
+
   if (!piCmd) {
     return {
       target: "pi",
