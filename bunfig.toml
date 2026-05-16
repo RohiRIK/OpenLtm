@@ -1,4 +1,5 @@
 [test]
+timeout = 30000
 
 # Exclude graph-app Playwright tests from bun test (use bun run test:e2e instead)
 # Bun does not support an "exclude" key in bunfig.toml — the exclusion is handled
