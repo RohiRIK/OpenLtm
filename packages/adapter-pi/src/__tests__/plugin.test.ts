@@ -2,22 +2,26 @@ import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 import { readFileSync, unlinkSync } from "fs";
 import { join } from "path";
 import { Database } from "bun:sqlite";
-import type { PiExtensionAPI, PiToolDefinition } from "@earendil-works/pi-ai";
 
 const dbPath = `/tmp/test-pi-ltm-${process.pid}-${Date.now()}.db`;
 const SCHEMA_PATH = join(import.meta.dir, "..", "..", "..", "ltm-core", "src", "schema.sql");
 
-// Mock Pi API
-function createMockPi(): PiExtensionAPI & { tools: PiToolDefinition[]; handlers: Record<string, Function[]> } {
-  const tools: PiToolDefinition[] = [];
-  const handlers: Record<string, Function[]> = {};
+function createMockPi() {
+  const tools: Array<{
+    name: string;
+    label: string;
+    description: string;
+    parameters: unknown;
+    execute: (toolCallId: string, params: Record<string, unknown>) => Promise<unknown>;
+  }> = [];
+  const handlers: Record<string, Array<(...args: unknown[]) => unknown>> = {};
   return {
     tools,
     handlers,
-    registerTool(def) { tools.push(def); },
-    on(event, handler) {
+    registerTool(def: typeof tools[0]) { tools.push(def); },
+    on(event: string, handler: (...args: unknown[]) => unknown) {
       if (!handlers[event]) handlers[event] = [];
-      handlers[event]!.push(handler as Function);
+      handlers[event]!.push(handler);
     },
   };
 }
@@ -54,53 +58,60 @@ describe("Pi LTM extension — registerTools()", () => {
     expect(names).toContain("ltm_learn");
     expect(names).toContain("ltm_forget");
   });
+
+  it("tools have label and description", async () => {
+    const { registerTools } = await import("../tools.js");
+    const pi = createMockPi();
+    registerTools(pi);
+    for (const tool of pi.tools) {
+      expect(tool.label).toBeTruthy();
+      expect(tool.description).toBeTruthy();
+    }
+  });
 });
 
 describe("Pi LTM extension — registerHooks()", () => {
-  it("registers session:start and compact hooks", async () => {
+  it("registers before_agent_start and session_compact hooks", async () => {
     const { registerHooks } = await import("../hooks.js");
     const pi = createMockPi();
     registerHooks(pi);
-    expect(pi.handlers["session:start"]?.length).toBeGreaterThan(0);
-    expect(pi.handlers["compact"]?.length).toBeGreaterThan(0);
+    expect(pi.handlers["before_agent_start"]?.length).toBeGreaterThan(0);
+    expect(pi.handlers["session_compact"]?.length).toBeGreaterThan(0);
   });
 
-  it("session:start injects Prior Knowledge block when memories exist", async () => {
+  it("before_agent_start returns systemPrompt with Prior Knowledge when memories exist", async () => {
     const { learn } = await import("@rohirik/ltm-core");
-    learn({ content: "Pi test memory — use strict types", category: "pattern", importance: 3, project_scope: "pi-test-proj", skipExport: true });
+    learn({
+      content: "Pi test memory — use strict types",
+      category: "pattern",
+      importance: 3,
+      project_scope: "pi-test-proj",
+      skipExport: true,
+    });
 
     const { registerHooks } = await import("../hooks.js");
     const pi = createMockPi();
     registerHooks(pi);
 
-    const appended: string[] = [];
-    const ctx = {
+    const result = await pi.handlers["before_agent_start"]![0]!({
       cwd: "/tmp/pi-test-proj",
-      sessionID: "pi-test-session-1",
-      appendToSystemPrompt: (block: string) => { appended.push(block); },
-    };
+      systemPrompt: "",
+    }) as { systemPrompt?: string } | undefined;
 
-    await pi.handlers["session:start"]![0]!(ctx);
-
-    expect(appended.length).toBeGreaterThan(0);
-    expect(appended.some(b => b.includes("Prior Knowledge"))).toBe(true);
+    expect(result?.systemPrompt).toContain("Prior Knowledge");
   });
 
-  it("session:start does not inject when no memories for project", async () => {
+  it("before_agent_start returns undefined when no memories for project", async () => {
     const { registerHooks } = await import("../hooks.js");
     const pi = createMockPi();
     registerHooks(pi);
 
-    const appended: string[] = [];
-    const ctx = {
-      cwd: "/tmp/empty-pi-project",
-      sessionID: "pi-test-session-2",
-      appendToSystemPrompt: (block: string) => { appended.push(block); },
-    };
+    const result = await pi.handlers["before_agent_start"]![0]!({
+      cwd: "/tmp/empty-pi-project-xyz-no-memories",
+      systemPrompt: "",
+    });
 
-    await pi.handlers["session:start"]![0]!(ctx);
-
-    expect(appended.length).toBe(0);
+    expect(result).toBeUndefined();
   });
 });
 
@@ -113,19 +124,21 @@ describe("ltm_learn / ltm_recall roundtrip via Pi tools", () => {
     const learnTool = pi.tools.find(t => t.name === "ltm_learn")!;
     const recallTool = pi.tools.find(t => t.name === "ltm_recall")!;
 
-    const result = await learnTool.handler({
+    const learnResult = await learnTool.execute("call-1", {
       content: "Pi roundtrip test — always verify types",
       category: "gotcha",
       importance: 4,
-    }) as { id: number; action: string };
+    }) as { content: Array<{ type: string; text: string }> };
 
-    expect(result.id).toBeGreaterThan(0);
-    expect(result.action).toBe("created");
+    const learned = JSON.parse(learnResult.content[0]!.text) as { id: number; action: string };
+    expect(learned.id).toBeGreaterThan(0);
+    expect(learned.action).toBe("created");
 
-    const memories = await recallTool.handler({
+    const recallResult = await recallTool.execute("call-2", {
       query: "Pi roundtrip verify types",
-    }) as Array<{ id: number; content: string }>;
+    }) as { content: Array<{ type: string; text: string }> };
 
-    expect(memories.some(m => m.id === result.id)).toBe(true);
+    const memories = JSON.parse(recallResult.content[0]!.text) as Array<{ id: number }>;
+    expect(memories.some(m => m.id === learned.id)).toBe(true);
   });
 });
