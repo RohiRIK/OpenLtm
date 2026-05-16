@@ -217,10 +217,12 @@ function queryOne<T = unknown>(sql: string, params: Params = []): T | null {
 }
 
 type MemoryRow = {
-  id: number; content: string; category: string; importance: number;
+  id: number; content: string; title: string | null; category: string; importance: number;
   project_scope: string | null; confidence: number; confirm_count: number;
   source: string | null; dedup_key: string | null; last_confirmed_at: string;
   created_at: string; tags: string | null;
+  hidden: number; color: string | null; icon: string | null; user_note: string | null;
+  decay_score: number | null;
 };
 
 type CtxRow = {
@@ -228,16 +230,19 @@ type CtxRow = {
   session_id: string | null; permanent: number; created_at: string;
 };
 
-function getMemoriesWithTags(): MemoryRow[] {
+function getMemoriesWithTags(includeHidden = false): MemoryRow[] {
+  const hiddenClause = includeHidden ? "" : "AND m.hidden = 0";
   return queryDb<MemoryRow>(`
-    SELECT m.id, m.content, m.category, m.importance, m.project_scope,
+    SELECT m.id, m.content, m.title, m.category, m.importance, m.project_scope,
            m.confidence, m.confirm_count, m.source, m.dedup_key,
            m.last_confirmed_at, m.created_at,
+           m.hidden, m.color, m.icon, m.user_note,
+           m.decay_score,
            GROUP_CONCAT(t.name, ',') as tags
     FROM memories m
     LEFT JOIN memory_tags mt ON m.id = mt.memory_id
     LEFT JOIN tags t ON mt.tag_id = t.id
-    WHERE m.status = 'active'
+    WHERE m.status = 'active' ${hiddenClause}
     GROUP BY m.id
   `);
 }
@@ -319,11 +324,31 @@ function buildProjectEdges(
   return edges;
 }
 
-function getGraphData() {
-  const memories = getMemoriesWithTags();
-  const memLinks = queryDb<{ source: number; target: number; type: string; relation_id: number; created_at: string }>(
-    `SELECT id as relation_id, source_memory_id as source, target_memory_id as target, relationship_type as type, created_at FROM memory_relations`
-  );
+function getGraphData(includeHidden = false) {
+  const memories = getMemoriesWithTags(includeHidden);
+
+  type LinkRow = { source: number; target: number; type: string; relation_id: number; created_at: string; note: string | null; weight: number; decay_a: number | null; decay_b: number | null };
+  const rawLinks = queryDb<LinkRow>(`
+    SELECT r.id as relation_id,
+           r.source_memory_id as source,
+           r.target_memory_id as target,
+           r.relationship_type as type,
+           r.created_at,
+           r.note,
+           r.weight,
+           ms.decay_score as decay_a,
+           mt.decay_score as decay_b
+    FROM memory_relations r
+    LEFT JOIN memories ms ON ms.id = r.source_memory_id
+    LEFT JOIN memories mt ON mt.id = r.target_memory_id
+  `);
+
+  const memLinks = rawLinks.map(r => {
+    const decayA = r.decay_a ?? 1;
+    const decayB = r.decay_b ?? 1;
+    const effectiveWeight = r.weight * Math.min(decayA, decayB);
+    return { source: r.source, target: r.target, type: r.type, relation_id: r.relation_id, created_at: r.created_at, note: r.note, weight: effectiveWeight };
+  });
   const projectNodes = getProjectNodes();
   const projectIdMap = new Map(projectNodes.map(p => [p.label, p.id]));
   const ctxNodes = getContextNodes();
@@ -335,8 +360,9 @@ function getGraphData() {
       ...ctxNodes,
       ...memories.map(m => ({
         id: m.id,
-        label: truncate(m.content, 60),
+        label: m.title ?? truncate(m.content, 60),
         content: m.content,
+        title: m.title,
         category: m.category,
         importance: m.importance,
         project_scope: m.project_scope,
@@ -347,6 +373,10 @@ function getGraphData() {
         last_confirmed_at: m.last_confirmed_at,
         created_at: m.created_at,
         tags: parseTags(m.tags),
+        hidden: Boolean(m.hidden),
+        color: m.color,
+        icon: m.icon,
+        user_note: m.user_note,
       })),
     ],
     links: [...memLinks, ...projectEdges],
@@ -420,8 +450,9 @@ function getProjectDetail(projectName: string) {
   const context = getProjectContext(projectName);
 
   const memories = queryDb<MemoryRow>(
-    `SELECT m.id, m.content, m.category, m.importance, m.confidence, m.confirm_count,
+    `SELECT m.id, m.content, m.title, m.category, m.importance, m.confidence, m.confirm_count,
             m.source, m.dedup_key, m.last_confirmed_at, m.created_at,
+            m.hidden, m.color, m.icon, m.user_note,
             GROUP_CONCAT(t.name, ',') as tags
      FROM memories m
      LEFT JOIN memory_tags mt ON m.id = mt.memory_id
@@ -432,7 +463,7 @@ function getProjectDetail(projectName: string) {
     [projectName]
   ).map(m => ({
     ...m,
-    label: truncate(m.content, 60),
+    label: m.title ?? truncate(m.content, 60),
     project_scope: projectName,
     tags: parseTags(m.tags),
   }));
@@ -726,17 +757,30 @@ function scheduledRecompute(): void {
       const colors = assignClusterColors(clusterList.length);
       const now = new Date().toISOString();
 
-      const insert = db.prepare<void, [string, string, string, string, string, string]>(
-        "INSERT INTO memory_clusters(id,label,color,node_ids,created_at,updated_at) VALUES(?,?,?,?,?,?)"
+      // Snapshot manual-labeled clusters keyed by sorted node_ids so we can
+      // re-apply them after the recompute wipes the table (migration 021).
+      const manualRows = queryDb<{ label: string; node_ids: string }>(
+        "SELECT label, node_ids FROM memory_clusters WHERE manual_label=1"
+      );
+      const manualByKey = new Map<string, string>();
+      for (const row of manualRows) {
+        const key = JSON.stringify([...(JSON.parse(row.node_ids) as number[])].sort((a, b) => a - b));
+        manualByKey.set(key, row.label);
+      }
+
+      const insert = db.prepare<void, [string, string, string, string, number, string, string]>(
+        "INSERT INTO memory_clusters(id,label,color,node_ids,manual_label,created_at,updated_at) VALUES(?,?,?,?,?,?,?)"
       );
       db.transaction(() => {
         db.exec("DELETE FROM memory_clusters");
         for (let i = 0; i < clusterList.length; i++) {
           const [clusterId, nodeIds] = clusterList[i]!;
+          const sortedKey = JSON.stringify([...nodeIds].sort((a, b) => a - b));
+          const manualLabel = manualByKey.get(sortedKey);
           const tagGroups = nodeIds.map(nid => tagsByNodeId.get(nid) ?? []);
-          const label = generateClusterLabel(tagGroups, `Cluster ${i + 1}`);
+          const label = manualLabel ?? generateClusterLabel(tagGroups, `Cluster ${i + 1}`);
           const color = colors[i] ?? `hsl(${i * 47 % 360}, 65%, 55%)`;
-          insert.run(clusterId, label, color, JSON.stringify(nodeIds), now, now);
+          insert.run(clusterId, label, color, JSON.stringify(nodeIds), manualLabel ? 1 : 0, now, now);
         }
       })();
 
@@ -789,7 +833,10 @@ Bun.serve({
     const p = url.pathname;
 
     if (p === "/")                     return new Response(null, { status: 302, headers: { Location: "http://localhost:7332" } });
-    if (p === "/api/graph")            return Response.json(getGraphData());
+    if (p === "/api/graph") {
+      const includeHidden = url.searchParams.get("includeHidden") === "1";
+      return Response.json(getGraphData(includeHidden));
+    }
     if (p === "/api/stats")            return Response.json(getStats());
     if (p === "/api/tags")             return Response.json(getTags());
     if (p === "/api/search") {
@@ -798,6 +845,31 @@ Bun.serve({
     }
     if (p === "/api/reload" && req.method === "POST") {
       broadcast({ type: "refresh" });
+      return Response.json({ ok: true });
+    }
+
+    // ── Layout routes (G7) ────────────────────────────────────────────────────
+    if (p === "/api/layout" && req.method === "GET") {
+      const view = url.searchParams.get("view") ?? "global";
+      const rows = queryDb<{ memory_id: number; x: number; y: number; pinned: number }>(
+        `SELECT memory_id, x, y, pinned FROM memory_layout WHERE view = ?`, [view]
+      );
+      return Response.json(rows);
+    }
+    if (p === "/api/layout" && req.method === "POST") {
+      type LayoutEntry = { memory_id: number; view: string; x: number; y: number; pinned?: number };
+      const body = await req.json() as { entries: LayoutEntry[] };
+      if (!Array.isArray(body?.entries)) return new Response("Bad Request", { status: 400 });
+      const stmt = db.prepare<void, [number, string, number, number, number]>(
+        `INSERT INTO memory_layout (memory_id, view, x, y, pinned, updated_at)
+         VALUES (?, ?, ?, ?, ?, datetime('now'))
+         ON CONFLICT(memory_id, view) DO UPDATE SET x=excluded.x, y=excluded.y, pinned=excluded.pinned, updated_at=excluded.updated_at`
+      );
+      db.transaction(() => {
+        for (const e of body.entries) {
+          stmt.run(e.memory_id, e.view ?? "global", e.x, e.y, e.pinned ? 1 : 0);
+        }
+      })();
       return Response.json({ ok: true });
     }
 
@@ -1030,6 +1102,68 @@ Bun.serve({
       } catch (e) {
         return Response.json({ ok: false, error: String(e) }, { status: 400 });
       }
+    }
+
+    // ── Node UI-state route (G7/G13) ──────────────────────────────────────────
+    // PUT /api/memory/:id/ui — update hidden, color, icon, user_note, title
+    const uiMatch = p.match(/^\/api\/memory\/(\d+)\/ui$/);
+    if (uiMatch?.[1] && req.method === "PUT") {
+      const id = parseInt(uiMatch[1], 10);
+      const body = await req.json() as Record<string, unknown>;
+      const updates: string[] = [];
+      const params: (string | number | null)[] = [];
+      if ("hidden" in body)    { updates.push("hidden=?");    params.push(body.hidden ? 1 : 0); }
+      if ("color" in body)     { updates.push("color=?");     params.push((body.color as string | null) ?? null); }
+      if ("icon" in body)      { updates.push("icon=?");      params.push((body.icon as string | null) ?? null); }
+      if ("user_note" in body) { updates.push("user_note=?"); params.push((body.user_note as string | null) ?? null); }
+      if ("title" in body)     { updates.push("title=?");     params.push((body.title as string | null) ?? null); }
+      if (updates.length === 0) return Response.json({ ok: false, error: "No fields to update" }, { status: 400 });
+      params.push(id);
+      db.run(`UPDATE memories SET ${updates.join(", ")} WHERE id=?`, params);
+      broadcast({ type: "refresh" });
+      return Response.json({ ok: true });
+    }
+
+    // PUT /api/memory/:id/pin — pin or unpin in a specific view
+    const pinMatch = p.match(/^\/api\/memory\/(\d+)\/pin$/);
+    if (pinMatch?.[1] && req.method === "PUT") {
+      const id = parseInt(pinMatch[1], 10);
+      const view = url.searchParams.get("view") ?? "global";
+      const { pinned = true, x, y } = await req.json() as { pinned?: boolean; x?: number; y?: number };
+      const layout = queryOne<{ x: number; y: number }>(
+        `SELECT x, y FROM memory_layout WHERE memory_id=? AND view=?`, [id, view]
+      );
+      const nx = x ?? layout?.x ?? 0;
+      const ny = y ?? layout?.y ?? 0;
+      db.run(
+        `INSERT INTO memory_layout (memory_id, view, x, y, pinned, updated_at)
+         VALUES (?, ?, ?, ?, ?, datetime('now'))
+         ON CONFLICT(memory_id, view) DO UPDATE SET pinned=excluded.pinned, x=excluded.x, y=excluded.y, updated_at=excluded.updated_at`,
+        [id, view, nx, ny, pinned ? 1 : 0]
+      );
+      broadcast({ type: "refresh" });
+      return Response.json({ ok: true });
+    }
+
+    // GET /api/search/all — full-text search over memories + context_items titles + content
+    if (p === "/api/search/all" && req.method === "GET") {
+      const q = url.searchParams.get("q") ?? "";
+      if (q.length < 2) return Response.json([]);
+      const memResults = queryDb<{ id: number; content: string; title: string | null; category: string; importance: number; project_scope: string | null; type: string }>(
+        `SELECT m.id, m.content, m.title, m.category, m.importance, m.project_scope, 'memory' as type
+         FROM memories_fts f JOIN memories m ON m.id = f.rowid
+         WHERE memories_fts MATCH ? AND m.status = 'active'
+         ORDER BY rank LIMIT 20`,
+        [q]
+      );
+      const ctxResults = queryDb<{ id: number; content: string; title: string | null; category: string; importance: number; project_scope: string | null; type: string }>(
+        `SELECT c.id, c.content, c.title, c.type as category, 2 as importance, c.project_name as project_scope, 'context' as type
+         FROM context_items_fts f JOIN context_items c ON c.id = f.rowid
+         WHERE context_items_fts MATCH ?
+         LIMIT 10`,
+        [q]
+      );
+      return Response.json([...memResults, ...ctxResults]);
     }
 
     // ============================================================
@@ -1316,7 +1450,7 @@ Bun.serve({
         const id = decodeURIComponent(clusterLabelMatch[1]);
         const { label } = (await req.json()) as { label: string };
         const now = new Date().toISOString();
-        db.run("UPDATE memory_clusters SET label=?, updated_at=? WHERE id=?", [label, now, id]);
+        db.run("UPDATE memory_clusters SET label=?, manual_label=1, updated_at=? WHERE id=?", [label, now, id]);
         db.run("INSERT INTO cluster_overrides(cluster_id,action,payload,created_at) VALUES(?,?,?,?)", [id, "rename", JSON.stringify({ label }), now]);
         broadcast({ type: "clusters_updated" });
         return Response.json({ ok: true });
@@ -1336,7 +1470,7 @@ Bun.serve({
         const newId = `cluster-split-${Date.now()}`;
         const colors = assignClusterColors(2);
         db.run("UPDATE memory_clusters SET node_ids=?, color=?, updated_at=? WHERE id=?", [JSON.stringify(nodeIds1), colors[0] ?? original.color, now, id]);
-        db.run("INSERT INTO memory_clusters(id,label,color,node_ids,created_at,updated_at) VALUES(?,?,?,?,?,?)", [newId, `${original.label} (split)`, colors[1] ?? original.color, JSON.stringify(nodeIds2), now, now]);
+        db.run("INSERT INTO memory_clusters(id,label,color,node_ids,manual_label,created_at,updated_at) VALUES(?,?,?,?,0,?,?)", [newId, `${original.label} (split)`, colors[1] ?? original.color, JSON.stringify(nodeIds2), now, now]);
         db.run("INSERT INTO cluster_overrides(cluster_id,action,payload,created_at) VALUES(?,?,?,?)", [id, "split", JSON.stringify({ newId, nodeIds1, nodeIds2 }), now]);
         broadcast({ type: "clusters_updated" });
         return Response.json({ ok: true });

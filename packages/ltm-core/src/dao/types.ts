@@ -14,6 +14,7 @@ export type ContextItemStatus = "active" | "pending_promotion" | "promoted";
 export interface MemorySlim {
   id: number;
   content: string;
+  title?: string | null;
   category: MemoryCategory;
   importance: number;
   confidence: number;
@@ -33,6 +34,10 @@ export interface MemorySlim {
   workspace_id?: string | null;
   agent_id?: string | null;
   created_by?: string | null;
+  hidden?: number;
+  color?: string | null;
+  icon?: string | null;
+  user_note?: string | null;
 }
 
 /** Full memory row — includes embedding blob. Internal use only (embeddings.ts). */
@@ -45,6 +50,7 @@ export interface ContextItemRow {
   project_name: string;
   type: ContextItemType;
   content: string;
+  title?: string | null;
   session_id: string | null;
   permanent: number;
   memory_id: number | null;
@@ -57,7 +63,18 @@ export interface MemoryRelationRow {
   source_memory_id: number;
   target_memory_id: number;
   relationship_type: RelationshipType;
+  note?: string | null;
+  weight?: number;
   created_at: string;
+}
+
+export interface MemoryLayoutRow {
+  memory_id: number;
+  view: string;
+  x: number;
+  y: number;
+  pinned: number;
+  updated_at: string;
 }
 
 // --- Phase 2: Provenance + Audit ---

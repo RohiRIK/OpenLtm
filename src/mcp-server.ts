@@ -78,9 +78,10 @@ server.tool(
 
 server.tool(
   "ltm_learn",
-  "MUST call after discovering a non-obvious pattern, gotcha, or architectural decision. Stores or reinforces a memory. Call whenever you learn something worth preserving across sessions.",
+  "MUST call after discovering a non-obvious pattern, gotcha, or architectural decision. Stores or reinforces a memory. Call whenever you learn something worth preserving across sessions. ALWAYS provide a title: a concise noun-phrase label (≤60 chars) summarising the memory — e.g. 'Repository pattern for all DAO layers'. No extra LLM call needed; you generate it inline.",
   {
     content: z.string().describe("The insight, pattern, or decision to store"),
+    title: z.string().max(60).optional().describe("Short label for the memory (≤60 chars, noun-phrase style). Always provide this — the agent generates it, no extra LLM call needed."),
     category: z.enum(["preference", "architecture", "gotcha", "pattern", "workflow", "constraint"]).optional().describe("Category (auto-detected when omitted)"),
     importance: z.number().int().min(1).max(5).optional().describe("Importance 1-5 (default 3, 5=never decays)"),
     tags: z.array(z.string()).optional().describe("Tags for categorization"),
@@ -88,7 +89,7 @@ server.tool(
     workspace_id: z.string().optional().describe("Workspace for this memory"),
     agent_id: z.string().optional().describe("Agent ID for this memory"),
   },
-  async ({ content, category, importance, tags, project, workspace_id, agent_id }) => {
+  async ({ content, title, category, importance, tags, project, workspace_id, agent_id }) => {
     let resolvedCategory = category;
     let categoriseSource: string | undefined;
 
@@ -110,6 +111,7 @@ server.tool(
 
     const result = learn({
       content,
+      title,
       category: resolvedCategory,
       importance,
       tags,
