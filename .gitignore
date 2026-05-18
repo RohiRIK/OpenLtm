@@ -1,6 +1,7 @@
 node_modules/
 dist/
 *.bundle.mjs
+!hooks/GitCommit.bundle.mjs
 graph-app/.next/
 graph-app/node_modules/
 graph-app/test-results/

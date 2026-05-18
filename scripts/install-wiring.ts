@@ -154,9 +154,10 @@ const gitHooksDir = join(CLAUDE_DIR, "hooks", "git");
 mkdirSync(gitHooksDir, { recursive: true });
 
 const postCommitPath = join(gitHooksDir, "post-commit");
-const postCommitScript = `#!/bin/sh\nCLAUDE_PLUGIN_ROOT=${root} bun run ${root}/hooks/src/GitCommit.ts "$@"\n`;
+const postCommitScript = `#!/bin/sh\nCLAUDE_PLUGIN_ROOT=${root} bun ${root}/hooks/GitCommit.bundle.mjs "$@"\n`;
 
-if (!existsSync(postCommitPath) || !readFileSync(postCommitPath, "utf-8").includes("GitCommit")) {
+const existingPostCommit = existsSync(postCommitPath) ? readFileSync(postCommitPath, "utf-8") : "";
+if (!existingPostCommit.includes("GitCommit.bundle.mjs")) {
   writeFileSync(postCommitPath, postCommitScript);
   chmodSync(postCommitPath, 0o755);
 }

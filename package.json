@@ -1,11 +1,12 @@
 {
   "name": "claude-ltm-plugin",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Long-Term Memory plugin for Claude Code",
   "private": true,
   "workspaces": ["packages/*"],
   "type": "module",
   "scripts": {
+    "build:hooks": "bunx esbuild hooks/src/GitCommit.ts --bundle --platform=node --format=esm --outfile=hooks/GitCommit.bundle.mjs --external:bun:sqlite --external:bun:ffi --external:bun:jsc --minify",
     "bump": "bun run scripts/bump-version.ts",
     "verify-version": "bun run scripts/verify-version-sync.ts",
     "typecheck": "bunx tsc --noEmit",

@@ -137,7 +137,7 @@ async function main(): Promise<void> {
 
     // Spawn detached so git doesn't wait for LLM extraction — pipe payload via stdin
     const child = Bun.spawn(
-      ["bun", "run", join(PLUGIN_ROOT, "hooks/src/GitCommit.ts"), "--extract"],
+      ["bun", join(PLUGIN_ROOT, "hooks/GitCommit.bundle.mjs"), "--extract"],
       {
         detached: true,
         stdin: "pipe",
