@@ -1,0 +1,39 @@
+name: Build hook bundle
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'hooks/src/**'
+      - 'hooks/lib/**'
+      - 'packages/ltm-core/src/**'
+      - 'package.json'
+
+permissions:
+  contents: write
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install
+
+      - name: Build hooks bundle
+        run: bun run build:hooks
+
+      - name: Commit bundle
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f hooks/GitCommit.bundle.mjs
+          git diff --staged --quiet && echo "No changes" && exit 0
+          git commit -m "ci: rebuild GitCommit.bundle.mjs [skip ci]"
+          git push

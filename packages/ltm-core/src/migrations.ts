@@ -242,56 +242,58 @@ export async function resetAll(db?: Database): Promise<MigrationResult[]> {
 // ── CLI entry point ────────────────────────────────────────────────────────────
 
 if (import.meta.main) {
-  const arg = process.argv[2] ?? "--status";
-  const db = openDb();
+  void (async () => {
+    const arg = process.argv[2] ?? "--status";
+    const db = openDb();
 
-  try {
-    if (arg === "--status") {
-      const statuses = await getMigrationStatus(db);
-      if (statuses.length === 0) {
-        console.log("No migration files found in migrations/");
-      } else {
-        console.log("\nMigration Status:");
-        console.log("─".repeat(60));
-        for (const s of statuses) {
-          const tag = s.status === "applied" ? "[applied]" : "[pending]";
-          const date = s.applied_at ? `  (${s.applied_at})` : "";
-          console.log(`  ${tag.padEnd(10)} v${String(s.version).padStart(3, "0")} ${s.name}${date}`);
+    try {
+      if (arg === "--status") {
+        const statuses = await getMigrationStatus(db);
+        if (statuses.length === 0) {
+          console.log("No migration files found in migrations/");
+        } else {
+          console.log("\nMigration Status:");
+          console.log("─".repeat(60));
+          for (const s of statuses) {
+            const tag = s.status === "applied" ? "[applied]" : "[pending]";
+            const date = s.applied_at ? `  (${s.applied_at})` : "";
+            console.log(`  ${tag.padEnd(10)} v${String(s.version).padStart(3, "0")} ${s.name}${date}`);
+          }
+          console.log("");
         }
-        console.log("");
-      }
-    } else if (arg === "--up") {
-      const results = await runPendingMigrations(db);
-      if (results.length === 0) {
-        console.log("No pending migrations.");
-      } else {
-        for (const r of results) {
-          console.log(`Applied: v${String(r.version).padStart(3, "0")} ${r.name}`);
+      } else if (arg === "--up") {
+        const results = await runPendingMigrations(db);
+        if (results.length === 0) {
+          console.log("No pending migrations.");
+        } else {
+          for (const r of results) {
+            console.log(`Applied: v${String(r.version).padStart(3, "0")} ${r.name}`);
+          }
         }
-      }
-    } else if (arg === "--down") {
-      const result = await rollbackLast(db);
-      if (!result) {
-        console.log("No applied migrations to roll back.");
-      } else {
-        console.log(`Rolled back: v${String(result.version).padStart(3, "0")} ${result.name}`);
-      }
-    } else if (arg === "--reset") {
-      const results = await resetAll(db);
-      if (results.length === 0) {
-        console.log("Nothing to reset.");
-      } else {
-        for (const r of results) {
-          console.log(`Rolled back: v${String(r.version).padStart(3, "0")} ${r.name}`);
+      } else if (arg === "--down") {
+        const result = await rollbackLast(db);
+        if (!result) {
+          console.log("No applied migrations to roll back.");
+        } else {
+          console.log(`Rolled back: v${String(result.version).padStart(3, "0")} ${result.name}`);
         }
+      } else if (arg === "--reset") {
+        const results = await resetAll(db);
+        if (results.length === 0) {
+          console.log("Nothing to reset.");
+        } else {
+          for (const r of results) {
+            console.log(`Rolled back: v${String(r.version).padStart(3, "0")} ${r.name}`);
+          }
+        }
+      } else {
+        console.error(`Unknown argument: ${arg}`);
+        console.error("Usage: bun migrations.ts [--status | --up | --down | --reset]");
+        process.exit(1);
       }
-    } else {
-      console.error(`Unknown argument: ${arg}`);
-      console.error("Usage: bun migrations.ts [--status | --up | --down | --reset]");
+    } catch (err) {
+      console.error("Migration error:", err);
       process.exit(1);
     }
-  } catch (err) {
-    console.error("Migration error:", err);
-    process.exit(1);
-  }
+  })();
 }

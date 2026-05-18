@@ -343,12 +343,14 @@ export async function classifyRelation(a: string, b: string): Promise<AutoRelati
 
 // CLI: bun embeddings.ts --backfill
 if (import.meta.main) {
-  const args = process.argv.slice(2);
-  if (args.includes("--backfill")) {
-    const { getDb } = await import("./shared-db.js");
-    const db = getDb();
-    await backfill(db);
-  } else {
-    process.stderr.write("Usage: bun embeddings.ts --backfill\n");
-  }
+  void (async () => {
+    const args = process.argv.slice(2);
+    if (args.includes("--backfill")) {
+      const { getDb } = await import("./shared-db.js");
+      const db = getDb();
+      await backfill(db);
+    } else {
+      process.stderr.write("Usage: bun embeddings.ts --backfill\n");
+    }
+  })();
 }
