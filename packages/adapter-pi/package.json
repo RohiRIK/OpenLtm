@@ -1,6 +1,6 @@
 {
   "name": "@rohirik/pi-ltm",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "LTM (Long-Term Memory) native extension for Pi — share memories with Claude Code and OpenCode",
   "type": "module",
   "main": "./dist/index.js",
