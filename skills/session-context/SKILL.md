@@ -10,7 +10,7 @@ version: 1.0.0
 ## Overview
 
 Per-project context lives in `$CLAUDE_PLUGIN_DATA/ltm.db` (SQLite). Hooks manage it automatically.
-Project names come from `~/.claude/projects/registry.json` — run `/register-project` to see yours.
+Project names come from `~/.claude/projects/registry.json` — run `/ltm:project register` to see yours.
 
 **Claude does NOT manually write context files.** Hooks handle all reads and writes.
 
@@ -18,7 +18,7 @@ Project names come from `~/.claude/projects/registry.json` — run `/register-pr
 
 | Type | Purpose | Managed by |
 |------|---------|-----------|
-| `goal` | Current objective (1-3 lines) | `/init-context` to seed; auto-replaced on change |
+| `goal` | Current objective (1-3 lines) | `/ltm:project init` to seed; auto-replaced on change |
 | `decision` | Architectural / key choices | Permanent — never trimmed |
 | `progress` | Session log — what was done | `UpdateContext` hook at session end; trimmed to last 20 |
 | `gotcha` | Warnings, pitfalls, blockers | Permanent — never trimmed |
@@ -37,12 +37,12 @@ You'll see `## Restored Project Context` at session start when this fires. Ackno
 
 | Command | When to use |
 |---------|------------|
-| `/learn` | After discovering a non-trivial pattern, gotcha, or decision |
-| `/recall [query]` | Before starting work on a topic — surface past decisions |
-| `/forget <id>` | When a memory is wrong or stale |
-| `/relate <src> <tgt> <type>` | Link two related memories |
+| `/ltm:memory learn` | After discovering a non-obvious pattern, gotcha, or decision |
+| `/ltm:memory recall [query]` | Before starting work on a topic — surface past decisions |
+| `/ltm:memory forget <id>` | When a memory is wrong or stale |
+| `/ltm:memory relate <src> <tgt> <type>` | Link two related memories |
 
-Use `/recall` before tackling any non-trivial problem to check if there's prior knowledge.
+Recall before a non-trivial problem to check for prior knowledge; skip it for trivial one-liners.
 
 ## What PreCompact Does
 
@@ -58,22 +58,22 @@ You do not manage `context-summary.md` — the hook overwrites it each compactio
 | Question | Answer | Store as |
 |----------|--------|----------|
 | Specific to the current project? | Yes | context_item (hooks auto-manage) |
-| Useful in ALL future projects? | Yes | `/learn` (global memories table) |
+| Useful in ALL future projects? | Yes | `/ltm:memory learn` (global memories table) |
 | Temporary note / work log? | Yes | context_item `progress` |
-| Permanent rule, gotcha, or decision? | Yes | `/learn --importance 5` |
+| Permanent rule, gotcha, or decision? | Yes | `/ltm:memory learn --importance 5` |
 
 **Short-term** = `context_items`. Auto-managed by hooks. Expires after 14 days inactivity.
 **Long-term** = `memories`. Persist forever. Inject into every session via SessionStart.
 
-**When to promote:** If a project-level gotcha has burned you twice, promote it to global LTM with `/learn --importance 5`.
+**When to promote:** If a project-level gotcha has burned you twice, promote it to global LTM with `/ltm:memory learn --importance 5`.
 
 ## Promoting Patterns to Durable LTM
 
 Gotchas and decisions in `context_items` survive until the project is stale (14 days inactive).
-For lessons that must persist across all projects permanently, use `/learn` with `importance=5`:
+For lessons that must persist across all projects permanently, use `/ltm:memory learn` with `importance=5`:
 
 ```
-/learn "⚠ Supabase RLS must be enabled before production" --category gotcha --importance 5
+/ltm:memory learn "Supabase RLS must be enabled before production" --category gotcha --importance 5
 ```
 
 These appear in the `memories` table and inject into every session regardless of project.
@@ -82,7 +82,7 @@ These appear in the `memories` table and inject into every session regardless of
 
 - Never manually write to `context-goals.md`, `context-decisions.md`, `context-progress.md`, or `context-gotchas.md`
 - Never manually edit `context-summary.md` — it is auto-generated
-- Use `/learn` to persist important insights to global LTM
-- Use `/recall` before starting non-trivial tasks
-- Use `/init-context` to seed a new project goal (not to create .md files)
-- If context wasn't injected at session start, run `/check-context` to diagnose
+- Use `/ltm:memory learn` to persist important insights to global LTM
+- Use `/ltm:memory recall` before starting non-trivial tasks
+- Use `/ltm:project init` to seed a new project goal (not to create .md files)
+- If context wasn't injected at session start, run `/ltm:health` to diagnose

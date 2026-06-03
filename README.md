@@ -4,7 +4,7 @@
 
 **Long-Term Memory for Claude Code**
 
-[![Version](https://img.shields.io/badge/version-2.2.0-blue?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.2.1-blue?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Runtime](https://img.shields.io/badge/runtime-Bun-f472b6?style=flat-square&logo=bun)](https://bun.sh)
 [![Database](https://img.shields.io/badge/database-SQLite-003B57?style=flat-square&logo=sqlite)](https://sqlite.org)
@@ -99,10 +99,10 @@ claude plugin install ltm
 ### bunx (no git clone required)
 
 ```bash
-bunx @rohirik/ltm-core          # auto-detect Claude Code, OpenCode, Pi
+bunx @rohirik/ltm-core          # auto-detect Claude Code, OpenCode
 bunx @rohirik/ltm-core --claude # Claude Code only
 bunx @rohirik/ltm-core --opencode
-bunx @rohirik/ltm-core --pi
+bunx @rohirik/ltm-core --pi      # Pi adapter — unreleased / experimental, WIP
 bunx @rohirik/ltm-core --dry-run --claude  # preview without writing
 ```
 

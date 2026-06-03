@@ -13,7 +13,7 @@ Usage: /ltm:admin <subcommand>
 
   migrate [status|up|down|reset|--legacy]   — schema migrations + legacy DB detection
   scan    [--project X] [--dry-run]         — scan memories for secrets and redact
-  server  [start|stop|status]               — LTM graph visualization server (port 7331)
+  server  [start|stop|status]               — LTM graph visualization server (port 7332)
   audit   [--memory-id N] [--op <op>] [--session <id>] [--since <iso>] [--limit N]
                                             — query the memory write audit log
 ```
@@ -96,7 +96,7 @@ Query the append-only memory audit log (`memory_audit` table). Every write to `m
 | Flag | Description |
 |------|-------------|
 | `--memory-id N` | Filter to a specific memory ID |
-| `--op <op>` | One of: `insert`, `update`, `forget`, `deprecate`, `supersede`, `redact`, `restore` |
+| `--op <op>` | One of: `insert`, `update`, `forget`, `deprecate`, `supersede`, `redact`, `restore`, `archive` |
 | `--session <id>` | Filter by session that triggered the write |
 | `--since <iso>` | Only events after this ISO date (e.g. `2026-05-01`) |
 | `--limit N` | Max rows to return (default 50) |
@@ -125,4 +125,4 @@ Route to the **LtmServer** skill:
 | `stop` | `skills/LtmServer/Workflows/Stop.md` |
 | `status` | inline PID check from `skills/LtmServer/SKILL.md` |
 
-Server runs on port **7331**. PID at `~/.claude/tmp/ltm-server.pid`.
+UI runs on port **7332** (Next.js frontend). API runs on port **7331** (Bun backend). PID at `~/.claude/tmp/ltm-server.pid`.

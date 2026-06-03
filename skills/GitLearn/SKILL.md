@@ -67,7 +67,7 @@ After processing all commits:
 
 ```
 Processed <N> commits.
-Memories stored: check with /recall or mcp__ltm__ltm_recall.
+Memories stored: check with /ltm:memory recall or mcp__ltm__ltm_recall.
 ```
 
 ## Memory Integration
