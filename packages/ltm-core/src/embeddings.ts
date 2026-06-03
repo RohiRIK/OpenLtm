@@ -258,6 +258,30 @@ export async function getSimilarMemories(text: string, topN = 5, threshold = 0.5
 
   const { getDb } = await import("./shared-db.js");
   const db = getDb();
+
+  // Fast path: sqlite-vec vec0 KNN. Over-fetch so post-filtering on status and
+  // threshold still yields topN. Falls through to brute force when the index is
+  // unavailable or empty (e.g. a DB that predates the vec backfill).
+  const { getCapabilities } = await import("./extensions.js");
+  if (getCapabilities().vec) {
+    const { knnVec } = await import("./vec/index.js");
+    const hits = knnVec(db, vecToBlob(vec), Math.max(topN * 4, topN + 10));
+    if (hits.length > 0) {
+      const byId = new Map(hits.map(h => [h.id, h.similarity]));
+      const ids = hits.map(h => h.id);
+      const placeholders = ids.map(() => "?").join(",");
+      const rows = db.query<{ id: number; content: string }, number[]>(
+        `SELECT id, content FROM memories WHERE status='active' AND id IN (${placeholders})`
+      ).all(...ids);
+      return rows
+        .map(row => ({ id: row.id, content: row.content, similarity: byId.get(row.id) ?? 0 }))
+        .filter(r => r.similarity >= threshold)
+        .sort((a, b) => b.similarity - a.similarity)
+        .slice(0, topN);
+    }
+  }
+
+  // Brute-force JS cosine fallback.
   const rows = db.query<{ id: number; content: string; embedding: Buffer }, []>(
     `SELECT m.id, m.content, e.embedding
      FROM memories m JOIN memory_embeddings e ON e.memory_id = m.id

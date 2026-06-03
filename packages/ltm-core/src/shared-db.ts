@@ -9,6 +9,8 @@ import { dirname } from "path";
 import { getDbPath, getSchemaPath } from "./paths.js";
 import { runPendingMigrations } from "./migrations.js";
 import { writeQueue } from "./lib/writeQueue.js";
+import { ensureCustomSqlite, loadExtensions, getCapabilities } from "./extensions.js";
+import { backfillVecIndexIfEmpty } from "./vec/index.js";
 import type { LtmCoreConfig } from "./adapterTypes.js";
 
 export let DB_PATH = getDbPath();
@@ -28,12 +30,19 @@ export async function initDb(opts?: { dbPath?: string; schemaPath?: string }): P
   if (opts?.schemaPath) SCHEMA_PATH = opts.schemaPath;
   const dir = dirname(DB_PATH);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  // Must run before the first Database opens to switch to an extension-enabled
+  // system SQLite. No-op (degrades to FTS-only) when none is available.
+  ensureCustomSqlite();
   const db = new Database(DB_PATH, { create: true });
   db.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;");
+  loadExtensions(db);
   // Apply schema.sql first (CREATE IF NOT EXISTS — safe for fresh + existing DBs)
   db.exec(readFileSync(SCHEMA_PATH, "utf-8"));
   // Then run versioned migrations (idempotent — skips already-applied versions)
   await runPendingMigrations(db);
+  // One-time vec0 index backfill for DBs that predate vec wiring. No-op when
+  // vec is unavailable or the index is already populated.
+  if (getCapabilities().vec) backfillVecIndexIfEmpty(db);
   return db;
 }
 
@@ -59,8 +68,10 @@ export function getDb(): Database {
   if (!_db) {
     const dir = dirname(DB_PATH);
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    ensureCustomSqlite();
     _db = new Database(DB_PATH, { create: true });
     _db.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;");
+    loadExtensions(_db);
     _db.exec(readFileSync(SCHEMA_PATH, "utf-8"));
   }
   return _db;

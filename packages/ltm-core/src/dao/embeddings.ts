@@ -4,6 +4,8 @@
  */
 import type { Database } from "bun:sqlite";
 import { writeQueue } from "../lib/writeQueue.js";
+import { getCapabilities } from "../extensions.js";
+import { ensureVecTable, upsertVec, deleteVec } from "../vec/index.js";
 
 interface EmbeddingRow {
   memory_id: number;
@@ -40,6 +42,13 @@ export function setEmbedding(
          created_at=excluded.created_at`,
       [memoryId, blob, model, dim],
     );
+    // Dual-write to the vec0 ANN index when available. The index table is
+    // dimension-fixed; a blob whose dim differs from the active index no-ops
+    // gracefully (a provider/model switch is reconciled via rebuildVecIndex).
+    if (getCapabilities().vec) {
+      ensureVecTable(db, dim);
+      upsertVec(db, memoryId, blob);
+    }
   }, db);
 }
 
@@ -47,6 +56,7 @@ export function setEmbedding(
 export function deleteEmbedding(db: Database, memoryId: number): Promise<void> {
   return writeQueue.enqueue(() => {
     db.run(`DELETE FROM memory_embeddings WHERE memory_id=?`, [memoryId]);
+    if (getCapabilities().vec) deleteVec(db, memoryId);
   }, db);
 }
 

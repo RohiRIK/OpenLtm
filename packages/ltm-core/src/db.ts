@@ -7,6 +7,8 @@ import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import { normalizeKey } from "./dedup.js";
 import { getDb, DB_PATH, configure as configureDb } from "./shared-db.js";
+import { enqueueEmbedding } from "./queue/index.js";
+import { notifyLtm, notifyMemoryAdded } from "./events/index.js";
 import { scrubSecrets } from "./secretsScrubber.js";
 import { insertProvenance, insertAudit, snapshotMemory, listProvenanceBatch } from "./dao/provenanceAudit.js";
 import type { ProvenanceSourceType } from "./dao/types.js";
@@ -391,11 +393,23 @@ export function learn(input: LearnInput): LearnResult {
 
   if (!skipExport) exportMarkdown();
 
-  // Fire-and-forget: embed + auto-relate — never blocks learn()
+  // Embedding generation: prefer the durable Honker queue (a long-lived worker
+  // claims + embeds with retry/dead-letter — short-lived hooks just enqueue and
+  // exit). When no queue is available, embed inline as before. Auto-relate runs
+  // inline regardless: it embeds the query text fresh and compares against other
+  // memories' stored vectors, so it does not depend on this memory's own row.
+  const enqueuedJobId = enqueueEmbedding(newId);
   import("./embeddings.js").then(async ({ embedMemory, getSimilarMemories, classifyRelation }) => {
-    await embedMemory(db, newId);
+    if (enqueuedJobId === null) await embedMemory(db, newId);
     await autoDetectRelations(newId, content, getSimilarMemories, classifyRelation);
   }).catch(err => process.stderr.write(`[learn] Background task failed for memory ${newId}: ${err}\n`));
+
+  // Push a cross-process liveness event so any graph-app listener refreshes
+  // without waiting on the file-watcher. No-op when Honker is unavailable.
+  notifyLtm({ type: "refresh", reason: "memory_created", id: newId });
+  // Opt-in cross-agent sync: notify sibling processes of the new memory. No-op
+  // unless the ltm.crossProcessSync flag is on AND Honker is available.
+  notifyMemoryAdded({ id: newId, project_scope: input.project_scope ?? null });
 
   return { action: "created", id: newId, confirm_count: 1 };
 }
