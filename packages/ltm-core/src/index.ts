@@ -72,3 +72,20 @@ export { openrouterEmbedding } from "./janitor/providers/openrouter.js";
 
 // Graph
 export { traverseGraph, buildReasoningContext } from "./graph.js";
+
+// Honker durable queue (embedding generation) — dormant without LTM_HONKER_EXT
+export { getHonker, isHonkerAvailable } from "./lib/honker.js";
+export { EMBED_QUEUE, getEmbeddingQueue, enqueueEmbedding, parseEmbeddingJob } from "./queue/index.js";
+export type { EmbeddingJob } from "./queue/index.js";
+export { startEmbeddingWorker } from "./queue/worker.js";
+export type { EmbeddingWorkerHandle } from "./queue/worker.js";
+export {
+  registerJanitorSchedule, startJanitorScheduler,
+  JANITOR_SCHEDULE_NAME, JANITOR_QUEUE, JANITOR_CHANNEL, DEFAULT_JANITOR_CRON,
+} from "./scheduler/index.js";
+export type { JanitorSchedulerHandle } from "./scheduler/index.js";
+export {
+  notifyLtm, startLtmListener, LTM_CHANNEL, MEMORY_ADDED,
+  isCrossProcessSyncEnabled, notifyMemoryAdded, startCrossProcessSync,
+} from "./events/index.js";
+export type { LtmLiveEvent, LtmListenerHandle } from "./events/index.js";

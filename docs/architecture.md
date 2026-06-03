@@ -1,6 +1,6 @@
 # ARCHITECTURE — Claude LTM Plugin
 
-**Version:** 1.1 (against plugin v2.1.1)
+**Version:** 1.1 (against plugin v2.2.0)
 **Owner:** system-architect (dev-team)
 **Status:** Baseline architecture spec; companion to `docs/PRD.md`
 **Last updated:** 2026-04-28

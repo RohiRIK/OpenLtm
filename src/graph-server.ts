@@ -20,6 +20,8 @@ import {
   embedText, getSimilarMemories,
   cohereEmbedding, geminiEmbedding, ollamaEmbedding, openaiEmbedding, openrouterEmbedding,
   runPendingMigrations,
+  startEmbeddingWorker, startJanitorScheduler,
+  startLtmListener,
 } from "@rohirik/ltm-core";
 import { detectCommunities, generateClusterLabel, assignClusterColors } from "./cluster.js";
 import { getDbPath, getSchemaPath } from "./paths.js";
@@ -787,17 +789,24 @@ function maybeScheduleRecompute(): void {
   if (newMemoriesSinceLastCluster >= 10) scheduledRecompute();
 }
 
-// Watch DB for changes and broadcast refresh
-// WAL writes go to ltm.db-wal, not ltm.db — watch the WAL file (or dir as fallback).
-// Debounce at 3s so that rapid hook writes (EvaluateSession, PreCompact, etc.)
-// coalesce into a single refresh instead of one per write.
-let watchDebounce: ReturnType<typeof setTimeout> | null = null;
-if (existsSync(DB_PATH)) {
-  const watchTarget = existsSync(DB_PATH + "-wal") ? DB_PATH + "-wal" : dirname(DB_PATH);
-  watch(watchTarget, { recursive: false }, () => {
-    if (watchDebounce) clearTimeout(watchDebounce);
-    watchDebounce = setTimeout(() => broadcast({ type: "refresh" }), 3000);
-  });
+// Liveness: prefer Honker pub/sub push — the "ltm" channel drives broadcast()
+// directly, with zero polling and zero debounce lag. Falls back to the fs.watch
+// + 3s-debounce file-watcher when Honker is unavailable (listener inert).
+const ltmListener = startLtmListener(event => broadcast(event));
+if (ltmListener.running) {
+  console.log("   Liveness: honker pub/sub (push)");
+} else {
+  // WAL writes go to ltm.db-wal, not ltm.db — watch the WAL file (or dir as
+  // fallback). Debounce at 3s so that rapid hook writes (EvaluateSession,
+  // PreCompact, etc.) coalesce into a single refresh instead of one per write.
+  let watchDebounce: ReturnType<typeof setTimeout> | null = null;
+  if (existsSync(DB_PATH)) {
+    const watchTarget = existsSync(DB_PATH + "-wal") ? DB_PATH + "-wal" : dirname(DB_PATH);
+    watch(watchTarget, { recursive: false }, () => {
+      if (watchDebounce) clearTimeout(watchDebounce);
+      watchDebounce = setTimeout(() => broadcast({ type: "refresh" }), 3000);
+    });
+  }
 }
 
 Bun.serve({
@@ -1478,8 +1487,28 @@ Bun.serve({
   },
 });
 
-// Start janitor auto-run if configured
-startAutoRun();
+// Long-lived embedding worker: drains the Honker durable queue (inert no-op
+// when Honker is unavailable — short-lived hooks only enqueue, never run this).
+const embeddingWorker = startEmbeddingWorker();
+if (embeddingWorker.running) console.log("   Embedding worker: running (honker queue)");
+
+// Janitor scheduling: prefer Honker's leader-elected cron (only one agent
+// process fires it across the shared db); fall back to the local auto-run
+// interval when Honker is unavailable.
+const janitorScheduler = startJanitorScheduler();
+if (janitorScheduler.running) {
+  console.log("   Janitor: honker leader-elected cron");
+} else {
+  startAutoRun();
+}
+
+for (const sig of ["SIGINT", "SIGTERM"] as const) {
+  process.on(sig, () => {
+    void embeddingWorker.stop();
+    void janitorScheduler.stop();
+    void ltmListener.stop();
+  });
+}
 
 console.log(`🧠 LTM Graph running on http://localhost:${PORT}`);
 console.log(`   PID: ${process.pid} — saved to ${PID_PATH}`);

@@ -108,6 +108,8 @@ export const SETTING_KEYS = {
   JANITOR_LAST_DECAY_REFRESHED: "ltm.janitor.lastDecayRefreshed",
   JANITOR_LAST_DEPRECATED:      "ltm.janitor.lastDeprecated",
   JANITOR_LAST_ARCHIVED:        "ltm.janitor.lastArchived",
+  // Cross-process sync (Phase 8 X1) — opt-in, requires Honker pub/sub
+  CROSS_PROCESS_SYNC: "ltm.crossProcessSync",
 } as const;
 
 /** Default values for all settings. */
@@ -140,6 +142,7 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   [SETTING_KEYS.JANITOR_LAST_DECAY_REFRESHED]: "0",
   [SETTING_KEYS.JANITOR_LAST_DEPRECATED]:      "0",
   [SETTING_KEYS.JANITOR_LAST_ARCHIVED]:        "0",
+  [SETTING_KEYS.CROSS_PROCESS_SYNC]: "off",
 };
 
 /** Provider type identifiers. */
