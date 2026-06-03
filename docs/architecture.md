@@ -1,11 +1,11 @@
-# ARCHITECTURE — Claude LTM Plugin
+# ARCHITECTURE — OpenLTM Plugin
 
-**Version:** 1.1 (against plugin v2.2.1)
+**Version:** 1.1 (against plugin v2.2.2)
 **Owner:** system-architect (dev-team)
 **Status:** Baseline architecture spec; companion to `docs/PRD.md`
 **Last updated:** 2026-04-28
 
-This document describes the as-built architecture of the Claude LTM plugin, an honest
+This document describes the as-built architecture of the OpenLTM plugin, an honest
 assessment of its weaknesses, and a target "magnificent" architecture with a phased
 migration path. It is the reference artifact for the `database-admin` agent (schema work),
 the `backend-developer` agent (server / hook work), and the `cloud-architect` agent (any

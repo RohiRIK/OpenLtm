@@ -5,14 +5,14 @@
     "email": "rohi5054@gmail.com"
   },
   "metadata": {
-    "description": "Long-Term Memory plugin for Claude Code",
+    "description": "OpenLTM — Long-Term Memory for AI coding agents (Claude Code, OpenCode, Pi)",
     "version": "1.4.5"
   },
   "plugins": [
     {
       "name": "ltm",
       "source": "./",
-      "description": "Persistent semantic memory for Claude Code \u2014 semantic search, context injection, session learning, and memory graph visualizer.",
+      "description": "Persistent semantic memory for AI coding agents \u2014 semantic search, context injection, session learning, and memory graph visualizer.",
       "version": "1.4.5",
       "author": {
         "name": "RohiRIK"

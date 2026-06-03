@@ -1,4 +1,4 @@
-# LTM Plugin — Long-Term Memory for Claude Code
+# OpenLTM Plugin — Long-Term Memory for AI coding agents
 
 This plugin provides persistent semantic memory across sessions via a local SQLite database.
 

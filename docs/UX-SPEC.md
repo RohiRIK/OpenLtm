@@ -1,4 +1,4 @@
-# UX Specification — Claude LTM Plugin
+# UX Specification — OpenLTM Plugin
 
 **Version:** 1.0 (against plugin v1.9.0)
 **Owner:** ui-ux-designer (dev-team)

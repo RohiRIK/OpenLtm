@@ -1,4 +1,4 @@
-# DB-SPEC — Claude LTM Plugin Database Specification
+# DB-SPEC — OpenLTM Plugin Database Specification
 
 **Version:** 1.0
 **Owner:** database-admin (dev-team)

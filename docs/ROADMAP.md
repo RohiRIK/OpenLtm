@@ -1,4 +1,4 @@
-# ROADMAP — Claude LTM Plugin
+# ROADMAP — OpenLTM Plugin
 
 > **Master integration spec.** Synthesises `PRD.md`, `ARCHITECTURE.md`, `UX-SPEC.md` into a single phased plan. `DB-SPEC.md` augments §6 (Schema) and per-phase DB work once written.
 >
