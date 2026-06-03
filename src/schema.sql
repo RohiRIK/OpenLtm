@@ -60,7 +60,10 @@ CREATE TABLE IF NOT EXISTS memories (
   hidden     INTEGER NOT NULL DEFAULT 0,
   color      TEXT,
   icon       TEXT,
-  user_note  TEXT
+  user_note  TEXT,
+  -- Personal relevance signal: 'works' | 'doesnt' | NULL (unrated)
+  relevance_signal     TEXT,
+  relevance_signal_at  TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_memories_category   ON memories(category);

@@ -212,6 +212,7 @@ type MemoryRow = {
   created_at: string; tags: string | null;
   hidden: number; color: string | null; icon: string | null; user_note: string | null;
   decay_score: number | null;
+  relevance_signal: string | null; relevance_signal_at: string | null;
 };
 
 type CtxRow = {
@@ -442,6 +443,7 @@ function getProjectDetail(projectName: string) {
     `SELECT m.id, m.content, m.title, m.category, m.importance, m.confidence, m.confirm_count,
             m.source, m.dedup_key, m.last_confirmed_at, m.created_at,
             m.hidden, m.color, m.icon, m.user_note,
+            m.relevance_signal, m.relevance_signal_at,
             GROUP_CONCAT(t.name, ',') as tags
      FROM memories m
      LEFT JOIN memory_tags mt ON m.id = mt.memory_id
@@ -1116,6 +1118,23 @@ Bun.serve({
       if (updates.length === 0) return Response.json({ ok: false, error: "No fields to update" }, { status: 400 });
       params.push(id);
       db.run(`UPDATE memories SET ${updates.join(", ")} WHERE id=?`, params);
+      broadcast({ type: "refresh" });
+      return Response.json({ ok: true });
+    }
+
+    // PUT /api/memory/:id/relevance — set personal "works for me" / "doesn't" signal
+    const relevanceMatch = p.match(/^\/api\/memory\/(\d+)\/relevance$/);
+    if (relevanceMatch?.[1] && req.method === "PUT") {
+      const id = parseInt(relevanceMatch[1], 10);
+      const body = await req.json() as { signal?: unknown };
+      const signal = body.signal;
+      if (signal !== "works" && signal !== "doesnt" && signal !== null) {
+        return Response.json({ ok: false, error: "signal must be 'works', 'doesnt', or null" }, { status: 400 });
+      }
+      db.run(
+        `UPDATE memories SET relevance_signal=?, relevance_signal_at=? WHERE id=?`,
+        [signal, signal === null ? null : new Date().toISOString(), id]
+      );
       broadcast({ type: "refresh" });
       return Response.json({ ok: true });
     }

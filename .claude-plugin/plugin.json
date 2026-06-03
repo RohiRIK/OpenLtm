@@ -1,7 +1,7 @@
 {
   "name": "ltm",
   "description": "OpenLTM \u2014 Long-Term Memory for AI coding agents: semantic search, context injection, session learning",
-  "version": "2.2.2",
+  "version": "2.3.0",
   "author": {
     "name": "RohiRIK"
   },

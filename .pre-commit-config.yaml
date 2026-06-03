@@ -1,0 +1,9 @@
+repos:
+  - repo: https://github.com/trufflesecurity/trufflehog
+    rev: v3.82.13
+    hooks:
+      - id: trufflehog
+        name: TruffleHog secret scan (Aegis)
+        entry: trufflehog git file://. --since-commit HEAD --only-verified --fail
+        language: system
+        stages: [pre-commit]

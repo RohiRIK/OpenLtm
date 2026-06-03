@@ -12,7 +12,11 @@ export interface MemoryNode {
   project_scope: string | null;
   created_at: string;
   tags: string[];
+  relevance_signal?: RelevanceSignal | null;
+  relevance_signal_at?: string | null;
 }
+
+export type RelevanceSignal = "works" | "doesnt";
 
 export interface ContextNode {
   id: number;

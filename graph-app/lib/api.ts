@@ -13,6 +13,7 @@ import type {
   ProjectDetail,
   ProjectHealthScore,
   ReasoningResult,
+  RelevanceSignal,
   ReasoningSearchResult,
   SearchResult,
   SemanticResult,
@@ -94,6 +95,8 @@ export const api = {
     del(`/context-item/${id}`),
   updateMemory: (id: number, patch: { content?: string; tags?: string[]; importance?: number }): Promise<{ ok: boolean }> =>
     put(`/memory/${id}`, patch),
+  setRelevance: (id: number, signal: RelevanceSignal | null): Promise<{ ok: boolean }> =>
+    put(`/memory/${id}/relevance`, { signal }),
   supersedeMemory: (newId: number, oldId: number): Promise<{ ok: boolean }> =>
     post(`/memory/${newId}/supersedes/${oldId}`),
   mergeMemories: (
