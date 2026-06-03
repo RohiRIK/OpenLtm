@@ -366,22 +366,22 @@ Opens at `localhost:7332` with:
 
 ```
 +---------------------------------------------------------------+
-|                        Claude Code                             |
-|                                                                |
-|  +-------------------+  +-----------+  +------------------+  |
-|  | 4 Commands        |  | 5 Skills  |  | 6 Hooks          |  |
-|  | /ltm:memory       |  | Continu-  |  | SessionStart     |  |
-|  | /ltm:project      |  | ousLearn  |  | UpdateContext    |  |
-|  | /ltm:health       |  | LtmServer |  | EvaluateSession  |  |
-|  | /ltm:admin        |  | GitLearn  |  | PreCompact       |  |
-|  |                   |  | Learned   |  | GitCommit        |  |
-|  +--------+----------+  +-----+-----+  | NotifyLtmServer  |  |
-|           +-------------------+---------+--------+          |  |
-|                               |                              |  |
-|                      +--------v--------+                     |  |
-|                      |   ltm MCP       |                     |  |
-|                      |   server        |                     |  |
-|                      +--------+--------+                     |  |
+|                        Claude Code                            |
+|                                                               |
+|  +-------------------+  +-----------+  +------------------+   |
+|  | 4 Commands        |  | 5 Skills  |  | 6 Hooks          |   |
+|  | /ltm:memory       |  | Continu-  |  | SessionStart     |   |
+|  | /ltm:project      |  | ousLearn  |  | UpdateContext    |   |
+|  | /ltm:health       |  | LtmServer |  | EvaluateSession  |   |
+|  | /ltm:admin        |  | GitLearn  |  | PreCompact       |   |
+|  |                   |  | Learned   |  | GitCommit        |   |
+|  +--------+----------+  +-----+-----+  | NotifyLtmServer  |   |
+|           +-------------------+---------+--------+        |   |
+|                               |                           |   |
+|                      +--------v--------+                  |   |
+|                      |   ltm MCP       |                  |   |
+|                      |   server        |                  |   |
+|                      +--------+--------+                  |   |
 +-------------------------------|-------------------------------+
                                 |
                      +----------v-----------+

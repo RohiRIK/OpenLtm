@@ -1,0 +1,87 @@
+{
+  "$schema": "https://aegis.local/policy-schema/v1",
+  "version": "1.0",
+  "actions": {
+    "read_file": {
+      "default": "allow",
+      "deny_patterns": [".env", "**/*.pem", "**/*.key", "**/*_rsa"]
+    },
+    "edit_file": {
+      "default": "ask",
+      "allow_patterns": ["src/**", "tests/**", "docs/**"],
+      "deny_patterns": [".env", "**/*.pem", "**/*.key", "**/*_rsa", "**/*_ed25519"]
+    },
+    "run_shell": {
+      "default": "sandbox",
+      "high_risk_patterns": ["DROP TABLE", "rm -rf", "kubectl apply", "terraform apply"]
+    },
+    "fetch_domain": {
+      "default": "deny",
+      "allow_list": ["api.anthropic.com", "registry.npmjs.org", "pypi.org"]
+    },
+    "use_secret": {
+      "default": "deny",
+      "allowed_via": "varlock"
+    },
+    "approve_deploy": {
+      "default": "hitl",
+      "hitl_timeout_seconds": 120
+    }
+  },
+  "high_risk_patterns": [
+    "DROP TABLE", "DROP DATABASE", "DELETE FROM", "ALTER TABLE", "TRUNCATE",
+    "rm -rf", "kubectl apply", "kubectl delete", "terraform apply", "terraform destroy",
+    "git push --force", "npm publish", "docker push", "ssh ", "curl.*--upload",
+    "bun install", "bun add", "curl ", "wget ", "chmod \\+x", "sudo ", "su ", "\\bnc\\b", "\\beval\\b"
+  ],
+  "routing": {
+    "host_passthrough": [
+      "^cd ",
+      "^git ",
+      "^bun (tsc|test|run)",
+      "^ls\\b",
+      "^cat ",
+      "^grep ",
+      "^find ",
+      "^echo ",
+      "^pwd$",
+      "^which ",
+      "^head ",
+      "^tail ",
+      "^wc ",
+      "^sort ",
+      "^diff ",
+      "^jq ",
+      "^semgrep ",
+      "^trivy ",
+      "^trufflehog ",
+      "^bunx varlock ",
+      "^bun audit",
+      "^docker inspect "
+    ],
+    "sandbox_required": [
+      "^bun (install|add|x|pm)",
+      "^npm ",
+      "^curl ",
+      "^wget ",
+      "^python[23]? ",
+      "^node ",
+      "^pip3? ",
+      "^cargo ",
+      "^go (get|run|build)",
+      "^make\\b",
+      "^sh ",
+      "^bash "
+    ]
+  },
+  "degraded_mode": {
+    "allow_host_passthrough": true,
+    "block_sandbox_required": false,
+    "warn_on_degraded": true
+  },
+  "tools": {
+    "enabled": ["trivy", "trufflehog", "semgrep"],
+    "auto_update": true
+  },
+  "hitl_timeout_seconds": 120
+}

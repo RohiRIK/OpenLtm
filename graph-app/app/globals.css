@@ -1,5 +1,36 @@
 @import "tailwindcss";
 
+/* Dark mode driven by the existing `.dark` class (next-themes), not prefers-color-scheme. */
+@custom-variant dark (&:is(.dark *));
+
+/* Token bridge: maps shadcn/21st.dev tokens to the app's existing CSS vars so every
+   installed component inherits the current light/dark palette. `inline` emits var()
+   references into utilities, so `.dark` overrides below flow through automatically. */
+@theme inline {
+  --color-background: var(--bg-primary);
+  --color-foreground: var(--text-primary);
+  --color-card: var(--bg-primary);
+  --color-card-foreground: var(--text-primary);
+  --color-popover: var(--bg-primary);
+  --color-popover-foreground: var(--text-primary);
+  --color-primary: var(--accent);
+  --color-primary-foreground: #ffffff;
+  --color-secondary: var(--bg-secondary);
+  --color-secondary-foreground: var(--text-primary);
+  --color-muted: var(--bg-secondary);
+  --color-muted-foreground: var(--text-muted);
+  --color-accent: var(--bg-tertiary);
+  --color-accent-foreground: var(--text-primary);
+  --color-destructive: #e5484d;
+  --color-destructive-foreground: #ffffff;
+  --color-border: var(--border);
+  --color-input: var(--border);
+  --color-ring: var(--accent);
+  --radius-lg: 0.5rem;
+  --radius-md: calc(0.5rem - 2px);
+  --radius-sm: calc(0.5rem - 4px);
+}
+
 :root {
   --bg-primary: #ffffff;
   --bg-secondary: #f6f8fa;
