@@ -3,7 +3,7 @@ description: "USE WHEN setting up LTM for a new project, diagnosing hook or plug
 allowed-tools: ["Bash"]
 ---
 
-Runs the interactive 5-step terminal wizard for Claude LTM.
+Runs the interactive 5-step terminal wizard for OpenLTM.
 
 ## When to use
 

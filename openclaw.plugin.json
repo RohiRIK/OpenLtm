@@ -1,8 +1,8 @@
 {
   "id": "ltm",
-  "name": "Claude LTM",
+  "name": "OpenLTM",
   "kind": "tool",
-  "description": "Persistent semantic memory for Claude Code. Stores memories across sessions with FTS5 + semantic search, auto-injects context at session start, learns from transcripts, and visualizes your memory graph.",
+  "description": "Persistent semantic memory for AI coding agents. Stores memories across sessions with FTS5 + semantic search, auto-injects context at session start, learns from transcripts, and visualizes your memory graph.",
   "version": "1.2.0",
   "sandbox": {
     "mode": "permissive",

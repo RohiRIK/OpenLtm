@@ -1,4 +1,4 @@
-# PRD — Claude LTM Plugin (Long-Term Memory for Claude Code)
+# PRD — OpenLTM Plugin (Long-Term Memory for AI coding agents)
 
 **Version:** 1.0 (PRD baseline against plugin v1.9.0)
 **Owner:** product-manager (dev-team)

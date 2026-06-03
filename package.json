@@ -1,7 +1,7 @@
 {
-  "name": "claude-ltm-plugin",
-  "version": "2.2.1",
-  "description": "Long-Term Memory plugin for Claude Code",
+  "name": "openltm",
+  "version": "2.2.2",
+  "description": "OpenLTM — Long-Term Memory for AI coding agents (Claude Code, OpenCode, Pi)",
   "private": true,
   "workspaces": ["packages/*"],
   "type": "module",
