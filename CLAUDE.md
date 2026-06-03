@@ -4,10 +4,11 @@ This plugin provides persistent semantic memory across sessions via a local SQLi
 
 ## Rules
 
-1. **ALWAYS** call `ltm_recall` before starting any non-trivial task
-2. **ALWAYS** call `ltm_learn` after making architectural decisions or discovering gotchas
-3. **ALWAYS** call `ltm_context` when starting a session or switching projects
-4. **NEVER** skip memory recall for tasks involving past decisions
+The goal is automatic knowledge retrieval and capture — not a call before every sentence. Use judgment.
+
+1. Call `ltm_recall` before a non-trivial task, or when the work touches past decisions or an unfamiliar area. Skip it for trivial one-liners.
+2. Call `ltm_learn` after discovering a non-obvious pattern, architectural decision, or gotcha worth keeping across sessions.
+3. Call `ltm_context` at session start or when switching projects, to restore goals, decisions, and gotchas.
 
 ## Development Workflow
 
@@ -45,15 +46,15 @@ The plugin system reads from the cache, not the source repo. Changes only take e
 
 ## Available MCP Tools
 
-| Tool | When to use |
-|------|-------------|
-| `ltm_recall` | **MUST** call before any non-trivial task — search past decisions, patterns, gotchas. Also call when starting work on unfamiliar areas. |
-| `ltm_learn` | **MUST** call after discovering a non-obvious pattern, architectural decision, or gotcha. Call whenever you learn something worth preserving. |
-| `ltm_forget` | Call when a memory is wrong, outdated, or user requests removal. |
-| `ltm_relate` | Call when two memories are linked — e.g., a decision that caused a gotcha, a pattern that applies to architecture. |
-| `ltm_context` | **MUST** call at session start or when switching projects to restore goals, decisions, and gotchas. |
-| `ltm_context_items` | Call to list specific context types (goals, decisions, progress, gotchas) for a project. |
-| `ltm_graph` | Call when exploring connections between memories or tracing decision chains. |
+| Tool | When to use | When to skip |
+|------|-------------|--------------|
+| `ltm_recall` | Before a non-trivial task, or when entering an unfamiliar area — surfaces past decisions, patterns, gotchas. | Trivial one-liners. |
+| `ltm_learn` | After discovering a non-obvious pattern, architectural decision, or gotcha worth keeping across sessions. | Facts derivable from the code or git history. |
+| `ltm_forget` | When a memory is wrong, outdated, or the user asks to remove it. | — |
+| `ltm_relate` | When two memories connect — e.g. a decision caused a gotcha, a pattern applies to an architecture. | — |
+| `ltm_context` | At session start or when switching projects — restores goals, decisions, gotchas. | Mid-task within the same project. |
+| `ltm_context_items` | To list one context type (goals, decisions, progress, gotchas) for a project. | — |
+| `ltm_graph` | When exploring connections between memories or tracing a decision chain. | — |
 
 ## Usage Pattern
 

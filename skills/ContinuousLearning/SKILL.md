@@ -13,10 +13,12 @@ SQLite-backed memory system at `$CLAUDE_PLUGIN_DATA/ltm.db`. Two tables: `memori
 
 | Trigger | Action |
 |---------|--------|
-| "Learn this", "Remember this", "Save this pattern" | Run `/learn` |
-| "What do I know about X?", "Any past decisions on Y?" | Run `/recall` |
-| "Forget about X", "That memory is wrong" | Run `/forget` |
-| "X supports Y", "X contradicts Y" | Run `/relate` |
+| "Learn this", "Remember this", "Save this pattern" | Run `/ltm:memory learn` |
+| "What do I know about X?", "Any past decisions on Y?" | Run `/ltm:memory recall` |
+| "Forget about X", "That memory is wrong" | Run `/ltm:memory forget` |
+| "X supports Y", "X contradicts Y" | Run `/ltm:memory relate` |
+
+Recall before non-trivial work and capture genuinely new insights — the goal is automatic retrieval and capture, not a call on every turn. Skip recall for trivial one-liners; skip learn for facts already derivable from the code or git history.
 
 ## Examples
 
@@ -34,10 +36,10 @@ SQLite-backed memory system at `$CLAUDE_PLUGIN_DATA/ltm.db`. Two tables: `memori
 
 ## Quick Reference
 
-- **`/learn`** — Store an insight in `memories` table. Dedup-safe (reinforces on repeat).
-- **`/recall [query]`** — FTS5 search with tag/category/project filters.
-- **`/forget <id>`** — Delete by ID. CASCADE removes relations. Irreversible.
-- **`/relate <src> <tgt> <type>`** — Link memories. Types: `supports|contradicts|refines|depends_on|related_to|supersedes`.
+- **`/ltm:memory learn`** — Store an insight in `memories` table. Dedup-safe (reinforces on repeat).
+- **`/ltm:memory recall [query]`** — FTS5 search with tag/category/project filters.
+- **`/ltm:memory forget <id>`** — Delete by ID. CASCADE removes relations. Irreversible.
+- **`/ltm:memory relate <src> <tgt> <type>`** — Link memories. Types: `supports|contradicts|refines|depends_on|related_to|supersedes`.
 - **Hooks manage context automatically** — no manual writes to `context-*.md` files needed.
 
 ## Full Documentation
