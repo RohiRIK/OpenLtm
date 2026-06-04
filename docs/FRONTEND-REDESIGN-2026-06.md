@@ -38,22 +38,23 @@ The 21Dev/Referral principles that drove these cuts:
 
 ## 1. Top-level navigation: what stays, what merges, what disappears
 
-### 1.1 The new left rail (4 items)
+### 1.1 The new top bar (4 items + persistent surfaces)
+
+> **Decision (2026-06-04):** Keep the **top bar** layout, not a left rail. The Project Switcher sits to the right of the logo; the status chip sits at the far right alongside the theme toggle. This is a smaller change to the existing IA and matches user preference.
 
 ```
-┌──────────────────────────────────┐
-│  [⌘K Search]                     │  ← ghost input, top of rail
-│                                  │
-│  ┌── Projects          ← home  │  default route
-│  ├── Graph                       │  global graph view
-│  ├── Inbox           [3 pending] │  attention-requiring work
-│  └── Settings                    │  system + behavior + health
-│                                  │
-│  ─── status ───                  │
-│  ● live · vec · 82/100           │  ambient backend/score chip
-│  claude-ltm-plugin               │  current project
-└──────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────┐
+│  [🧠 OpenLTM]  [⌥ claude-ltm-plugin ▾]   Projects  Graph  Inbox(3)  Settings  ···  [⌘K Search...]  ···  [● live · 82] [☾] │
+└────────────────────────────────────────────────────────────────────────┘
+       │              │                    └──── 4 nav items ────┘                  │                  └─ status ─┘
+       │              └─ Project Switcher (always visible, click to swap)         └─ Omnibar (already built)
+       └─ Logo
 ```
+
+- **Left:** Logo + Project Switcher (the answer to "what was F?")
+- **Center-left:** 4 nav pills — Projects · Graph · Inbox (`N` pending badge) · Settings
+- **Center:** Omnibar (⌘K) — already implemented
+- **Right:** Status chip (backend + score) · Theme toggle
 
 ### 1.2 What happens to each of the 7 current items
 
@@ -183,23 +184,16 @@ The key UX problem right now: **once you're in a project, the graph and search f
 
 ### 2.4 The Project Switcher (replaces the "F" concept)
 
-The "F" nav item in the current product was a partial project switcher with no IA. The redesign makes this a **first-class, top-left, always-visible control**:
+The "F" nav item in the current product was a partial project switcher with no IA. The redesign makes this a **first-class, top-bar, always-visible control** (per the top-bar decision):
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  OpenLTM                                          ⌘K  [👤] │
-│  ┌─────────────────┐                                         │
-│  │ ⌥ claude-ltm-…  │  ← current project, click to switch  │
-│  └─────────────────┘                                         │
-│  ────                                                        │
-│  Projects                                                    │
-│  Graph                                                       │
-│  Inbox                                                       │
-│  Settings                                                    │
+│  [🧠 OpenLTM]  [⌥ claude-ltm-plugin ▾]      Projects  Graph … │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-- Click → dropdown of all registered projects + "All projects (global)" + "Add new project"
+- Lives to the right of the logo, before the nav pills
+- Click → dropdown of all registered projects + **"All projects (global)"** (first-class option, per Q4) + "Add new project"
 - **Memory injection scope follows this switcher** — when you're "in" claude-ltm-plugin, that project is the default scope for recall and graph
 - The switcher persists across page navigation (it's a global context, not a per-page state)
 
@@ -448,52 +442,61 @@ Referral groups settings into clearly-named sections (Connections, Notifications
 
 ## 7. Implementation roadmap (rough sequence)
 
-This is a 3-phase rollout, designed so each phase is independently shippable:
+This is a 3-phase rollout, designed so each phase is independently shippable. Each phase ships as a version bump: **v2.5.0 → v2.6.0 → v2.7.0**.
 
-### Phase 1 — Cut (no new features, just remove redundancy)
+### Phase 1 — Cut (v2.5.0) — 2-3 days
+No new features, just remove redundancy. Keep the top bar (per Q1).
+
 - Remove "F" / redundant Projects entry
 - Remove the "Search" route
 - Add /inbox alias to /pending; deprecate /pending
 - Move "Config" content into Settings (rename "Settings & Config" → "Settings")
-- Add ⌘K shortcut to the search bar in the left rail (so it's discoverable, not just a hidden command)
+- Add ⌘K shortcut to the search bar in the top bar (so it's discoverable, not just a hidden command)
+- Refactor `TopNav.tsx` to the 4-item layout: Projects · Graph · Inbox · Settings
+- Slot the Project Switcher to the right of the logo (placeholder until Phase 2 wires it)
+- **Inbox auto-clear: NOT YET** (added in Phase 3 per Q2 deferral)
 
 **Effort:** 2-3 days. Mostly renaming and re-routing.
 
-### Phase 2 — Restructure (5 sub-routes per project)
-- Split `/projects/:name` into Overview / Memories / Timeline / Connections / Health
-- Add the Project Switcher (top-left, current-project indicator)
+### Phase 2 — Restructure (v2.6.0) — 1-2 weeks
+- Split `/project/:name` into `/projects/:name/{overview,memories,timeline,connections,health}` (5 sub-routes)
+- Wire the Project Switcher to a Zustand store; defaults to current project, "All" is first-class
+- `/graph` defaults to the active project; "All projects" toggle in FilterRail (per Q6)
 - Implement the Chain mode in the graph
 - Add Saved Searches panel
+- Add old `/project/[name]` as a redirect (will be removed per Q5: 2 minor versions, i.e. after v2.7.0)
 
 **Effort:** 1-2 weeks. Most of the components already exist (ProjectTableView, ProjectBoardView, ProjectTimeline, etc.) — they just need to live at proper routes.
 
-### Phase 3 — Polish (the delightful details)
-- Ambient health chip in left rail (status + current project + score)
-- 5-section Settings reorganization
+### Phase 3 — Polish (v2.7.0) — 2-3 weeks
+- 5-section Settings reorganization (System · Behavior · Health · Advanced · About)
 - Project-level settings overrides
 - Inspector right-click menu ("Open in project", "Mark permanent", "Find conflicts")
 - "Why?" tooltips on decision nodes
+- Cluster labels: tag-frequency heuristic (LLM in a future v2.8+)
+- Inbox auto-clear: 30 days with Recover tray (per Q2)
+- Global memories: gold ring + ★ icon in graph
+- Search history (last 10)
+- Remove decorative toolbar buttons (move to `?` cheatsheet)
+- Remove `/project/[name]` redirect at the END of this phase (per Q5)
 
 **Effort:** 2-3 weeks. Many small components, no architectural changes.
 
 ---
 
-## 8. Open questions for the product team
+## 8. Resolved decisions (2026-06-04)
 
-1. **Should the left rail stay left, or move to top?** 21Dev/Referral both use left rails. The current product is top-nav. Left rail gives more vertical real estate for the canvas; top nav is more familiar.
-   *My recommendation: switch to left rail — it's better for a graph-heavy product, and matches the user's described mental model.*
+The following open questions have been answered for v2.5.0+:
 
-2. **Should the Inbox be auto-cleared on dismiss?** Currently pending memories accumulate until manually approved.
-   *My recommendation: yes, "dismiss" should soft-delete after 7 days, with a "Recover" option. Inbox-zero becomes the default state.*
-
-3. **Should global memories (importance 5) be visually distinguished in the graph?**
-   *My recommendation: yes — a thin gold ring around the node, with a small ★ icon. Currently they're indistinguishable.*
-
-4. **How prominent should the project switcher be?**
-   *My recommendation: top-left, always visible, with the current project name. This is the answer to "what's the F?" — F was always meant to be the project context switcher, just badly named.*
-
-5. **Should "Health" be a verb, a noun, or a status?**
-   *My recommendation: a status. "System score 82" is a number, not a place. The current `/health` (CLI) and `/ltm:health` are diagnostic tools, not destinations.*
+| # | Question | Decision | Drives |
+|---|---|---|---|
+| 1 | Left rail or top bar? | **Top bar (keep current)** | Project Switcher slots next to the logo, not in a rail |
+| 2 | Inbox auto-clear window? | **30 days with Recover** | Phase 3 task; soft-delete + recover tray in Settings → Health |
+| 3 | Cluster labels? | **Tag-frequency heuristic now, LLM later** | Phase 3 ships heuristic; LLM is v2.8+ |
+| 4 | Project Switcher "All" option? | **Yes, first-class** | Switcher dropdown lists "All projects (global)" alongside registered projects |
+| 5 | How long keep old `/project/[name]`? | **Two minor versions (until after v2.7.0)** | Redirect active through v2.6.0, v2.7.0; removed at v2.8.0 |
+| 6 | `/graph` default scope? | **Current project; "All" toggle in FilterRail** | Phase 2 implementation |
+| 7 | Version bump cadence? | **One bump per phase** | v2.5.0 (Cut) → v2.6.0 (Restructure) → v2.7.0 (Polish) |
 
 ---
 
