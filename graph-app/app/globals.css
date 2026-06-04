@@ -14,7 +14,7 @@
   --color-popover: var(--bg-primary);
   --color-popover-foreground: var(--text-primary);
   --color-primary: var(--accent);
-  --color-primary-foreground: #ffffff;
+  --color-primary-foreground: var(--accent-foreground);
   --color-secondary: var(--bg-secondary);
   --color-secondary-foreground: var(--text-primary);
   --color-muted: var(--bg-secondary);
@@ -26,39 +26,133 @@
   --color-border: var(--border);
   --color-input: var(--border);
   --color-ring: var(--accent);
-  --radius-lg: 0.5rem;
-  --radius-md: calc(0.5rem - 2px);
-  --radius-sm: calc(0.5rem - 4px);
+  --color-sidebar: var(--bg-secondary);
+  --color-sidebar-foreground: var(--text-primary);
+  --color-sidebar-primary: var(--accent);
+  --color-sidebar-primary-foreground: var(--accent-foreground);
+  --color-sidebar-accent: var(--bg-tertiary);
+  --color-sidebar-accent-foreground: var(--text-primary);
+  --color-sidebar-border: var(--border);
+  --color-sidebar-ring: var(--accent);
+  --radius-lg: 0.25rem;
+  --radius-md: calc(0.25rem - 1px);
+  --radius-sm: 0.125rem;
 }
 
+/* ── Cinematic darkroom palette (inspired by monopo saigon) ───────────────────
+   Achromatic chrome — black/carbon surfaces, paper-white type — so the only
+   color in the UI comes from the graph nodes themselves. The "Mercury Flow"
+   mint→amber gradient supplies the single signature accent + node glow. */
 :root {
   --bg-primary: #ffffff;
-  --bg-secondary: #f6f8fa;
-  --bg-tertiary: #eaeef2;
-  --border: #d0d7de;
-  --text-primary: #1f2328;
-  --text-muted: #656d76;
-  --accent: #0969da;
-  --node-memory: #1e4a7a;
-  --node-project: #1a4731;
-  --node-memory-stroke: #58a6ff;
-  --node-project-stroke: #3fb950;
-  --link-stroke: #d0d7de;
+  --bg-secondary: #f7f7f5;
+  --bg-tertiary: #ececea;
+  --border: #e0e0dc;
+  --text-primary: #181818;
+  --text-muted: #6d6d6d;
+  --accent: #1f8f4e;
+  --accent-foreground: #ffffff;
+  --node-memory: #d7ece0;
+  --node-project: #f5e2c4;
+  --node-memory-stroke: #1f8f4e;
+  --node-project-stroke: #c77d12;
+  --link-stroke: #d8d8d4;
 }
 
-.dark {
-  --bg-primary: #0d1117;
-  --bg-secondary: #161b22;
-  --bg-tertiary: #1c2128;
-  --border: #30363d;
-  --text-primary: #e6edf3;
-  --text-muted: #8b949e;
-  --accent: #58a6ff;
-  --node-memory: #1e4a7a;
-  --node-project: #1a4731;
-  --node-memory-stroke: #58a6ff;
-  --node-project-stroke: #3fb950;
-  --link-stroke: #30363d;
+.studio {
+  --bg-primary: #100904;
+  --bg-secondary: #100904;
+  --bg-tertiary: #100904;
+  --border: #40372e;
+  --text-primary: #ffedd7;
+  --text-muted: #6c5f51;
+  --accent: #dc5000;
+  --accent-foreground: #100904;
+  --node-memory: #382416;
+  --node-project: #100904;
+  --node-memory-stroke: #ffedd7;
+  --node-project-stroke: #dc5000;
+  --link-stroke: #40372e;
+}
+
+.midnight {
+  --bg-primary: #050914;
+  --bg-secondary: #050914;
+  --bg-tertiary: #050914;
+  --border: #1e293b;
+  --text-primary: #e2e8f0;
+  --text-muted: #475569;
+  --accent: #3b82f6;
+  --accent-foreground: #050914;
+  --node-memory: #1e3a8a;
+  --node-project: #050914;
+  --node-memory-stroke: #e2e8f0;
+  --node-project-stroke: #3b82f6;
+  --link-stroke: #1e293b;
+}
+
+.forest {
+  --bg-primary: #0a0f0a;
+  --bg-secondary: #0a0f0a;
+  --bg-tertiary: #0a0f0a;
+  --border: #1f2e1f;
+  --text-primary: #e8f5e9;
+  --text-muted: #5c705c;
+  --accent: #10b981;
+  --accent-foreground: #0a0f0a;
+  --node-memory: #064e3b;
+  --node-project: #0a0f0a;
+  --node-memory-stroke: #e8f5e9;
+  --node-project-stroke: #10b981;
+  --link-stroke: #1f2e1f;
+}
+
+.concrete {
+  --bg-primary: #0a0a0a;
+  --bg-secondary: #0a0a0a;
+  --bg-tertiary: #0a0a0a;
+  --border: #262626;
+  --text-primary: #f5f5f5;
+  --text-muted: #737373;
+  --accent: #ffffff;
+  --accent-foreground: #0a0a0a;
+  --node-memory: #262626;
+  --node-project: #0a0a0a;
+  --node-memory-stroke: #f5f5f5;
+  --node-project-stroke: #ffffff;
+  --link-stroke: #262626;
+}
+
+.wine {
+  --bg-primary: #0d0508;
+  --bg-secondary: #0d0508;
+  --bg-tertiary: #0d0508;
+  --border: #3f1d2a;
+  --text-primary: #fce7f3;
+  --text-muted: #835c6a;
+  --accent: #e11d48;
+  --accent-foreground: #0d0508;
+  --node-memory: #4c0519;
+  --node-project: #0d0508;
+  --node-memory-stroke: #fce7f3;
+  --node-project-stroke: #e11d48;
+  --link-stroke: #3f1d2a;
+}
+
+.ocean {
+  --bg-primary: #030f14;
+  --bg-secondary: #030f14;
+  --bg-tertiary: #030f14;
+  --border: #164e63;
+  --text-primary: #ccfbf1;
+  --text-muted: #3f7278;
+  --accent: #06b6d4;
+  --accent-foreground: #030f14;
+  --node-memory: #083344;
+  --node-project: #030f14;
+  --node-memory-stroke: #ccfbf1;
+  --node-project-stroke: #06b6d4;
+  --link-stroke: #164e63;
 }
 
 html, body {
@@ -67,7 +161,9 @@ html, body {
   height: 100%;
   background: var(--bg-primary);
   color: var(--text-primary);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--font-inter), ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  letter-spacing: -0.011em;
+  -webkit-font-smoothing: antialiased;
 }
 
 * {
@@ -76,11 +172,15 @@ html, body {
 
 ::-webkit-scrollbar {
   width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #374151;
+  background: var(--border);
   border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
 }

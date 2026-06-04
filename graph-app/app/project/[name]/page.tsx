@@ -2,57 +2,27 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
+import { ArrowLeft, Network, LayoutDashboard, List, Maximize2, ChevronDown, ChevronUp, Filter } from "lucide-react";
 import Sidebar from "@/components/Sidebar";
 import ProjectTableView from "@/components/ProjectTableView";
 import ProjectBoardView from "@/components/ProjectBoardView";
+import ProjectConnections from "@/components/ProjectConnections";
+import ProjectRelevance from "@/components/ProjectRelevance";
+import ProjectTimeline from "@/components/ProjectTimeline";
+import ProjectActivityLog from "@/components/ProjectActivityLog";
+import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
 import { nodeColor } from "@/lib/nodeColors";
-import type { GraphNode, MemoryNode, ProjectDetail } from "@/lib/types";
+import type { GraphNode, ProjectDetail } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
-const MiniGraph = dynamic(() => import("@/components/MiniGraph"), {
-  ssr: false,
-  loading: () => <div className="flex items-center justify-center h-full text-gray-600 text-sm">Loading graph…</div>,
-});
+// MiniGraph removed per design update
 
-type ViewMode = "graph" | "table" | "board";
-const VIEW_MODES: readonly ViewMode[] = ["graph", "table", "board"];
-const LS_KEY = "ltm-project-view";
+const CONTEXT_TYPES = ["goal", "decision", "gotcha", "progress"] as const;
 
-function loadViewMode(): ViewMode {
-  if (typeof window === "undefined") return "graph";
-  const v = localStorage.getItem(LS_KEY);
-  if (v === "table" || v === "board") return v;
-  return "graph";
-}
-
-// View toggle icons — single component with path content swapped per mode
-function ViewIcon({ mode, active }: { mode: ViewMode; active: boolean }) {
-  const cls = `w-4 h-4 ${active ? "text-blue-400" : "text-gray-500"}`;
-  if (mode === "graph") return (
-    <svg className={cls} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <circle cx="5" cy="12" r="2" strokeWidth={2} />
-      <circle cx="19" cy="5" r="2" strokeWidth={2} />
-      <circle cx="19" cy="19" r="2" strokeWidth={2} />
-      <line x1="7" y1="11" x2="17" y2="6" strokeWidth={2} strokeLinecap="round" />
-      <line x1="7" y1="13" x2="17" y2="18" strokeWidth={2} strokeLinecap="round" />
-    </svg>
-  );
-  if (mode === "table") return (
-    <svg className={cls} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <rect x="3" y="3" width="18" height="18" rx="2" strokeWidth={2} />
-      <line x1="3" y1="9" x2="21" y2="9" strokeWidth={2} />
-      <line x1="3" y1="15" x2="21" y2="15" strokeWidth={2} />
-      <line x1="9" y1="9" x2="9" y2="21" strokeWidth={2} />
-    </svg>
-  );
-  return (
-    <svg className={cls} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <rect x="3" y="3" width="5" height="18" rx="1.5" strokeWidth={2} />
-      <rect x="10" y="3" width="5" height="12" rx="1.5" strokeWidth={2} />
-      <rect x="17" y="3" width="5" height="15" rx="1.5" strokeWidth={2} />
-    </svg>
-  );
+function shortName(name: string): string {
+  return name.split("/").pop() || name;
 }
 
 export default function ProjectPage() {
@@ -62,172 +32,232 @@ export default function ProjectPage() {
   const [detail, setDetail] = useState<ProjectDetail | null>(null);
   const [selected, setSelected] = useState<GraphNode | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<ViewMode>(loadViewMode);
+
+  // Simple state to toggle between views at the bottom
+  const [activeView, setActiveView] = useState<"table" | "board" | "connections">("table");
+  const [categoryFilter, setCategoryFilter] = useState<string | "All">("All");
 
   useEffect(() => {
+    let alive = true;
     api.project(projectName)
-      .then(setDetail)
-      .catch(e => setError(String(e)));
+      .then((d) => alive && setDetail(d))
+      .catch((e) => alive && setError(String(e)));
+    return () => {
+      alive = false;
+    };
   }, [projectName]);
 
-  function switchView(mode: ViewMode) {
-    setViewMode(mode);
-    localStorage.setItem(LS_KEY, mode);
+  const allCategories = useMemo(() => {
+    if (!detail) return ["All"];
+    const cats = new Set<string>();
+    for (const m of detail.memories) cats.add(m.category);
+    return ["All", ...Array.from(cats)].sort();
+  }, [detail]);
+
+  const filteredMemories = useMemo(() => {
+    if (!detail) return [];
+    if (categoryFilter === "All") return detail.memories;
+    return detail.memories.filter((m) => m.category === categoryFilter);
+  }, [detail, categoryFilter]);
+
+  if (error) {
+    return (
+      <div className="h-full overflow-y-auto p-6 space-y-4">
+        <BackLink />
+        <p className="text-sm text-destructive">Failed to load: {error}</p>
+      </div>
+    );
   }
 
-  if (error) return (
-    <div className="flex flex-col h-full bg-[#0d1117] text-gray-300 p-6">
-      <BackButton />
-      <p className="mt-4 text-red-400">Error: {error}</p>
-    </div>
-  );
-
-  if (!detail) return (
-    <div className="flex items-center justify-center h-full bg-[#0d1117] text-gray-600 text-sm">
-      Loading…
-    </div>
-  );
-
-  const totalMemories = detail.memories.length;
-  const totalContext = detail.context_items.length;
-  const totalRelations = detail.relations.length;
+  if (!detail) {
+    return (
+      <div className="h-full overflow-y-auto p-6 space-y-6">
+        <BackLink />
+        <Skeleton className="h-8 w-64 rounded-lg bg-[var(--node-memory)] animate-pulse" />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <Skeleton className="col-span-2 h-[400px] rounded-xl bg-[var(--node-memory)] animate-pulse" />
+          <Skeleton className="h-[400px] rounded-xl bg-[var(--node-memory)] animate-pulse" />
+        </div>
+      </div>
+    );
+  }
+  const hasNodes = detail ? (detail.memories.length > 0 || detail.context_items.length > 0) : false;
 
   return (
-    <div className="flex flex-col h-full bg-[#0d1117] text-gray-300 overflow-hidden">
-      {/* Header */}
-      <div className="px-6 py-4 border-b border-[#30363d] flex items-center gap-4">
-        <BackButton />
-        <div className="min-w-0 flex-1">
-          <h1 className="text-xl font-bold text-white truncate">{projectName}</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            {totalMemories} memories · {totalContext} context items · {totalRelations} relations
-          </p>
-        </div>
-
-        {/* View toggle */}
-        <div className="flex items-center gap-1 bg-[#161b22] border border-[#30363d] rounded-lg p-1">
-          {VIEW_MODES.map(mode => (
-            <button
-              key={mode}
-              onClick={() => switchView(mode)}
-              title={mode.charAt(0).toUpperCase() + mode.slice(1) + " view"}
-              className={`p-1.5 rounded-md transition-colors ${
-                viewMode === mode
-                  ? "bg-[#21262d] ring-1 ring-blue-500/50"
-                  : "hover:bg-[#21262d]"
-              }`}
-            >
-              <ViewIcon mode={mode} active={viewMode === mode} />
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Body */}
-      <div className="flex flex-1 overflow-hidden">
-        {viewMode === "graph" && (
-          <>
-            {/* Left: MiniGraph */}
-            <div className="flex-1 min-w-0 relative overflow-hidden">
-              {(detail.memories.length > 0 || detail.context_items.length > 0) ? (
-                <MiniGraph
-                  projectName={projectName}
-                  memories={detail.memories}
-                  contextItems={detail.context_items}
-                  relations={detail.relations}
-                  onNodeClick={n => setSelected(n as GraphNode)}
-                />
-              ) : (
-                <div className="flex items-center justify-center h-full text-gray-600 text-sm">
-                  No nodes connected to this project yet.
-                </div>
-              )}
+    <div className="flex h-full overflow-hidden relative">
+      <div className="flex-1 overflow-y-auto custom-scrollbar">
+        <div className="mx-auto max-w-7xl px-6 py-8 space-y-8">
+          {/* Header */}
+          <div className="flex flex-col gap-4">
+            <BackLink />
+            <div>
+              <h1 className="text-3xl font-semibold tracking-tight text-foreground truncate" title={projectName}>
+                {shortName(projectName)}
+              </h1>
+              <p className="text-sm text-muted-foreground mt-1">
+                {detail.memories.length} memories · {detail.context_items.length} context items ·{" "}
+                {detail.relations.length} relations
+              </p>
             </div>
+          </div>
 
-            {/* Right: node cards + sidebar */}
-            <div className="w-72 flex flex-col border-l border-[#30363d] overflow-y-auto">
-              {(["goal", "decision", "gotcha", "progress"] as const).map(type => {
-                const items = detail.context[type] ?? [];
-                if (items.length === 0) return null;
-                return (
-                  <div key={type} className="border-b border-[#30363d]">
-                    <div className="px-4 py-2 flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: nodeColor(type) }} />
-                      <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">{type}</span>
-                    </div>
-                    {items.map((item, idx) => (
-                      <p key={`${item.created_at}-${idx}`} className="px-4 py-1.5 text-xs text-gray-300 border-t border-[#21262d] last:pb-3">
-                        {item.content}
-                      </p>
-                    ))}
-                  </div>
-                );
-              })}
+          {/* Context & Relevance Section */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="flex flex-col gap-6">
+              <div className="border border-dashed border-[var(--border)] rounded-[12px] p-6">
+                <ContextSection detail={detail} />
+              </div>
+            </div>
+            
+            <div className="flex flex-col gap-6">
+              <div className="border border-dashed border-[var(--border)] rounded-[12px] p-6">
+                <ProjectRelevance detail={detail} />
+              </div>
+            </div>
+          </div>
 
-              {detail.memories.length > 0 && (
-                <div>
-                  <div className="px-4 py-2">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">Memories</span>
-                  </div>
-                  {detail.memories.map(m => (
-                    <MemoryCard key={m.id} memory={m} onClick={() => setSelected(m as GraphNode)} />
+          {/* Timeline Section */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="border border-dashed border-[var(--border)] rounded-[12px] p-6">
+              <h3 className="text-lg font-semibold tracking-tight mb-4 text-[var(--text-primary)]">Project Timeline</h3>
+              <ProjectTimeline detail={detail} />
+            </div>
+            
+            <div className="border border-dashed border-[var(--border)] rounded-[12px] p-6">
+              <h3 className="text-lg font-semibold tracking-tight mb-4 text-[var(--text-primary)]">Recent Activity</h3>
+              <ProjectActivityLog memories={detail.memories} />
+            </div>
+          </div>
+
+          {/* Detailed Views Section */}
+          <div className="border border-dashed border-[var(--border)] rounded-[12px] overflow-hidden flex flex-col min-h-[600px]">
+            <div className="flex items-center border-b border-dashed border-[var(--border)] px-4 py-3 bg-transparent gap-2 overflow-x-auto custom-scrollbar">
+              <button
+                onClick={() => setActiveView("table")}
+                className={cn("px-4 py-1.5 rounded-[22.5px] text-xs font-medium transition-colors flex items-center gap-2 border", activeView === "table" ? "text-[var(--text-primary)] border-[var(--text-primary)]" : "bg-transparent text-[var(--text-muted)] border-transparent hover:text-[var(--text-primary)]")}
+              >
+                <List className="w-3.5 h-3.5" /> Table
+              </button>
+              <button
+                onClick={() => setActiveView("board")}
+                className={cn("px-4 py-1.5 rounded-[22.5px] text-xs font-medium transition-colors flex items-center gap-2 border", activeView === "board" ? "text-[var(--text-primary)] border-[var(--text-primary)]" : "bg-transparent text-[var(--text-muted)] border-transparent hover:text-[var(--text-primary)]")}
+              >
+                <LayoutDashboard className="w-3.5 h-3.5" /> Board
+              </button>
+              <button
+                onClick={() => setActiveView("connections")}
+                className={cn("px-4 py-1.5 rounded-[22.5px] text-xs font-medium transition-colors flex items-center gap-2 border", activeView === "connections" ? "text-[var(--text-primary)] border-[var(--text-primary)]" : "bg-transparent text-[var(--text-muted)] border-transparent hover:text-[var(--text-primary)]")}
+              >
+                <Network className="w-3.5 h-3.5" /> Connections
+              </button>
+
+              <div className="ml-auto flex items-center gap-2">
+                <Filter className="w-3.5 h-3.5 text-muted-foreground" />
+                <select
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  className="bg-transparent border-b border-[var(--text-primary)] rounded-none px-3 py-1 text-xs text-[var(--text-primary)] focus:outline-none transition-colors appearance-none custom-select"
+                >
+                  {allCategories.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
                   ))}
-                </div>
+                </select>
+              </div>
+            </div>
+            
+            <div className="flex-1 p-6 relative">
+              {activeView === "table" && (
+                <ProjectTableView memories={filteredMemories} onSelect={setSelected} />
+              )}
+              {activeView === "board" && (
+                <ProjectBoardView memories={filteredMemories} onSelect={setSelected} />
+              )}
+              {activeView === "connections" && (
+                <ProjectConnections detail={detail} />
               )}
             </div>
-          </>
-        )}
-
-        {viewMode === "table" && (
-          <div className="flex-1 overflow-hidden">
-            <ProjectTableView memories={detail.memories} onSelect={setSelected} />
           </div>
-        )}
-
-        {viewMode === "board" && (
-          <div className="flex-1 overflow-hidden">
-            <ProjectBoardView memories={detail.memories} onSelect={setSelected} />
-          </div>
-        )}
-
-        <Sidebar node={selected} onClose={() => setSelected(null)} />
+          
+        </div>
       </div>
+
+      {/* Slide-over Sidebar */}
+      {selected && (
+        <div className="w-[400px] shrink-0 border-l border-[var(--border)] bg-[var(--bg-primary)] z-20 h-full">
+          <Sidebar node={selected} onClose={() => setSelected(null)} />
+        </div>
+      )}
     </div>
   );
 }
 
-function BackButton() {
+function BackLink() {
   return (
     <Link
       href="/"
-      className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-white transition-colors shrink-0"
+      className="inline-flex items-center gap-2 text-sm font-medium text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors w-fit border-b border-transparent hover:border-[var(--accent)] rounded-none pb-0.5"
     >
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-      </svg>
-      Back
+      <ArrowLeft className="w-4 h-4" />
+      Projects
     </Link>
   );
 }
 
-function MemoryCard({ memory, onClick }: { memory: MemoryNode; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className="w-full text-left px-4 py-2.5 border-t border-[#21262d] hover:bg-[#161b22] transition-colors"
-    >
-      <div className="flex items-center gap-2 mb-1">
-        <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: nodeColor(memory.category) }} />
-        <span className="text-xs text-gray-500">{memory.category} · imp {memory.importance}</span>
+function ContextSection({ detail }: { detail: ProjectDetail }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const groups = CONTEXT_TYPES.map((type) => ({ type, items: detail.context[type] ?? [] })).filter(
+    (g) => g.items.length > 0,
+  );
+
+  if (groups.length === 0) {
+    return (
+      <div className="space-y-3">
+        <h3 className="text-lg font-semibold tracking-tight">Context</h3>
+        <p className="text-sm text-muted-foreground">No context items recorded for this project.</p>
       </div>
-      <p className="text-xs text-gray-300 line-clamp-2">{memory.content}</p>
-      {memory.tags.length > 0 && (
-        <div className="flex flex-wrap gap-1 mt-1.5">
-          {memory.tags.map(t => (
-            <span key={t} className="px-1.5 py-0.5 rounded text-[10px] bg-[#1f2937] text-gray-400">{t}</span>
+    );
+  }
+
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold tracking-tight text-white">Project Context</h3>
+        <button
+          onClick={() => setCollapsed(!collapsed)}
+          className="text-muted-foreground hover:text-white transition-colors p-1 rounded hover:bg-white/10"
+          title={collapsed ? "Expand context" : "Collapse context"}
+        >
+          {collapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+        </button>
+      </div>
+      
+      {!collapsed && (
+        <div className="space-y-4">
+          {groups.map(({ type, items }) => (
+            <div key={type} className="space-y-2">
+              <div className="flex items-center gap-2 pb-1">
+                <span
+                  className="w-2 h-2 rounded-full shrink-0"
+                  style={{ backgroundColor: nodeColor(type) }}
+                />
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">
+                  {type}
+                </span>
+              </div>
+              <ul className="flex flex-wrap gap-2">
+                {items.map((item, idx) => (
+                  <li
+                    key={`${item.created_at}-${idx}`}
+                    className="text-xs text-[var(--text-primary)] bg-transparent border border-[var(--border)] rounded-[12px] px-3 py-2 max-w-full leading-relaxed"
+                  >
+                    {item.content}
+                  </li>
+                ))}
+              </ul>
+            </div>
           ))}
         </div>
       )}
-    </button>
+    </section>
   );
 }

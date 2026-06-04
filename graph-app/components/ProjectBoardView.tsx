@@ -1,14 +1,16 @@
 "use client";
 import { useMemo } from "react";
+import { LayoutDashboard } from "lucide-react";
 import { nodeColor } from "@/lib/nodeColors";
 import { truncate } from "@/lib/stringUtils";
+import EmptyState from "@/components/EmptyState";
 import type { GraphNode, MemoryNode } from "@/lib/types";
 
 const CATEGORIES = ["gotcha", "architecture", "pattern", "preference", "workflow", "constraint"] as const;
 
 function Stars({ count }: { count: number }) {
   return (
-    <span className="text-yellow-400 tracking-tight text-[10px]">
+    <span className="text-[var(--accent)] tracking-tight text-[10px]">
       {"★".repeat(count)}{"☆".repeat(5 - count)}
     </span>
   );
@@ -43,9 +45,11 @@ export default function ProjectBoardView({
 
   if (allCategories.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full text-gray-600 text-sm">
-        No memories to display.
-      </div>
+      <EmptyState
+        icon={LayoutDashboard}
+        title="No memories to display"
+        description="Memories will appear here once they're added to this project."
+      />
     );
   }
 
@@ -57,41 +61,46 @@ export default function ProjectBoardView({
         return (
           <div
             key={cat}
-            className="flex flex-col flex-shrink-0 w-64 rounded-lg bg-[#161b22] border border-[#30363d] overflow-hidden"
+            className="flex flex-col flex-shrink-0 w-64 rounded-[12px] bg-transparent border border-dashed border-[var(--border)] overflow-hidden"
           >
             {/* Column header */}
-            <div className="px-3 py-2.5 border-b border-[#30363d] flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
-              <span className="text-xs font-semibold uppercase tracking-wider text-gray-300">{cat}</span>
-              <span className="ml-auto text-[10px] text-gray-600 bg-[#21262d] px-1.5 py-0.5 rounded-full">
+            <div className="px-3 py-2.5 border-b border-dashed border-[var(--border)] flex items-center gap-2 bg-transparent">
+              <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
+              <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">{cat}</span>
+              <span className="ml-auto text-[10px] text-[var(--text-muted)] border border-[var(--border)] px-1.5 py-0.5 rounded-full font-mono">
                 {items.length}
               </span>
             </div>
 
             {/* Cards */}
-            <div className="flex-1 overflow-y-auto flex flex-col gap-2 p-2">
+            <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col gap-2 p-2">
               {items.map(m => (
                 <button
                   key={m.id}
                   onClick={() => onSelect(m as GraphNode)}
-                  className="w-full text-left p-3 rounded-md bg-[#0d1117] border border-[#21262d] hover:border-[#30363d] hover:bg-[#161b22] transition-colors"
+                  title={m.confidence != null && m.confidence < 0.4 ? "Confidence is low — this memory may be deprecated soon" : undefined}
+                  className={`w-full text-left p-3 rounded-[12px] bg-transparent border transition-colors group ${
+                    m.confidence != null && m.confidence < 0.4
+                      ? "border-[var(--border)] border-b-[var(--accent)] border-b-[2px] border-b-dashed hover:border-[var(--text-primary)]"
+                      : "border-[var(--border)] hover:border-[var(--text-primary)]"
+                  }`}
                 >
                   <div className="flex items-center justify-between mb-1.5">
                     <Stars count={m.importance} />
                     {m.confidence != null && (
-                      <span className="text-[10px] text-gray-600">{Math.round(m.confidence * 100)}%</span>
+                      <span className="text-[10px] text-[var(--text-muted)]">{Math.round(m.confidence * 100)}%</span>
                     )}
                   </div>
-                  <p className="text-xs text-gray-300 leading-relaxed mb-2">
+                  <p className="text-xs text-[var(--text-muted)] group-hover:text-[var(--text-primary)] transition-colors leading-relaxed mb-3">
                     {truncate(m.content, 120)}
                   </p>
                   {m.tags.length > 0 && (
                     <div className="flex flex-wrap gap-1">
                       {m.tags.slice(0, 4).map(t => (
-                        <span key={t} className="px-1.5 py-0.5 rounded text-[10px] bg-[#1f2937] text-gray-400">{t}</span>
+                        <span key={t} className="px-1.5 py-0.5 rounded text-[10px] bg-transparent border border-[var(--border)] text-[var(--text-muted)]">{t}</span>
                       ))}
                       {m.tags.length > 4 && (
-                        <span className="text-[10px] text-gray-600">+{m.tags.length - 4}</span>
+                        <span className="text-[10px] text-[var(--text-muted)]">+{m.tags.length - 4}</span>
                       )}
                     </div>
                   )}

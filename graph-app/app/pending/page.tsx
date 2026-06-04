@@ -1,194 +1,182 @@
 "use client";
+
 import { useCallback, useEffect, useState } from "react";
-import { api } from "@/lib/api";
-import { categoryBadgeColors } from "@/lib/categoryColors";
-import type { PendingMemory } from "@/lib/types";
 import Link from "next/link";
+import { Inbox, Check, X } from "lucide-react";
+import { api } from "@/lib/api";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Empty,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+  EmptyDescription,
+  EmptyContent,
+} from "@/components/ui/empty";
+import type { PendingMemory } from "@/lib/types";
+
+function shortName(name: string): string {
+  return name.split("/").pop() || name;
+}
 
 export default function PendingPage() {
   const [pending, setPending] = useState<PendingMemory[]>([]);
   const [loading, setLoading] = useState(true);
-  const [actionInProgress, setActionInProgress] = useState<number | null>(null);
-  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
-
-  const toggleExpand = (id: number) => {
-    setExpandedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
+  const [busy, setBusy] = useState<number | null>(null);
 
   const loadPending = useCallback(async () => {
     setLoading(true);
     try {
-      const items = await api.pending();
-      setPending(items);
+      setPending(await api.pending());
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => { loadPending(); }, [loadPending]);
+  useEffect(() => {
+    void loadPending();
+  }, [loadPending]);
 
-  const handleApprove = async (id: number) => {
-    setActionInProgress(id);
+  async function handleApprove(id: number) {
+    setBusy(id);
     try {
       await api.approveMemory(id);
       setPending((prev) => prev.filter((m) => m.id !== id));
     } finally {
-      setActionInProgress(null);
+      setBusy(null);
     }
-  };
+  }
 
-  const handleReject = async (id: number) => {
-    setActionInProgress(id);
+  async function handleReject(id: number) {
+    setBusy(id);
     try {
       await api.deleteMemory(id);
       setPending((prev) => prev.filter((m) => m.id !== id));
     } finally {
-      setActionInProgress(null);
+      setBusy(null);
     }
-  };
+  }
 
-  const handleApproveAll = async () => {
-    setActionInProgress(-1);
+  async function handleApproveAll() {
+    setBusy(-1);
     try {
       await Promise.all(pending.map((m) => api.approveMemory(m.id)));
       setPending([]);
     } finally {
-      setActionInProgress(null);
+      setBusy(null);
     }
-  };
+  }
 
   const dedupCandidates = pending.filter((m) => m.source?.startsWith("dedup:"));
 
-  const handleMergeAll = async () => {
-    if (!confirm(`Merge ${dedupCandidates.length} duplicate pair${dedupCandidates.length === 1 ? "" : "s"}?`)) return;
-    setActionInProgress(-2);
+  async function handleMergeAll() {
+    setBusy(-2);
     try {
       await api.mergeAll(0.95);
       await loadPending();
     } finally {
-      setActionInProgress(null);
+      setBusy(null);
     }
-  };
+  }
 
   return (
-    <div className="min-h-full overflow-y-auto bg-[var(--bg-primary)] text-[var(--text-primary)]">
-      <div className="max-w-3xl mx-auto px-6 py-8">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-xl font-semibold text-[var(--text-primary)]">Pending Review</h1>
-            <p className="text-sm text-[var(--text-muted)] mt-1">
-              {pending.length} {pending.length === 1 ? "memory" : "memories"} awaiting approval
-            </p>
-          </div>
-          <div className="flex gap-3">
-            {dedupCandidates.length > 0 && (
-              <button
-                onClick={handleMergeAll}
-                disabled={actionInProgress !== null}
-                className="px-3 py-1.5 text-xs bg-sky-600 hover:bg-sky-700 disabled:opacity-50 rounded transition-colors"
-              >
-                Merge All Duplicates (&ge;95%)
-              </button>
-            )}
-            {pending.length > 1 && (
-              <button
-                onClick={handleApproveAll}
-                disabled={actionInProgress !== null}
-                className="px-3 py-1.5 text-xs bg-green-600 hover:bg-green-700 disabled:opacity-50 rounded transition-colors"
-              >
-                Approve All
-              </button>
-            )}
-            <Link href="/" className="text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors px-3 py-1.5">
-              &larr; Graph
-            </Link>
-          </div>
+    <div className="h-full overflow-y-auto p-6 space-y-5">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-lg font-semibold">Inbox</h1>
+          <p className="text-sm text-[var(--text-muted)]">
+            Memories Claude wants to keep — approve the good ones, reject noise.
+          </p>
         </div>
-
-        {loading ? (
-          <div className="text-center text-gray-500 py-12">Loading...</div>
-        ) : pending.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="text-gray-600 text-lg mb-2">No pending memories</div>
-            <p className="text-gray-500 text-sm">
-              Run the janitor to auto-promote decisions and gotchas from context items.
-            </p>
-            <Link href="/settings" className="text-blue-400 hover:text-blue-300 text-sm mt-3 inline-block">
-              Go to Settings &rarr;
-            </Link>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {pending.map((mem) => (
-              <div
-                key={mem.id}
-                className="p-4 bg-[var(--bg-secondary)] rounded-lg border border-[var(--border)] hover:border-[var(--text-muted)] transition-colors"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span
-                        className={`inline-block px-2 py-0.5 text-[10px] font-medium rounded border ${categoryBadgeColors[mem.category] ?? "bg-gray-800 text-gray-400 border-gray-700"}`}
-                      >
-                        {mem.category}
-                      </span>
-                      <span className="text-[10px] text-gray-600">
-                        {"*".repeat(mem.importance)}{"*".repeat(5 - mem.importance).replace(/\*/g, ".")}
-                      </span>
-                      {mem.project_scope && (
-                        <span className="text-[10px] text-gray-500">
-                          {mem.project_scope}
-                        </span>
-                      )}
-                      {mem.source && (
-                        <span className="text-[10px] text-gray-600 italic">
-                          via {mem.source}
-                        </span>
-                      )}
-                    </div>
-                    <p className={`text-sm text-gray-300 leading-relaxed ${expandedIds.has(mem.id) ? "" : "line-clamp-3"}`}>
-                      {mem.content}
-                    </p>
-                    {mem.content.length > 120 && (
-                      <button
-                        onClick={() => toggleExpand(mem.id)}
-                        className="text-[10px] text-gray-500 hover:text-gray-300 mt-1 transition-colors"
-                      >
-                        {expandedIds.has(mem.id) ? "Show less ↑" : "Show more ↓"}
-                      </button>
-                    )}
-                    <p className="text-[10px] text-gray-600 mt-1.5">
-                      {new Date(mem.created_at).toLocaleString()}
-                    </p>
-                  </div>
-                  <div className="flex gap-2 flex-shrink-0">
-                    <button
-                      onClick={() => handleApprove(mem.id)}
-                      disabled={actionInProgress !== null}
-                      className="px-3 py-1.5 text-xs bg-green-600 hover:bg-green-700 disabled:opacity-50 rounded transition-colors"
-                      title="Approve — promote to active memory"
-                    >
-                      Approve
-                    </button>
-                    <button
-                      onClick={() => handleReject(mem.id)}
-                      disabled={actionInProgress !== null}
-                      className="px-3 py-1.5 text-xs bg-red-900/60 hover:bg-red-900/80 text-red-400 disabled:opacity-50 rounded transition-colors"
-                      title="Reject — delete and reset context item"
-                    >
-                      Reject
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        <div className="flex gap-2">
+          {dedupCandidates.length > 0 && (
+            <Button variant="outline" size="sm" onClick={() => void handleMergeAll()} disabled={busy !== null}>
+              Merge duplicates (≥95%)
+            </Button>
+          )}
+          {pending.length > 1 && (
+            <Button size="sm" onClick={() => void handleApproveAll()} disabled={busy !== null}>
+              Approve all
+            </Button>
+          )}
+        </div>
       </div>
+
+      {loading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-24 w-full" />
+          ))}
+        </div>
+      ) : pending.length === 0 ? (
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <Inbox />
+            </EmptyMedia>
+            <EmptyTitle>Inbox zero</EmptyTitle>
+            <EmptyDescription>
+              No pending memories. Run the janitor to auto-promote decisions and gotchas.
+            </EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/settings">Go to Settings</Link>
+            </Button>
+          </EmptyContent>
+        </Empty>
+      ) : (
+        <div className="space-y-2">
+          {pending.map((mem) => (
+            <div key={mem.id} className="rounded-xl border border-white/10 bg-white/5 backdrop-blur-md p-4 flex items-start justify-between gap-4 transition-colors hover:bg-white/10">
+              <div className="flex-1 min-w-0 space-y-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge variant="secondary" className="font-normal bg-white/10 text-white border-white/10">
+                    {mem.category}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">imp {mem.importance}</span>
+                  {mem.project_scope && (
+                    <span className="text-xs text-muted-foreground">
+                      {shortName(mem.project_scope)}
+                    </span>
+                  )}
+                  {mem.source && (
+                    <span className="text-xs text-muted-foreground italic">via {mem.source}</span>
+                  )}
+                </div>
+                <p className="text-sm leading-relaxed text-foreground">{mem.content}</p>
+                <p className="text-xs text-muted-foreground">
+                  {new Date(mem.created_at).toLocaleString()}
+                </p>
+              </div>
+              <div className="flex gap-2 shrink-0">
+                <Button
+                  size="icon"
+                  className="w-8 h-8 rounded-full bg-primary/20 text-primary hover:bg-primary/40 border border-primary/20"
+                  onClick={() => void handleApprove(mem.id)}
+                  disabled={busy !== null}
+                  title="Approve — promote to active memory"
+                >
+                  <Check className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="w-8 h-8 rounded-full text-muted-foreground hover:text-red-400 hover:bg-red-400/20"
+                  onClick={() => void handleReject(mem.id)}
+                  disabled={busy !== null}
+                  title="Reject — delete and reset context item"
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

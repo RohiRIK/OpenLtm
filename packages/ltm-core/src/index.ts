@@ -59,7 +59,7 @@ export {
   approveMemory, getPendingMemories, rejectMemory,
   mergeMemories, parseDedupSource,
   supersede,
-  getEmbeddingProvider, semanticSearch,
+  getEmbeddingProvider, semanticSearch, findSimilarMemories,
 } from "./janitor/index.js";
 export { runDecay } from "./janitor/decay.js";
 export { SETTING_KEYS, SETTING_DEFAULTS } from "./janitor/providers/types.js";
@@ -72,6 +72,10 @@ export { openrouterEmbedding } from "./janitor/providers/openrouter.js";
 
 // Graph
 export { traverseGraph, buildReasoningContext } from "./graph.js";
+
+// Extension capability probe (custom SQLite / sqlite-vec / Honker)
+export { getCapabilities, loadExtensions } from "./extensions.js";
+export type { Capabilities } from "./extensions.js";
 
 // Honker durable queue (embedding generation) — dormant without LTM_HONKER_EXT
 export { getHonker, isHonkerAvailable } from "./lib/honker.js";

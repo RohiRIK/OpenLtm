@@ -17,11 +17,12 @@ import {
   SETTING_DEFAULTS, SETTING_KEYS,
   anthropicLLM,
   traverseGraph, buildReasoningContext,
-  embedText, getSimilarMemories,
+  embedText, getSimilarMemories, findSimilarMemories,
   cohereEmbedding, geminiEmbedding, ollamaEmbedding, openaiEmbedding, openrouterEmbedding,
   runPendingMigrations,
   startEmbeddingWorker, startJanitorScheduler,
   startLtmListener,
+  getCapabilities,
 } from "@rohirik/ltm-core";
 import { detectCommunities, generateClusterLabel, assignClusterColors } from "./cluster.js";
 import { getDbPath, getSchemaPath } from "./paths.js";
@@ -836,6 +837,10 @@ Bun.serve({
       return Response.json(getGraphData(includeHidden));
     }
     if (p === "/api/stats")            return Response.json(getStats());
+    if (p === "/api/capabilities") {
+      const caps = getCapabilities();
+      return Response.json({ vec: caps.vec, honker: caps.honker, live: ltmListener.running });
+    }
     if (p === "/api/tags")             return Response.json(getTags());
     if (p === "/api/search") {
       const q = url.searchParams.get("q") ?? "";
@@ -883,6 +888,22 @@ Bun.serve({
       db.run("DELETE FROM context_items WHERE id=?", [id]);
       broadcast({ type: "refresh" });
       return Response.json({ ok: true });
+    }
+
+    // GET /api/memory/:id/similar — sqlite-vec KNN nearest neighbours
+    const similarMatch = p.match(/^\/api\/memory\/(\d+)\/similar$/);
+    if (similarMatch?.[1] && req.method === "GET") {
+      const id = parseInt(similarMatch[1], 10);
+      const src = getMemoryById(id);
+      if (!src) return new Response("Not found", { status: 404 });
+      const limit = parseClampedInt(url.searchParams, "limit", 8, 1, 50);
+      const minSimilarity = Math.min(1, Math.max(0, parseFloat(url.searchParams.get("minSimilarity") ?? "0.5")));
+      try {
+        const neighbours = findSimilarMemories(id, limit, minSimilarity);
+        return Response.json(neighbours);
+      } catch (e) {
+        return Response.json({ error: String(e) }, { status: 500 });
+      }
     }
 
     const memMatch = p.match(/^\/api\/memory\/(\d+)$/);

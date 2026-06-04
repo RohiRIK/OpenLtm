@@ -29,3 +29,5 @@ node-compile-cache/
 
 # Aegis runtime (auto-added)
 .aegis/
+.antigravitycli/
+
