@@ -121,16 +121,22 @@ export function blobToVec(b: Buffer): Float32Array {
 // --- Provider-specific embed implementations ---
 
 // Cached Gemini client + the key it was initialized with
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let _genAI: any | null = null;
+interface GeminiGenerativeModel {
+  embedContent(text: string): Promise<{ embedding: { values: number[] } }>;
+}
+interface GeminiAIClient {
+  getGenerativeModel(params: { model: string }): GeminiGenerativeModel;
+}
+let _genAI: GeminiAIClient | null = null;
 let _genAIKey: string | undefined;
 
 async function embedGemini(text: string, cfg: ProviderConfig): Promise<Float32Array | null> {
   if (!cfg.apiKey) return null;
   if (!_genAI || _genAIKey !== cfg.apiKey) {
     // Dynamic import to avoid compile-time dependency on optional package
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const genAiModule = await (Function('return import("@google/generative-ai")')() as Promise<any>);
+    const genAiModule = await (Function('return import("@google/generative-ai")')() as Promise<{
+      GoogleGenerativeAI: new (apiKey: string) => GeminiAIClient;
+    }>);
     const { GoogleGenerativeAI } = genAiModule;
     _genAI = new GoogleGenerativeAI(cfg.apiKey);
     _genAIKey = cfg.apiKey;
