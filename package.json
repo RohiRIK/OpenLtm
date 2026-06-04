@@ -9,6 +9,7 @@
     "build:hooks": "bunx esbuild hooks/src/GitCommit.ts --bundle --platform=node --format=esm --outfile=hooks/GitCommit.bundle.mjs --external:bun:sqlite --external:bun:ffi --external:bun:jsc --minify",
     "bump": "bun run scripts/bump-version.ts",
     "verify-version": "bun run scripts/verify-version-sync.ts",
+    "cleanup:bak": "bun run scripts/cleanup-bak.ts",
     "typecheck": "bunx tsc --noEmit",
     "dev:mcp": "bun run src/mcp-server.ts",
     "dev:server": "LTM_DB_PATH=./data/ltm.db bun run src/graph-server.ts",
