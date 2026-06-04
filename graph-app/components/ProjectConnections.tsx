@@ -52,10 +52,16 @@ export default function ProjectConnections({ detail }: ProjectConnectionsProps) 
     return [...groups.entries()];
   }, [detail.relations]);
 
-  const graphData = useMemo<GraphData>(
-    () => ({ nodes: [...detail.memories, ...detail.context_items], links: detail.relations }),
-    [detail.memories, detail.context_items, detail.relations],
-  );
+  const graphData = useMemo<GraphData>(() => {
+    const nodes = [...detail.memories, ...detail.context_items];
+    const nodeIds = new Set(nodes.map((n) => n.id));
+    // react-force-graph throws "node not found" if a link references an id
+    // outside `nodes` — relations can point to memories in other projects.
+    const links = detail.relations.filter(
+      (l) => nodeIds.has(endpointId(l.source)) && nodeIds.has(endpointId(l.target)),
+    );
+    return { nodes, links };
+  }, [detail.memories, detail.context_items, detail.relations]);
 
   return (
     <section>

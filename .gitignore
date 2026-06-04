@@ -5,6 +5,7 @@ dist/
 graph-app/.next/
 graph-app/node_modules/
 graph-app/test-results/
+graph-app/tsconfig.tsbuildinfo
 
 # User data — never commit
 data/ltm.db
