@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 const NAV_ITEMS = [
   { href: "/", label: "Projects", icon: FolderTree },
   { href: "/graph", label: "Graph", icon: Network },
-  { href: "/pending", label: "Inbox", icon: Inbox },
+  { href: "/inbox", label: "Inbox", icon: Inbox },
   { href: "/settings", label: "Settings", icon: Settings },
 ] as const;
 
