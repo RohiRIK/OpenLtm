@@ -6,8 +6,8 @@
  * CLI: bun migrations.ts [--status | --up | --down | --reset]
  */
 import { Database } from "bun:sqlite";
-import { readdirSync, existsSync } from "fs";
-import { join } from "path";
+import { readdirSync, existsSync, statSync, unlinkSync } from "fs";
+import { join, dirname } from "path";
 import { createHash } from "crypto";
 import { getDbPath, getMigrationsDir } from "./paths.js";
 
@@ -84,6 +84,116 @@ export async function backupDb(): Promise<string> {
   return backupPath;
 }
 
+/**
+ * Read the default backup retention count from `LTM_BACKUP_RETENTION` env var.
+ * Falls back to 1. Negative or non-numeric values also default to 1.
+ */
+export function getRetentionDefault(): number {
+  const env = process.env["LTM_BACKUP_RETENTION"];
+  if (!env) return 1;
+  const n = parseInt(env, 10);
+  if (Number.isNaN(n) || n < 0) return 1;
+  return n;
+}
+
+export interface EnforceRetentionOptions {
+  /** Override the db path (defaults to getDbPath() result). */
+  dbPath?: string;
+  /** Path of a .bak file just created by backupDb() — never delete it. */
+  currentBackupPath?: string;
+  /** Skip files whose mtime is newer than this many ms (default 60_000 = 60s). */
+  gracePeriodMs?: number;
+}
+
+export interface EnforceRetentionResult {
+  /** Absolute paths of files successfully deleted. */
+  deleted: string[];
+  /** Absolute paths of files that remain (within the retention window). */
+  kept: string[];
+  /** Non-fatal issues encountered (e.g. stat/unlink permission errors). */
+  warnings: string[];
+}
+
+/**
+ * Enforce a maximum number of .bak files alongside the database.
+ *
+ * Filenames are `ltm.db.bak-<ISO-timestamp>`. ISO timestamps sort lexically,
+ * so sorting by filename = sorting by creation time. We keep the newest N
+ * and delete the rest. Files newer than `gracePeriodMs` (default 60s) are
+ * skipped to avoid racing with a concurrent writer.
+ *
+ * The function is idempotent and never throws — every error becomes a
+ * warning in the result.
+ */
+export async function enforceRetention(
+  maxBackups: number,
+  options: EnforceRetentionOptions = {},
+): Promise<EnforceRetentionResult> {
+  const dbPath = options.dbPath ?? getDbPath();
+  const gracePeriodMs = options.gracePeriodMs ?? 60_000;
+  const result: EnforceRetentionResult = { deleted: [], kept: [], warnings: [] };
+
+  const dir = dirname(dbPath);
+  if (!existsSync(dir)) {
+    result.warnings.push(`Directory does not exist: ${dir}`);
+    return result;
+  }
+
+  const files = readdirSync(dir).filter((f) => f.startsWith("ltm.db.bak-"));
+  if (files.length === 0) return result;
+
+  const now = Date.now();
+  const eligible: string[] = [];
+  const excluded: string[] = [];
+  for (const f of files) {
+    const fullPath = join(dir, f);
+    try {
+      const mtime = statSync(fullPath).mtimeMs;
+      if (now - mtime < gracePeriodMs) {
+        excluded.push(fullPath);
+        continue;
+      }
+    } catch (err: unknown) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === "ENOENT") continue;
+      result.warnings.push(`stat failed for ${fullPath}: ${(err as Error).message}`);
+      continue;
+    }
+    if (options.currentBackupPath && fullPath === options.currentBackupPath) {
+      excluded.push(fullPath);
+      continue;
+    }
+    eligible.push(fullPath);
+  }
+
+  if (eligible.length === 0) {
+    result.kept = excluded;
+    return result;
+  }
+
+  eligible.sort();
+
+  const toDelete = eligible.slice(0, Math.max(0, eligible.length - maxBackups));
+  const toKeep = eligible.slice(toDelete.length);
+
+  for (const file of toDelete) {
+    try {
+      unlinkSync(file);
+      result.deleted.push(file);
+    } catch (err: unknown) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === "ENOENT") {
+        result.deleted.push(file);
+      } else {
+        result.warnings.push(`unlink failed for ${file}: ${(err as Error).message}`);
+      }
+    }
+  }
+
+  result.kept = [...excluded, ...toKeep];
+  return result;
+}
+
 export interface ParsedMigration {
   up: string;
   down: string;
@@ -118,7 +228,7 @@ export async function runPendingMigrations(db?: Database): Promise<MigrationResu
 
   if (pending.length === 0) return [];
 
-  await backupDb();
+  const newBackupPath = await backupDb();
 
   const results: MigrationResult[] = [];
   for (const file of pending) {
@@ -148,6 +258,12 @@ export async function runPendingMigrations(db?: Database): Promise<MigrationResu
     }
 
     results.push({ version: file.version, name: file.name, action: "applied" });
+  }
+
+  try {
+    await enforceRetention(getRetentionDefault(), { currentBackupPath: newBackupPath });
+  } catch (err: unknown) {
+    console.warn(`[migrations] retention enforcement failed: ${(err as Error).message}`);
   }
 
   return results;
