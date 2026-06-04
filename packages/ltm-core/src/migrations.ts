@@ -366,40 +366,40 @@ if (import.meta.main) {
       if (arg === "--status") {
         const statuses = await getMigrationStatus(db);
         if (statuses.length === 0) {
-          console.log("No migration files found in migrations/");
+          console.error("No migration files found in migrations/");
         } else {
-          console.log("\nMigration Status:");
-          console.log("─".repeat(60));
+          console.error("\nMigration Status:");
+          console.error("─".repeat(60));
           for (const s of statuses) {
             const tag = s.status === "applied" ? "[applied]" : "[pending]";
             const date = s.applied_at ? `  (${s.applied_at})` : "";
-            console.log(`  ${tag.padEnd(10)} v${String(s.version).padStart(3, "0")} ${s.name}${date}`);
+            console.error(`  ${tag.padEnd(10)} v${String(s.version).padStart(3, "0")} ${s.name}${date}`);
           }
-          console.log("");
+          console.error("");
         }
       } else if (arg === "--up") {
         const results = await runPendingMigrations(db);
         if (results.length === 0) {
-          console.log("No pending migrations.");
+          console.error("No pending migrations.");
         } else {
           for (const r of results) {
-            console.log(`Applied: v${String(r.version).padStart(3, "0")} ${r.name}`);
+            console.error(`Applied: v${String(r.version).padStart(3, "0")} ${r.name}`);
           }
         }
       } else if (arg === "--down") {
         const result = await rollbackLast(db);
         if (!result) {
-          console.log("No applied migrations to roll back.");
+          console.error("No applied migrations to roll back.");
         } else {
-          console.log(`Rolled back: v${String(result.version).padStart(3, "0")} ${result.name}`);
+          console.error(`Rolled back: v${String(result.version).padStart(3, "0")} ${result.name}`);
         }
       } else if (arg === "--reset") {
         const results = await resetAll(db);
         if (results.length === 0) {
-          console.log("Nothing to reset.");
+          console.error("Nothing to reset.");
         } else {
           for (const r of results) {
-            console.log(`Rolled back: v${String(r.version).padStart(3, "0")} ${r.name}`);
+            console.error(`Rolled back: v${String(r.version).padStart(3, "0")} ${r.name}`);
           }
         }
       } else {
