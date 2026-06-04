@@ -15,7 +15,7 @@ export function nodeColor(category: string): string {
 }
 
 export function nodeRadius(importance: number, isProject?: boolean, isContext?: boolean): number {
-  if (isProject) return 12;
-  if (isContext) return 6;
-  return 5 + (importance - 1) * 2.5;
+  if (isProject) return 8;
+  if (isContext) return 3;
+  return 3 + (importance - 1) * 1.5;
 }

@@ -211,5 +211,5 @@ export { approveMemory, getPendingMemories, rejectMemory } from "./promote.js";
 export { mergeMemories, parseDedupSource } from "./dedup.js";
 export { supersede } from "./supersedes.js";
 export { touchMemory } from "./decay.js";
-export { getEmbeddingProvider, semanticSearch } from "./embeddings.js";
+export { getEmbeddingProvider, semanticSearch, findSimilarMemories } from "./embeddings.js";
 export { runArchive } from "./archive.js";

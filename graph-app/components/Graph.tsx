@@ -2,13 +2,13 @@
 import { Component, forwardRef, useCallback, useEffect, useImperativeHandle, useRef, type MutableRefObject } from "react";
 import ForceGraph2D from "react-force-graph-2d";
 import type { ForceGraphMethods, NodeObject } from "react-force-graph-2d";
-import { forceCollide, forceCenter } from "d3-force";
+import { forceCollide, forceX, forceY } from "d3-force";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 
 import { buildClusterForce } from "@/lib/clusterForce";
 import { hullPoints } from "@/lib/convexHull";
-import { nodeColor, nodeRadius } from "@/lib/nodeColors";
+import { nodeColor, NODE_COLORS, nodeRadius } from "@/lib/nodeColors";
 import type { Cluster, GraphData, GraphNode } from "@/lib/types";
 
 // ─── Public types ─────────────────────────────────────────────────────────────
@@ -28,6 +28,7 @@ interface Props {
   showClusters?: boolean;
   onNodeClick: (node: GraphNode) => void;
   onClusterClick?: (clusterId: string) => void;
+  electricEffectsEnabled?: boolean;
 }
 
 // ─── Internal types ───────────────────────────────────────────────────────────
@@ -45,42 +46,64 @@ type GraphColors = {
   linkStroke: string;
   labelFill: string;
   labelFillMuted: string;
+  highlight: string;
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+// Cinematic darkroom palette (inspired by monopo saigon): pure-black canvas so
+// the category-colored nodes glow; achromatic chrome everywhere else.
 function buildColors(isDark: boolean): GraphColors {
   return {
     isDark,
-    bg: isDark ? "#0d1117" : "#f6f8fa",
-    linkStroke: isDark ? "#30363d" : "#d0d7de",
-    labelFill: isDark ? "#e6edf3" : "#1f2328",
-    labelFillMuted: isDark ? "#6b7280" : "#656d76",
+    bg: isDark ? "#000000" : "#f7f7f5",
+    linkStroke: isDark ? "#1f1f1f" : "#d8d8d4",
+    labelFill: isDark ? "#f5f5f3" : "#181818",
+    labelFillMuted: isDark ? "#8a8a86" : "#6d6d6d",
+    highlight: isDark ? "#a0e0ab" : "#1f8f4e",
   };
 }
 
-function populateTooltip(tip: HTMLDivElement, node: FGNode, isDark: boolean): void {
+function populateTooltip(tip: HTMLDivElement, node: FGNode): void {
   while (tip.firstChild) tip.removeChild(tip.firstChild);
+  const catColor = NODE_COLORS[node.category] ?? "#9ca3af";
 
-  const cat = document.createElement("div");
-  cat.style.cssText = `color:${isDark ? "#6b7280" : "#656d76"};font-size:10px;text-transform:uppercase;letter-spacing:0.05em`;
-  cat.textContent = node.category;
-  tip.appendChild(cat);
+  // Category row with colored dot
+  const catRow = document.createElement("div");
+  catRow.style.cssText = "display:flex;align-items:center;gap:6px;margin-bottom:4px";
+  const dot = document.createElement("span");
+  dot.style.cssText = `display:inline-block;width:6px;height:6px;border-radius:50%;background:${catColor};flex-shrink:0`;
+  catRow.appendChild(dot);
+  const catLabel = document.createElement("span");
+  catLabel.style.cssText = "color:#6c5f51;font-size:10px;text-transform:uppercase;letter-spacing:0.06em";
+  catLabel.textContent = node.category;
+  catRow.appendChild(catLabel);
+  tip.appendChild(catRow);
 
+  // Bold label
   const label = document.createElement("div");
-  label.style.cssText = `color:${isDark ? "#e5e7eb" : "#1f2328"};font-weight:600;margin:2px 0`;
+  label.style.cssText = "color:#ffedd7;font-weight:700;font-size:12px;margin-bottom:4px";
   label.textContent = node.label;
   tip.appendChild(label);
 
+  // Content preview (120 chars)
   const preview = document.createElement("div");
-  preview.style.cssText = `color:${isDark ? "#9ca3af" : "#656d76"};font-size:10px`;
+  preview.style.cssText = "color:#6c5f51;font-size:10px;line-height:1.5;margin-bottom:6px";
   preview.textContent = node.content.length > 120 ? node.content.substring(0, 119) + "…" : node.content;
   tip.appendChild(preview);
 
-  const stars = document.createElement("div");
-  stars.style.cssText = "color:#f59e0b;font-size:10px;margin-top:4px";
+  // Footer row: importance stars + confidence %
+  const footer = document.createElement("div");
+  footer.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px";
+  const stars = document.createElement("span");
+  stars.style.cssText = "color:#dc5000;font-size:10px";
   stars.textContent = "★".repeat(node.importance) + "☆".repeat(Math.max(0, 5 - node.importance));
-  tip.appendChild(stars);
+  footer.appendChild(stars);
+  const conf = document.createElement("span");
+  conf.style.cssText = "color:#6c5f51;font-size:10px";
+  conf.textContent = `${Math.round((node.confidence ?? 1) * 100)}%`;
+  footer.appendChild(conf);
+  tip.appendChild(footer);
 }
 
 // ─── Error boundary ───────────────────────────────────────────────────────────
@@ -116,7 +139,7 @@ class GraphErrorBoundary extends Component<
 // ─── Core graph component ─────────────────────────────────────────────────────
 
 const Graph = forwardRef<GraphHandle, Props>(function Graph(
-  { data, activeProject, dimmedIds, highlightedIds, clusters, showClusters = true, onNodeClick, onClusterClick },
+  { data, activeProject, dimmedIds, highlightedIds, clusters, showClusters = true, onNodeClick, onClusterClick, electricEffectsEnabled = true },
   ref
 ) {
   const { resolvedTheme } = useTheme();
@@ -134,6 +157,8 @@ const Graph = forwardRef<GraphHandle, Props>(function Graph(
   const tooltipRef = useRef<HTMLDivElement | null>(null);
   const mouseRef = useRef({ x: 0, y: 0 });
   const hoveredRef = useRef<FGNode | null>(null);
+  const hoverNeighborsRef = useRef<Set<number>>(new Set());
+  const nodeAppearTimeRef = useRef<Map<number, number>>(new Map());
   const onNodeClickRef = useRef(onNodeClick);
   const onClusterClickRef = useRef(onClusterClick);
 
@@ -143,9 +168,12 @@ const Graph = forwardRef<GraphHandle, Props>(function Graph(
   useEffect(() => { colorsRef.current = buildColors(resolvedTheme !== "light"); }, [resolvedTheme]);
   useEffect(() => { dimmedIdsRef.current = dimmedIds; }, [dimmedIds]);
   useEffect(() => { highlightedIdsRef.current = highlightedIds; }, [highlightedIds]);
-  useEffect(() => { activeProjectRef.current = activeProject; }, [activeProject]);
   useEffect(() => { clustersRef.current = clusters ?? []; }, [clusters]);
   useEffect(() => { showClustersRef.current = showClusters; }, [showClusters]);
+  useEffect(() => { activeProjectRef.current = activeProject; }, [activeProject]);
+
+  const electricEffectsRef = useRef(electricEffectsEnabled);
+  useEffect(() => { electricEffectsRef.current = electricEffectsEnabled; }, [electricEffectsEnabled]);
 
   // Rebuild nodeById when data changes
   useEffect(() => {
@@ -168,35 +196,50 @@ const Graph = forwardRef<GraphHandle, Props>(function Graph(
     fgRef.current?.d3Force("cluster", buildClusterForce(clusters ?? [], showClusters));
   }, [clusters, showClusters, data.nodes]);
 
-  // Configure D3 forces after simulation initialises (useEffect runs after paint)
+  // Configure D3 forces — Obsidian-style layout
+  // Key insight: forceX/forceY pull EVERY node toward center individually (gravity),
+  // while forceCenter only shifts the centroid. This keeps disconnected subgraphs
+  // from flying apart.
   useEffect(() => {
     const fg = fgRef.current;
     if (!fg) return;
 
+    // Charge — moderate repulsion so nodes don't overlap but stay close
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const charge = fg.d3Force("charge") as any;
-    charge?.strength(-50);
+    charge?.strength(-80).distanceMax(200);  // cap repulsion range so far-away nodes don't push
 
+    // Links — short distances, strong pull to form tight clusters
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const link = fg.d3Force("link") as any;
-    link?.distance(50).strength((l: { type?: string }) => {
-      if (l.type === "context_of") return 0.04;
-      if (l.type === "project_scope") return 0.25;
+    link?.distance((l: { type?: string }) => {
+      if (l.type === "context_of") return 30;
+      if (l.type === "project_scope") return 50;
+      return 40;
+    }).strength((l: { type?: string }) => {
+      if (l.type === "context_of") return 0.3;
+      if (l.type === "project_scope") return 0.5;
       return 0.6;
     });
 
+    // Collision — just enough to prevent overlap
     fg.d3Force(
       "collision",
-      forceCollide<FGNode>().radius(n => nodeRadius(n.importance, "is_project" in n, "is_context" in n) + 4)
+      forceCollide<FGNode>().radius(n => nodeRadius(n.importance, "is_project" in n, "is_context" in n) + 2)
     );
     fg.d3Force("cluster", buildClusterForce(clusters ?? [], showClusters));
 
-    // Center force — keeps the graph in the viewport
+    // Gravity — pull every node toward center (this is what Obsidian uses)
+    // Unlike forceCenter, this applies force to EACH node, keeping islands together
     const canvas = (fg as unknown as { canvas?: HTMLCanvasElement }).canvas;
     const w = canvas?.width ?? 800;
     const h = canvas?.height ?? 600;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    fg.d3Force("center", forceCenter(w / 2, h / 2).strength(0.15) as any);
+    fg.d3Force("gravityX", forceX(w / 2).strength(0.08) as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    fg.d3Force("gravityY", forceY(h / 2).strength(0.08) as any);
+    // Remove the old center force if it exists
+    fg.d3Force("center", null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
 
@@ -205,8 +248,10 @@ const Graph = forwardRef<GraphHandle, Props>(function Graph(
     const tip = document.createElement("div");
     tip.style.cssText = [
       "position:fixed", "visibility:hidden", "pointer-events:none",
-      "z-index:9999", "max-width:280px", "border-radius:8px",
-      "padding:8px 10px", "font-size:11px", "line-height:1.5",
+      "z-index:9999", "max-width:280px", "border-radius:12px",
+      "padding:10px 12px", "font-size:11px", "line-height:1.5",
+      "background:#100904", "border:1px solid #40372e",
+      "font-family:var(--font-inter),sans-serif",
     ].join(";");
     document.body.appendChild(tip);
     tooltipRef.current = tip;
@@ -241,35 +286,50 @@ const Graph = forwardRef<GraphHandle, Props>(function Graph(
     const x = node.x ?? 0;
     const y = node.y ?? 0;
     const color = nodeColor(node.category);
-    const dimmed = dimmedIdsRef.current?.has(node.id) ?? false;
-    const highlighted = highlightedIdsRef.current?.has(node.id) ?? false;
+    const isHoverActive = hoverNeighborsRef.current.size > 0;
+    const isHoverNeighbor = isHoverActive && hoverNeighborsRef.current.has(node.id);
+    const dimmed = (dimmedIdsRef.current?.has(node.id) ?? false) || (isHoverActive && !isHoverNeighbor);
+    const highlighted = (highlightedIdsRef.current?.has(node.id) ?? false) || (isHoverActive && node.id === hoveredRef.current?.id);
     const inActiveProject = !!activeProjectRef.current && (node as GraphNode).project_scope === activeProjectRef.current;
 
     ctx.save();
-    ctx.globalAlpha = dimmed ? 0.15 : 1;
 
-    // Glow
-    if (isProject || highlighted) {
-      ctx.shadowBlur = highlighted ? 10 : 6;
-      ctx.shadowColor = highlighted ? "#60a5fa" : color;
+    // Fade-in entrance animation (600ms)
+    const appearMap = nodeAppearTimeRef.current;
+    if (!appearMap.has(node.id)) appearMap.set(node.id, Date.now());
+    const fadeAlpha = Math.min(1, (Date.now() - appearMap.get(node.id)!) / 600);
+
+    ctx.globalAlpha = (dimmed ? 0.10 : 1) * fadeAlpha;
+
+    // Premium Glow / Aura based on importance
+    if (electricEffectsRef.current) {
+      if (isProject || highlighted) {
+        ctx.shadowBlur = highlighted ? 30 : 16;
+        ctx.shadowColor = highlighted ? colors.highlight : color;
+      } else if (colors.isDark) {
+        ctx.shadowBlur = (node.importance || 1) * 4;
+        ctx.shadowColor = color;
+      }
+    } else {
+      ctx.shadowBlur = 0;
     }
 
     // Circle
     ctx.beginPath();
     ctx.arc(x, y, r, 0, 2 * Math.PI);
     ctx.fillStyle = color;
-    ctx.globalAlpha = dimmed ? 0.15 : isProject ? 1 : 0.85;
+    ctx.globalAlpha = (dimmed ? 0.15 : isProject ? 1 : 0.85) * fadeAlpha;
     ctx.fill();
 
     // Stroke
     if (isProject || highlighted || inActiveProject) {
-      ctx.strokeStyle = highlighted ? "#60a5fa" : inActiveProject ? "#ffffff" : color;
+      ctx.strokeStyle = highlighted ? colors.highlight : inActiveProject ? colors.labelFill : color;
       ctx.lineWidth = 1.5;
       ctx.stroke();
     }
 
     ctx.shadowBlur = 0;
-    ctx.globalAlpha = dimmed ? 0.15 : 1;
+    ctx.globalAlpha = (dimmed ? 0.15 : 1) * fadeAlpha;
 
     // Labels
     ctx.textAlign = "center";
@@ -278,13 +338,16 @@ const Graph = forwardRef<GraphHandle, Props>(function Graph(
       ctx.fillStyle = color;
       ctx.fillText(node.label.length > 14 ? node.label.substring(0, 13) + "…" : node.label, x, y + r + 9);
     } else if (!isContext) {
+      // Only show labels when heavily zoomed in or if it's the specific node being hovered/spotlighted
+      const isSpotlighted = isHoverActive && (hoveredRef.current?.id === node.id || hoverNeighborsRef.current.has(node.id));
+      
       const important = (node.importance ?? 1) >= 4;
-      if (important) {
+      if (isSpotlighted || (important && globalScale > 1.8)) {
         ctx.font = "7px sans-serif";
         ctx.fillStyle = colors.labelFill;
         ctx.fillText(node.label.length > 18 ? node.label.substring(0, 17) + "…" : node.label, x, y + r + 7);
-      } else if (globalScale > 1.2) {
-        const labelAlpha = Math.min(1, (globalScale - 0.8) / 0.4);
+      } else if (globalScale > 3.0) {
+        const labelAlpha = Math.min(1, (globalScale - 3.0) / 0.5);
         ctx.globalAlpha = dimmed ? 0.15 * labelAlpha : labelAlpha;
         ctx.font = "6px sans-serif";
         ctx.fillStyle = colors.labelFillMuted;
@@ -300,14 +363,18 @@ const Graph = forwardRef<GraphHandle, Props>(function Graph(
     const sx = link.source?.x ?? 0, sy = link.source?.y ?? 0;
     const tx = link.target?.x ?? 0, ty = link.target?.y ?? 0;
     const colors = colorsRef.current;
+    
+    const isHoverActive = hoverNeighborsRef.current.size > 0;
+    const isNeighborLink = isHoverActive && (hoveredRef.current?.id === link.source.id || hoveredRef.current?.id === link.target.id);
+    const dimmed = isHoverActive && !isNeighborLink;
 
     ctx.save();
     ctx.beginPath();
     ctx.moveTo(sx, sy);
     ctx.lineTo(tx, ty);
-    ctx.strokeStyle = colors.linkStroke;
-    ctx.lineWidth = link.type === "project_scope" ? 1 : 0.8;
-    ctx.globalAlpha = 0.7;
+    ctx.strokeStyle = isNeighborLink ? colors.highlight : colors.linkStroke;
+    ctx.lineWidth = link.type === "project_scope" ? 1.5 : isNeighborLink ? 1.2 : 0.8;
+    ctx.globalAlpha = dimmed ? 0.1 : (isNeighborLink ? 0.9 : 0.4);
     if (link.type === "context_of") ctx.setLineDash([2, 2]);
     ctx.stroke();
     ctx.restore();
@@ -356,15 +423,30 @@ const Graph = forwardRef<GraphHandle, Props>(function Graph(
 
   const handleNodeHover = useCallback((nodeObj: NodeObject | null): void => {
     hoveredRef.current = nodeObj as FGNode | null;
+    
+    // Spotlight focus effect - compute neighbors
+    if (nodeObj) {
+      const neighbors = new Set<number>();
+      const fgNode = nodeObj as FGNode;
+      neighbors.add(fgNode.id);
+      
+      // Calculate 1st degree neighbors for the spotlight effect
+      data.links.forEach((l: any) => {
+        const src = typeof l.source === 'object' ? l.source.id : l.source;
+        const tgt = typeof l.target === 'object' ? l.target.id : l.target;
+        if (src === fgNode.id) neighbors.add(tgt);
+        if (tgt === fgNode.id) neighbors.add(src);
+      });
+      hoverNeighborsRef.current = neighbors;
+    } else {
+      hoverNeighborsRef.current.clear();
+    }
+    
     const tip = tooltipRef.current;
     if (!tip) return;
     if (nodeObj) {
       const node = nodeObj as FGNode;
-      const { isDark } = colorsRef.current;
-      populateTooltip(tip, node, isDark);
-      tip.style.background = isDark ? "#1c2333" : "#ffffff";
-      tip.style.border = `1px solid ${isDark ? "#374151" : "#d0d7de"}`;
-      tip.style.boxShadow = isDark ? "0 4px 12px rgba(0,0,0,0.5)" : "0 4px 12px rgba(0,0,0,0.15)";
+      populateTooltip(tip, node);
       tip.style.left = `${mouseRef.current.x + 14}px`;
       tip.style.top = `${mouseRef.current.y - 10}px`;
       tip.style.visibility = "visible";
@@ -397,11 +479,25 @@ const Graph = forwardRef<GraphHandle, Props>(function Graph(
           nodeCanvasObjectMode={() => "replace"}
           linkCanvasObject={paintLink}
           linkCanvasObjectMode={() => "replace"}
+          linkDirectionalParticles={(link: any) => {
+             if (!electricEffectsRef.current) return 0;
+             const isHoverActive = hoverNeighborsRef.current.size > 0;
+             if (isHoverActive) {
+                const src = link.source.id;
+                const tgt = link.target.id;
+                if (hoveredRef.current?.id === src || hoveredRef.current?.id === tgt) return 3;
+                return 0;
+             }
+             return (link.type === "project_scope" || link.type === "reasoning") ? 2 : 0;
+          }}
+          linkDirectionalParticleWidth={2.5}
+          linkDirectionalParticleSpeed={0.006}
+          linkDirectionalParticleColor={() => colorsRef.current.highlight}
           onNodeClick={handleNodeClick}
           onNodeHover={handleNodeHover}
           onRenderFramePre={drawClusterHulls}
-          d3AlphaDecay={0.025}
-          cooldownTicks={300}
+          d3AlphaDecay={0.05}
+          cooldownTicks={150}
           autoPauseRedraw={false}
         />
       </div>

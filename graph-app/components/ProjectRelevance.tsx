@@ -31,8 +31,8 @@ export default function ProjectRelevance({ detail }: ProjectRelevanceProps) {
   }
 
   return (
-    <section className="relative">
-      <h3 className="text-sm font-semibold mb-2">Works for me / doesn&apos;t</h3>
+    <section className="relative flex flex-col h-full max-h-[400px]">
+      <h3 className="text-lg font-semibold tracking-tight mb-2 text-foreground">Works for me / doesn&apos;t</h3>
       <AnimatedStatusBadge trigger={saved} onAnimationComplete={() => setSaved(false)} />
       <ExplainBlock title="Why mark relevance?">
         Not every remembered thing is useful to you. Mark what actually helped with a thumbs up,
@@ -41,31 +41,33 @@ export default function ProjectRelevance({ detail }: ProjectRelevanceProps) {
       </ExplainBlock>
 
       {detail.memories.length === 0 ? (
-        <p className="text-xs text-[var(--text-muted)]">No memories to rate yet.</p>
+        <p className="text-sm text-muted-foreground mt-4">No memories to rate yet.</p>
       ) : (
-        <ul className="space-y-1.5">
+        <ul className="space-y-2 mt-4 overflow-y-auto custom-scrollbar flex-1 pr-2">
           {detail.memories.map((m) => {
             const sig = signals[m.id] ?? null;
             return (
-              <li key={m.id} className="flex items-center gap-2">
-                <span className="flex-1 min-w-0 truncate text-[var(--text-muted)]">
+              <li key={m.id} className="flex items-center gap-2 p-2 rounded-md hover:bg-white/5 transition-colors">
+                <span className="flex-1 min-w-0 truncate text-sm text-muted-foreground" title={m.label || m.content}>
                   {m.label || m.content}
                 </span>
                 <Button
                   variant={sig === "works" ? "default" : "ghost"}
                   size="icon"
+                  className="h-7 w-7 shrink-0"
                   aria-label="Works for me"
                   onClick={() => rate(m.id, "works")}
                 >
-                  <ThumbsUp className="w-4 h-4" />
+                  <ThumbsUp className="w-3.5 h-3.5" />
                 </Button>
                 <Button
                   variant={sig === "doesnt" ? "destructive" : "ghost"}
                   size="icon"
+                  className="h-7 w-7 shrink-0"
                   aria-label="Doesn't work for me"
                   onClick={() => rate(m.id, "doesnt")}
                 >
-                  <ThumbsDown className="w-4 h-4" />
+                  <ThumbsDown className="w-3.5 h-3.5" />
                 </Button>
               </li>
             );

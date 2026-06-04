@@ -1,9 +1,11 @@
 import type {
+  Capabilities,
   ClaudeConfig,
   ClaudeLtmConfig,
   Cluster,
   ConfigExplorerData,
   CtxItem,
+  FtsResult,
   GraphData,
   HealthData,
   JanitorRunResult,
@@ -18,6 +20,7 @@ import type {
   SearchResult,
   SemanticResult,
   SettingsModels,
+  SimilarResult,
   Stats,
   SupersededMemory,
   Tag,
@@ -58,6 +61,16 @@ async function del<T>(path: string): Promise<T> {
 }
 
 export const api = {
+  // Backend capability probe — degrades gracefully if the route is absent
+  // (older servers without sqlite-vec / Honker) so the UI never hard-crashes.
+  capabilities: async (): Promise<Capabilities> => {
+    try {
+      return await get<Capabilities>("/capabilities");
+    } catch {
+      return { vec: false, honker: false };
+    }
+  },
+
   // Existing routes
   graph: (): Promise<GraphData> => get("/graph"),
   stats: (): Promise<Stats> => get("/stats"),
@@ -65,6 +78,8 @@ export const api = {
   memory: (id: number): Promise<MemoryDetail> => get(`/memory/${id}`),
   search: (q: string): Promise<SearchResult[]> =>
     get(`/search?q=${encodeURIComponent(q)}`),
+  searchAll: (q: string): Promise<FtsResult[]> =>
+    get(`/search/all?q=${encodeURIComponent(q)}`),
   context: (project: string): Promise<Record<string, CtxItem[]>> =>
     get(`/context/${encodeURIComponent(project)}`),
   project: (name: string): Promise<ProjectDetail> =>
@@ -107,8 +122,12 @@ export const api = {
     post("/memory/merge", { keepId, supersededId, mergedContent }),
 
   // Phase 3: Semantic search
-  semanticSearch: (query: string, limit = 10): Promise<SemanticResult[]> =>
-    post("/search/semantic", { query, limit }),
+  semanticSearch: (query: string, limit = 10, minSimilarity = 0.5): Promise<SemanticResult[]> =>
+    post("/search/semantic", { query, limit, minSimilarity }),
+
+  // sqlite-vec KNN: nearest neighbours of an existing memory
+  findSimilar: (id: number, limit = 8, minSimilarity = 0.5): Promise<SimilarResult[]> =>
+    get(`/memory/${id}/similar?limit=${limit}&minSimilarity=${minSimilarity}`),
 
   // Phase 3: Dedup merge-all
   mergeAll: (minSimilarity?: number): Promise<{ merged: number; skipped: number }> =>

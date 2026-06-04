@@ -74,6 +74,11 @@ export interface Stats {
   by_project: Record<string, number>;
 }
 
+export interface Capabilities {
+  vec: boolean;
+  honker: boolean;
+}
+
 export interface Tag {
   id: number;
   name: string;
@@ -90,6 +95,16 @@ export interface SearchResult {
   category: string;
   importance: number;
   project_scope: string | null;
+}
+
+export interface FtsResult {
+  id: number;
+  content: string;
+  title: string | null;
+  category: string;
+  importance: number;
+  project_scope: string | null;
+  type: "memory" | "context";
 }
 
 export interface CtxItem {
@@ -152,6 +167,12 @@ export interface SemanticResult {
   category: string;
   importance: number;
   project_scope: string | null;
+  similarity: number;
+}
+
+export interface SimilarResult {
+  id: number;
+  content: string;
   similarity: number;
 }
 
