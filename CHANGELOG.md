@@ -1,5 +1,26 @@
 # Changelog
 
+## [2.4.0] — 2026-06-04
+
+### Added
+- **Complete UX Redesign**: Transitioned the app from a basic aesthetic to a premium, cinematic, dark-tactile design.
+- **Theme System**: Added 6 cinematic themes (Studio Black, Midnight Indigo, Forest Void, Monochrome Concrete, Cyberpunk Wine, Abyssal Ocean) powered by global CSS variables and Next Themes.
+- **Theme Switcher**: Added a dropdown toggle to the Top Nav to switch between the 6 themes.
+- **Dashboard Overhaul**: Restructured the dashboard to prioritize global metrics. Moved `ActivityHeatmap` to the top as a full-width hero card, showing 52-weeks of contribution data. Separated project partitions and added a toggle to hide/show projects.
+- **Hover Preview Card**: Replaced the raw DOM tooltip in the graph with a styled, floating card showing category, memory preview, and confidence score.
+- **Search-to-Focus**: Added a floating search input in the Graph View to highlight matching nodes instantly.
+- **Animated Node Entrance**: Added a fade-in effect when graph nodes are first loaded on the canvas.
+- **URL-driven Graph State**: The graph's state (`activeProject`, `importanceMin`, `electricEffectsEnabled`) is now synchronized with URL search params to allow sharing exact views.
+- **Project Activity Log**: Added a vertical timeline showing recent memory events on project pages.
+- **Decay Visualization**: Board and table views now show visual indicators (subtle red dashed borders or down arrows) for memories whose confidence is < 0.4.
+- **Empty States**: Replaced plain text fallbacks with beautifully designed typographic empty states using Lucide icons.
+- **Keyboard Navigation**: The table view now supports `j`/`k` (or arrow keys) to navigate through memories, highlighting the selected row.
+- **Related Memories Sidebar**: The node inspector sidebar now uses `api.semanticSearch` to display a list of semantically related memories.
+- **Responsive Mobile Nav**: Added a hamburger menu to `TopNav` for mobile screens, replacing hidden elements.
+
+### Removed
+- **System Health Card**: Removed the global system health card from the dashboard since the metrics are now represented in the hero and activity views.
+
 ## [1.9.1] — 2026-05-09
 
 ### Removed
