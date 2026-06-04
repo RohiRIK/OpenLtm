@@ -519,4 +519,212 @@ The following open questions have been answered for v2.5.0+:
 
 ---
 
+---
+
+## 11. Project Layer — Deep Dive
+
+`/project/:name` (current 263-line monolith) splits into 5 sub-routes behind a shared 3-pane shell, plus a per-project Settings sub-route. Phase 2 work.
+
+### 11.0 The shared shell
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│  TopNav: logo · Projects · Graph · Inbox · Settings        ⌘K Omnibar  │
+├─────────────────────────────────────────────────────────────────────────┤
+│  Breadcrumb:  Projects / acme-api ▾   (Switcher)  ⎘ Open in graph     │
+│  Context chips: Healthy · 142 memories · 3 stale · Last active 2d ago  │
+├────────────────┬─────────────────────────────────────┬──────────────────┤
+│  SUB-NAV       │        MAIN PANE                    │   INSPECTOR      │
+│  (vertical,    │        (changes per route)          │   (right rail,   │
+│   56px)        │                                     │    always on)    │
+│  ◉ Overview    │                                     │                  │
+│  ○ Memories    │                                     │   <selected      │
+│  ○ Timeline    │                                     │    memory>       │
+│  ○ Connections │                                     │                  │
+│  ○ Health      │                                     │                  │
+│  ⚙ Settings    │                                     │                  │
+└────────────────┴─────────────────────────────────────┴──────────────────┘
+```
+
+- **Sub-nav (left, 56px):** Overview · Memories · Timeline · Connections · Health · Settings
+- **Main pane (center):** changes per sub-route
+- **Inspector (right, 320px):** always on, no toggle
+
+**Visual language:** **Linear** (Refero — midnight command deck). Inter Variable 510/590 voice, Berkeley Mono for IDs, 1px inset borders, 32px row height, instrument-panel density. **Acid-lime `#e4f222` is rationed to two uses:** (a) 2px left bar of the selected sub-nav item, (b) ring around the central project node in the mini-graph. Nowhere else.
+
+### 11.1 Overview (`/projects/:name`)
+
+Top-down layout, no scrolling for the first 4 sections on a 1440px screen:
+
+1. **Hero strip** (120px tall, full width): project name + one-line description + Health gauge (Mercury Blue ring) + 3 pills (Open in graph · Add memory · Run janitor) + Animated Status Badge top-right.
+2. **State panel** (3 × 360px columns): Goal card | Recent activity (stacked status pills) | Mini-graph (acid-lime ring on center).
+3. **Memory composition** (220px, full width): horizontal bar chart of 6 categories + 4 context types. Hover any bar → switch to Memories with that filter pre-applied.
+4. **Top 3 stale memories** (expandable, per-project scope of `StaleMemoryAlert.tsx`): confidence + content + inline Confirm/Edit/Forget actions.
+5. **Recent changes feed** (240px, paginated): `ProjectActivityLog.tsx` events wrapped in status pills.
+
+**Best-fit components:**
+- **[Animated Status Badge](https://21st.dev/community/components/isaiahbjork/animated-status-badge/default)** (isaiahbjork, 21st) — for the janitor status indicator. Install: `npx shadcn@latest add https://21st.dev/r/isaiahbjork/animated-status-badge`. Deps: lucide-react + framer-motion.
+- **[Status Indicators Timeline](https://www.shadcn.io/blocks/timeline-status-indicators)** (shadcn.io block) — for the activity feed. Color-coded emerald/blue/amber/muted pills on a vertical rail.
+
+### 11.2 Memories (`/projects/:name/memories`)
+
+3-pane shell: Filter rail (200px) | Table/Board | Inspector.
+
+- **Filter rail:** 6-category multi-select + importance range slider (1-5) + confidence range slider (0-1) + confidence-only toggle. **Cursor** hairline borders (1px solid) on the filter group cards. Sliders are Linear-style: 2px track, 12px thumb, mercury-blue fill between thumbs.
+- **Table view** (default): 32px row height, sticky header, columns: [checkbox] [category dot] [content] [★ importance] [confidence bar] [✓ confirms] [tags] [updated]. Hover: 1px inset border + 2-button row action menu (Open/Edit) slides in from right.
+- **Board view:** existing Kanban with inline edit (click content → opens editor). No drag-drop yet (v2.8).
+- **Inspector:** existing `MemoryPanel.tsx` — no changes; already uses `SectionLabel`, `CategoryBadge`, `ConfidenceBar`, `TagChip`, `MetaRow`, `RelativeTime`.
+
+### 11.3 Timeline (`/projects/:name/timeline`)
+
+- **Header:** "Activity" + range selector (7d / 30d / 90d / all) + weekly distribution stacked bar.
+- **Vertical rail** (left, 1px hairline, full height).
+- **Day-grouped sections** (date + "12 events" badge).
+- **Each event** = status pill stacked on the rail, connector line takes the next event's color. **Colors:** Learned = emerald · Confirmed = blue · Edited = mercury blue · Relevance up = emerald up-arrow · Relevance down = crimson down-arrow · Stale = amber · Archived = muted.
+- Click → opens memory in inspector. Hover → shows connection type (supports/contradicts/refines/depends_on/related_to/supersedes) as tooltip.
+
+**Best-fit component:** **[Status Indicators Timeline](https://www.shadcn.io/blocks/timeline-status-indicators)** — exact match.
+
+### 11.4 Connections (`/projects/:name/connections`)
+
+- **6 relation filter chips** at top (toggleable, color-coded by relation type, defaults on). Uses the existing `REL_MEANING` map in `ProjectConnections.tsx`.
+- **Full-bleed d3 force-directed graph** (lift the layout from `GraphView.tsx`, not the current ring layout from `MiniGraph.tsx`).
+- **Focus mode:** click a node → physics centers it, dims everything >2 hops away.
+- **Floating legend** (bottom-right card): 6 relation types with color, label, and example ("supports: A backs B's claim").
+- **"Why this exists" banner** (top-left, dismissable, 56px tall) — reuses the existing `ExplainBlock` component.
+
+### 11.5 Health (`/projects/:name/health`)
+
+1. **Score hero** (200px, full width): 0-100 display + 4 sub-metric bars (freshness/confidence/coverage/activity). **Mercury** Mountain Top aesthetic — Deep Space panel (#171721) with Mercury Blue ring around the score.
+2. **"What to fix" plan** (360px+, full width, expands to fit content): **[Agent Plan](https://21st.dev/community/components/isaiahbjork/agent-plan/default)** (isaiahbjork, 21st) — animated task plan with subtasks. Each top-level task is a memory action ("Re-confirm 12 stale", "Decide between 3 contradicting", "Add missing coverage"). Subtasks expand on click with framer-motion animation. Click "Re-confirm all" → batches confirmations via `api.confirm()`. **This is the showcase component for the whole redesign.** Install: `npx shadcn@latest add https://21st.dev/r/isaiahbjork/agent-plan`. Deps: lucide-react + framer-motion.
+3. **Score history** (240px, sparkline, 30 days). Requires new endpoint `/api/health/history?project=X`.
+4. **Action log** (fills remaining, status pill pattern).
+5. **Settings shortcut** (bottom-right, 32px pill): "Adjust scoring weights →" → opens `/projects/:name/settings`.
+
+### 11.6 Project Settings (`/projects/:name/settings`)
+
+**Visual language:** **Cursor** (Refero — warm paper command center). The shift from Linear's midnight signals "this is config, not data." Hairline borders, paragraph-like entries, editorial spacing.
+
+- **Context rules** (2x2 toggle grid): Auto-capture decisions · Auto-capture gotchas · Require confirmation · Allow cross-project relations. Cursor-style switch: 24px wide, 6px track radius, 18px thumb.
+- **Memory rules:** importance default (slider 1-5, default 3) · confidence threshold (slider 0-1, default 0.7) · decay rate (dropdown: off/slow/medium/fast).
+- **Connections:** "Suggest relations" toggle + current auto-relation strategy (tag-frequency heuristic now, LLM in v2.8+).
+- **Danger zone** (1px crimson border): "Reset to system defaults" — Linear pattern, requires typing project name to confirm.
+
+---
+
+## 12. Settings Page — Deep Dive
+
+Replaces the current 4-tab layout (Models / Behavior / System Explorer / Memory Keeper) with **5 sections, no tabs**. Single-column layout (720px max) with a left-rail section nav. Phase 3 work.
+
+**Visual language:** **Mercury** (Refero — Mountain Top Command Center). Deep neutrals (#171721 → #1e1e2a) with a single Mercury Blue `#5266eb` for the lone primary action per section. Nowhere else.
+
+### 12.1 System (the home of `/settings`)
+
+1. **AI Providers** (refactor of `SettingsForm.tsx`):
+   - Each provider = 56px row card: provider name + logo (16px), status pill (idle/verifying/valid/invalid from `KeyState`), model count, edit link.
+   - **Verification uses Animated Status Badge** — "Verifying" pulses → "Connected" (emerald) or "Invalid key" (crimson). Same component as project Health.
+   - "Edit" opens an inline slide-in drawer (400px, from right) — not a modal. Drawer has the masked apiKey (eye icon to reveal), baseUrl, embedModel, llmModel. Save = single mercury-blue button.
+2. **Embedding source:** single dropdown. Defaults to the first provider that supports embedding (gemini/openai/cohere/openrouter; anthropic excluded). Mercury Blue info-icon tooltip explains the choice.
+3. **Storage:** read-only card (120px tall) — DB path (Berkeley Mono, muted), size on disk, last backup timestamp, "Open in Finder" link (text-only, no fill).
+
+### 12.2 Behavior
+
+1. **Reasoning** (3 toggles, 2-column grid): auto-relate new memories (on) · suggest contradiction detection (on) · generate cluster labels (off until v2.8).
+2. **Decay** (3 controls, single column): "Decay unused memories" toggle (the existing `decayEnabled` from `TOGGLES`) · half-life dropdown (30d/90d/180d/365d/never) · action on low-confidence (<0.3): Move to Inbox / Auto-archive / Keep.
+3. **Inbox:** "Auto-clear Inbox after" (30 days, locked per §8 Q2) · "Recover" link → opens the Recover drawer (see §12.3).
+
+### 12.3 Health
+
+1. **Score card** (240px, full width): global score (96px display, mercury-blue ring) · 4 sub-metrics in a 4-column grid (fresh / confident / covered / active) · "Run Janitor" single primary action (the existing `Play` icon from `app/settings/page.tsx`). **When clicked, swap the button for the Animated Status Badge** — "Running" pulses → "Completed" (emerald) → "X memories cleaned" badge appears below → auto-fade after 2s.
+2. **Stale memory queue** (fills remaining, per-project filter chip): reuses the `StaleMemoryAlert` logic. Each row: confidence % + content + [Confirm] [Edit] [Forget] inline.
+3. **Recover** (drawer trigger, bottom-right): slide-in drawer (400px) with all soft-deleted memories from the last 30 days. Each row: deleted date, content preview, "Restore" button.
+
+### 12.4 Advanced (collapsed by default)
+
+**Visual language:** **Cursor** editorial. The current System Explorer tab content (SkillEntry / AgentEntry / HookEntry / RuleEntry from `ConfigExplorerData`) moves here. Each entry: type badge (Skill/Agent/Hook/Rule, 4 distinct colors, hairline border) · name (Berkeley Mono, 14px) · path (Berkeley Mono, 12px, muted) · "View" link.
+
+**Why collapsed by default:** 95% of users never touch this. Cursor's own advanced settings work the same way.
+
+### 12.5 About
+
+Version (current `2.4.0` from `.claude-plugin/plugin.json`) · DB schema version · LTM health check (last successful recall) · license · "Send feedback" link · "What's new" → opens `CHANGELOG.md` in a side panel.
+
+---
+
+## 13. Visual identity — rationed accents
+
+Two accent colors, two surfaces, no overlap. Plus the existing studio-warm `#dc5000` from `DESIGN.md` for global brand.
+
+| Color | Hex | Surface | Rationed uses |
+|---|---|---|---|
+| **Acid Lime** | `#e4f222` | Project layer (Linear territory) | 2px left bar of selected sub-nav item; ring around central project node in the mini-graph. Nowhere else. |
+| **Mercury Blue** | `#5266eb` | Settings page (Mercury territory) | Single primary action per section (Save / Run / Connect / Add). Nowhere else. |
+| **Studio Warm** | `#dc5000` (existing) | Global brand | TopNav logo accent, status chip "live" dot, Inbox badge. Stays as-is. |
+
+**Each accent earns its place by being the only place that color appears in its surface.** The moment a third use-case appears, kill the weakest one.
+
+**What this is NOT:** no dark-mode toggle (v2.8). No drag-and-drop on the board view (v2.8). No LLM-generated cluster labels in Phase 3 (heuristic only).
+
+---
+
+## 14. Open questions resolved (2026-06-04, batch 2)
+
+| # | Question | Decision | Drives |
+|---|---|---|---|
+| 8 | Accent color for project layer? | **Acid lime `#e4f222`** (Linear territory); Mercury Blue `#5266eb` for Settings (Mercury territory) | Two surfaces, two accents, no overlap. Rationed per §13. |
+| 9 | Animated Status Badge on janitor runs? | **Yes, on both** project Health and global Settings → Health | Same component, two surfaces. Verifying flow reuses it too. |
+| 10 | Project Settings: sub-route or drawer? | **Sub-route** at `/projects/:name/settings` | Linear pattern. Drawer is too small for per-project overrides. |
+| 11 | AI Prompt Box in Omnibar? | **Yes, included in v2.5.0 (Phase 1.4)** | cmdk-only was the Phase 1 floor; the 21st.dev prompt box upgrades it in the same release. Install: `npx shadcn@latest add https://21st.dev/r/johuniq/ai-prompt-box`. Deps: lucide-react + framer-motion + @radix-ui/react-dialog + @radix-ui/react-tooltip + clsx + tailwind-merge. |
+| 12 | Document the deep redesigns as a new doc, or amend this one? | **Amend this one** | One story, one doc. |
+
+---
+
+## 15. Updated file changes table
+
+| File | Change | Phase |
+|---|---|---|
+| `graph-app/app/project/[name]/page.tsx` (263 lines) | Split into 5 sub-routes: `app/projects/[name]/page.tsx`, `app/projects/[name]/memories/page.tsx`, `app/projects/[name]/timeline/page.tsx`, `app/projects/[name]/connections/page.tsx`, `app/projects/[name]/health/page.tsx`, `app/projects/[name]/settings/page.tsx`. Add `app/projects/layout.tsx` with the 3-pane shell + sub-nav. | 2 |
+| `graph-app/app/projects/page.tsx` (new) | The current Home (Projects + Health bento) becomes `/projects`. The Graph moves to `/graph`, Inbox to `/inbox`. | 2 |
+| `graph-app/components/ProjectBoardView.tsx` | Add inline edit (click content → opens editor). No drag-drop yet. 32px row height, 1px hairline border. | 2 |
+| `graph-app/components/ProjectTableView.tsx` | Switch to 32px row height + 1px hairline border + sticky header + 2-button row action menu on hover. | 2 |
+| `graph-app/components/ProjectTimeline.tsx` | Replace flat list with Status Indicators Timeline pattern (color-coded pills on vertical rail, day-grouped). | 2 |
+| `graph-app/components/ProjectConnections.tsx` | Add 6 relation filter chips at top. Use full force layout from GraphView, not ring layout. Floating legend card. | 2 |
+| `graph-app/components/ProjectActivityLog.tsx` | Wrap each event in a status pill (emerald/blue/amber/muted). | 2 |
+| `graph-app/components/ProjectRelevance.tsx` | Wrap thumbs-up/down in Cursor-style 32px buttons with the existing `nodeColor` for the category. | 2 |
+| `graph-app/components/MiniGraph.tsx` | Add 2px acid-lime ring around the central project node. Add Focus mode (click a node → center, dim >2 hops). | 2 |
+| `graph-app/components/StaleMemoryAlert.tsx` | Move from global to project-scoped. Add "View all" + 3-action row (Confirm / Edit / Forget). | 2 |
+| `graph-app/components/HealthView.tsx` | Inline into Settings → Health. Add Animated Status Badge for janitor run. | 3 |
+| `graph-app/app/settings/page.tsx` (19KB) | Split into 5 sections (no tabs). Left-rail section nav. Replace tab UI with single scrollable page. | 3 |
+| `graph-app/components/SettingsForm.tsx` | Refactor provider rows to use Animated Status Badge for verification. Replace modal with inline drawer (slide from right). | 3 |
+| `graph-app/components/AnimatedStatusBadge.tsx` (new) | `npx shadcn@latest add https://21st.dev/r/isaiahbjork/animated-status-badge`. Deps: lucide-react + framer-motion. | 2/3 |
+| `graph-app/components/AgentPlan.tsx` (new) | `npx shadcn@latest add https://21st.dev/r/isaiahbjork/agent-plan`. Deps: lucide-react + framer-motion. Used in `/projects/:name/health`. | 2 |
+| `graph-app/components/AiPromptBox.tsx` (new) | `npx shadcn@latest add https://21st.dev/r/johuniq/ai-prompt-box`. Used in Omnibar (Phase 1.4). Deps: lucide-react + framer-motion + @radix-ui/react-dialog + @radix-ui/react-tooltip + clsx + tailwind-merge. | 1 |
+| `graph-app/components/ui/command.tsx` (existing) | cmdk-based, no new install. | 1 |
+| `graph-app/app/globals.css` (DESIGN.md tokens) | Add acid-lime `#e4f222` (Linear), mercury-blue `#5266eb` (Mercury). All rationed per §13. | 2 |
+| `graph-app/app/api/health/history/route.ts` (new) | Score history for project Health view. | 2 |
+| `graph-app/app/api/inbox/recover/route.ts` (new) | Restore soft-deleted memories (Phase 3). | 3 |
+
+**Three 21st.dev installs**, all in `@/components/ui/`, all drop-in with shadcn.
+
+---
+
+## 16. External references
+
+Best-fit component picks and design system inspirations, all linked for the build team.
+
+### styles.refero.design (Refero)
+- **Linear** — midnight command deck. Project layer visual language. https://styles.refero.design/style/90ce5883-bb24-4466-93f7-801cd617b0d1
+- **Mercury** — Mountain Top Command Center. Settings page visual language. https://styles.refero.design/style/3172cd4d-118a-4a16-a259-6b634d32322e
+- **Cursor** — warm paper command center. Project Settings visual language. https://styles.refero.design/style/4e3b4717-84c8-4599-baaf-a343c3d619b6
+
+### 21st.dev (21Dev)
+- **Animated Status Badge** (isaiahbjork) — janitor status + provider verification. https://21st.dev/community/components/isaiahbjork/animated-status-badge/default
+- **Agent Plan** (isaiahbjork) — "What to fix" in project Health. https://21st.dev/community/components/isaiahbjork/agent-plan/default
+- **AI Prompt Box** (johuniq) — Omnibar upgrade. https://21st.dev/community/components/johuniq/ai-prompt-box
+- **shadcn Command** (cmdk) — base for ⌘K. https://21st.dev/community/components/shadcn/command
+- **Status Indicators Timeline** (shadcn.io block) — Timeline view + activity feed. https://www.shadcn.io/blocks/timeline-status-indicators
+- **Command Palette category** (21st) — discovery hub. https://21st.dev/community/components/s/command-palette
+
+---
+
 *End of spec. Hand off to product team for review and prioritization.*
