@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Brain, FolderTree, Network, Inbox, Settings, Menu, X } from "lucide-react";
 import Omnibar from "@/components/shell/Omnibar";
+import AskDialog from "@/components/shell/AskDialog";
 import BackendStatusChip from "@/components/shell/BackendStatusChip";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { cn } from "@/lib/utils";
@@ -65,6 +66,7 @@ export default function TopNav() {
 
         {/* Right - Status + Mobile hamburger */}
         <div className="flex items-center gap-3 shrink-0">
+          <AskDialog />
           <ThemeToggle />
           <BackendStatusChip />
           <button
