@@ -9,6 +9,7 @@ import { MemoryPanel } from "./inspector/MemoryPanel";
 import { ProjectPanel } from "./inspector/ProjectPanel";
 import { ContextPanel } from "./inspector/ContextPanel";
 import { ReasoningPanel } from "./inspector/ReasoningPanel";
+import InspectorContextMenu from "./InspectorContextMenu";
 
 interface Props {
   node: GraphNode | null;
@@ -111,6 +112,7 @@ export default function Sidebar({ node, onClose, onRelationClick, nodeLabelById,
     >
       {node && (
         <div className="w-[360px] rounded-2xl border border-white/10 bg-black/40 shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-xl flex flex-col overflow-hidden h-full ring-1 ring-white/5">
+          <InspectorContextMenu node={node} />
           {/* Header */}
           <div
             className="px-5 pt-5 pb-4 border-b border-white/10 relative overflow-hidden"
