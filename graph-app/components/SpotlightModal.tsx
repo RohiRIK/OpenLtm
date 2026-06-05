@@ -1,8 +1,33 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { Clock } from "lucide-react";
 import { api } from "@/lib/api";
 import { nodeColor } from "@/lib/nodeColors";
+import { cn } from "@/lib/utils";
 import type { SearchResult } from "@/lib/types";
+
+const HISTORY_KEY = "ltm.searchHistory";
+const HISTORY_MAX = 10;
+
+function loadHistory(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(HISTORY_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr.filter((x): x is string => typeof x === "string").slice(0, HISTORY_MAX) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveHistory(items: string[]) {
+  try {
+    window.localStorage.setItem(HISTORY_KEY, JSON.stringify(items.slice(0, HISTORY_MAX)));
+  } catch {
+    // localStorage unavailable (private mode, quota) — silently degrade
+  }
+}
 
 interface Props {
   open: boolean;
@@ -14,30 +39,30 @@ export default function SpotlightModal({ open, onClose, onSelect }: Props) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [activeIdx, setActiveIdx] = useState(0);
+  const [history, setHistory] = useState<string[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
-  // Refs so the keydown handler doesn't need to re-register on every keystroke
   const resultsRef = useRef<SearchResult[]>([]);
   const activeIdxRef = useRef(0);
   const onCloseRef = useRef(onClose);
   const onSelectRef = useRef(onSelect);
+  const historyRef = useRef<string[]>([]);
 
-  // Keep refs in sync with latest values/callbacks
   useEffect(() => { resultsRef.current = results; }, [results]);
   useEffect(() => { activeIdxRef.current = activeIdx; }, [activeIdx]);
   useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
   useEffect(() => { onSelectRef.current = onSelect; }, [onSelect]);
+  useEffect(() => { historyRef.current = history; }, [history]);
 
-  // Focus input when opened
   useEffect(() => {
     if (open) {
       setQuery("");
       setResults([]);
       setActiveIdx(0);
+      setHistory(loadHistory());
       setTimeout(() => inputRef.current?.focus(), 50);
     }
   }, [open]);
 
-  // Debounced search with stale-result guard
   useEffect(() => {
     if (query.length < 2) { setResults([]); return; }
     let cancelled = false;
@@ -50,7 +75,14 @@ export default function SpotlightModal({ open, onClose, onSelect }: Props) {
     return () => { cancelled = true; clearTimeout(t); };
   }, [query]);
 
-  // Keyboard navigation — registered once when modal opens, uses refs to avoid churn
+  const commitQuery = useCallback((q: string) => {
+    const trimmed = q.trim();
+    if (!trimmed) return;
+    const next = [trimmed, ...historyRef.current.filter((h) => h !== trimmed)].slice(0, HISTORY_MAX);
+    setHistory(next);
+    saveHistory(next);
+  }, []);
+
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => {
@@ -70,9 +102,11 @@ export default function SpotlightModal({ open, onClose, onSelect }: Props) {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [open]); // deps: only [open] — all other values accessed via refs
+  }, [open]);
 
   if (!open) return null;
+
+  const showHistory = query.length < 2 && history.length > 0;
 
   return (
     <div
@@ -92,6 +126,7 @@ export default function SpotlightModal({ open, onClose, onSelect }: Props) {
             type="text"
             value={query}
             onChange={e => setQuery(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter" && query.length >= 2) commitQuery(query); }}
             placeholder="Jump to memory…"
             className="flex-1 bg-transparent text-[var(--text-primary)] text-sm outline-none placeholder-[var(--text-muted)]"
           />
@@ -103,9 +138,10 @@ export default function SpotlightModal({ open, onClose, onSelect }: Props) {
             {results.map((r, i) => (
               <li
                 key={r.id}
-                className={`px-4 py-2.5 cursor-pointer flex gap-3 items-start transition-colors ${
+                className={cn(
+                  "px-4 py-2.5 cursor-pointer flex gap-3 items-start transition-colors",
                   i === activeIdx ? "bg-[#1f2937]" : "hover:bg-[#1a2030]"
-                }`}
+                )}
                 onMouseEnter={() => setActiveIdx(i)}
                 onClick={() => { onSelect(r); onClose(); }}
               >
@@ -121,6 +157,26 @@ export default function SpotlightModal({ open, onClose, onSelect }: Props) {
                     {` · imp ${r.importance}`}
                   </p>
                 </div>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {showHistory && (
+          <ul className="max-h-80 overflow-y-auto py-1">
+            <li className="px-4 pt-2 pb-1 flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-[var(--text-muted)] font-medium">
+              <Clock className="w-3 h-3" />
+              Recent searches
+            </li>
+            {history.map((q, i) => (
+              <li
+                key={q}
+                className="px-4 py-2 cursor-pointer flex gap-3 items-center hover:bg-[#1a2030] transition-colors"
+                onMouseEnter={() => setActiveIdx(i)}
+                onClick={() => setQuery(q)}
+              >
+                <Clock className="w-3 h-3 text-[var(--text-muted)] shrink-0" />
+                <span className="text-sm text-gray-300 truncate">{q}</span>
               </li>
             ))}
           </ul>
