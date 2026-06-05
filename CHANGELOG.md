@@ -1,5 +1,35 @@
 # Changelog
 
+## [2.7.0] — 2026-06-05
+
+### Added
+- **Project layer 3-pane shell** — new routes under `/projects/...`: overview, memories, timeline, connections, health, settings. Each project gets a 56px icon sub-nav (acid-lime active bar), main pane, and an optional 320px inspector. "All projects (global)" is a first-class switcher entry.
+- **5-section Settings split** — `/settings` now has a left-rail nav with System (providers + storage), Behavior (reasoning + decay + inbox 30d), Health (Memory Keeper + Recover), Advanced (System Explorer, collapsed by default), and About (version + license + feedback).
+- **Recover drawer** — slide-in tray from the right at `Settings → Health`, surface for soft-deleted memories (UI shell; the real soft-delete pipeline lands in v2.8.0).
+- **`/api/health/history?project=X`** — synthetic 30-point series (deterministic per-day drift seeded by project name). Lets the Health page render a 30-day sparkline; a real `health_history` table is scheduled for v2.8.0.
+- **Inspector right-click menu** — right-click anywhere in the inspector reveals: Open in project (navigates to `/projects/:name/memories`), Mark permanent (v2.8), Find conflicts (v2.8). v2.8 items are labelled.
+- **Decision "Why?" tooltip** — decision context nodes get a small "Why?" button in the category banner. Click reveals the decision's content + source session id + a hint to use Recall.
+- **⌘K search history** — SpotlightModal now shows the last 10 queries from `localStorage` (`ltm.searchHistory`, deduped) when the query is empty. Submitting a search pushes to history.
+- **`--accent-blue` and `--accent-lime-foreground` tokens** — added to all 6 themes. Mercury blue is rationed to one primary CTA per Settings section; acid lime stays rationed to the 2 use-sites from v2.5.0.
+- **Animated Status Badge** (isaiahbjork, 21st.dev) — used in `Settings → Health` for the Janitor running state.
+
+### Changed
+- **Component refactors** — `ProjectTableView`, `ProjectBoardView`, `ProjectTimeline`, `ProjectConnections`, `ProjectRelevance`, `StaleMemoryAlert` rewritten to the redesign spec:
+  - Table: 32px rows, hairline borders, sticky header, 2-button row action menu on hover.
+  - Board: inline edit (double-click content → textarea, ⌘+Enter saves, Esc cancels).
+  - Timeline: Status Indicators Timeline pattern (color-coded pills on vertical rail, day-grouped, 4 ranges).
+  - Connections: map-first with 6 relation filter chips, floating legend, "Why this exists" banner.
+  - Relevance: 32px Cursor-style thumbs colored with `nodeColor(category)`.
+  - StaleMemoryAlert: project-scoped, 3-action row (Confirm/Edit/Forget) revealed on hover.
+- **`/project/[name]` → `/projects/[name]`** — `/project/[name]` is now a 5-line server redirect. Kept for backward compatibility through v2.7.x; removed at v2.8.0 per redesign spec §8 Q5.
+- **`/` → `/projects`** — the home page is now `/projects`; the old `/` 307-redirects there.
+- **`AppShell` wraps in `ProjectProvider`** — the TopNav `ProjectSwitcher` is now project-aware on every route.
+
+### Notes
+- Phases 2 + 3 of the frontend redesign — Restructure + Refine. See `docs/FRONTEND-REDESIGN-2026-06.md` for the full plan.
+- Cluster labels already use a tag-frequency heuristic in `src/cluster.ts:64` (`generateClusterLabel`); LLM-generated labels are deferred to v2.8+.
+- The synthetic `/api/health/history` series is stable per `(project_name, date)` — refreshing the page does not jitter the chart.
+
 ## [2.5.0] — 2026-06-05
 
 ### Changed
