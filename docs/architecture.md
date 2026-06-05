@@ -1,6 +1,6 @@
 # ARCHITECTURE — OpenLTM Plugin
 
-**Version:** 1.1 (against plugin v2.4.0)
+**Version:** 1.2 (against plugin v2.7.0)
 **Owner:** system-architect (dev-team)
 **Status:** Baseline architecture spec; companion to `docs/PRD.md`
 **Last updated:** 2026-04-28
@@ -87,7 +87,7 @@ C4Container
   System_Ext(claude, "Claude Code Harness")
 
   System_Boundary(ltm, "LTM Plugin") {
-    Container(mcp, "MCP Server", "Bun + TypeScript, STDIO transport", "Long-lived; serves ltm_recall, ltm_learn, ltm_forget, ltm_relate, ltm_context, ltm_context_items, ltm_graph")
+    Container(mcp, "MCP Server", "Bun + TypeScript, STDIO transport", "Long-lived; serves recall, learn, forget, relate, context, context_items, graph")
     Container(hooks, "Hook Runners", "Bun scripts invoked by Claude Code", "SessionStart, PreCompact, EvaluateSession, UpdateContext")
     Container(cmds, "Command + Skill Layer", "Markdown specs in commands/ and skills/", "Slash commands (/ltm:*), skills (ContinuousLearning, GitLearn, Learned, session-context)")
     Container(graph, "Graph Server", "Bun HTTP server (opt-in)", "Serves graph-app SPA + JSON memory/edge feed")
@@ -142,21 +142,21 @@ C4Component
 
   Container_Boundary(mcp, "MCP Server (src/mcp-server.ts)") {
     Component(transport, "STDIO Transport", "@modelcontextprotocol/sdk", "JSON-RPC over stdin/stdout")
-    Component(toolreg, "Tool Registry", "McpServer.tool()", "Declares ltm_recall, ltm_learn, ltm_forget, ltm_relate, ltm_context, ltm_context_items, ltm_graph with Zod schemas")
+    Component(toolreg, "Tool Registry", "McpServer.tool()", "Declares recall, learn, forget, relate, context, context_items, graph with Zod schemas")
     Component(recall, "Recall Engine", "src/db.ts:recall", "FTS5 query → semantic fallback → merge → rank by importance/recency/decay")
     Component(learn, "Learn Engine", "src/db.ts:learn", "Validate → redact secrets → dedup-key check → insert → return id")
     Component(ctxmerge, "Context Merge", "src/db.ts:getContextMerge + src/context.ts:getItems", "Build the goal+decisions+progress+gotchas envelope for SessionStart")
-    Component(graphtrav, "Graph Traversal", "src/graph.ts:traverseGraph", "BFS over memory_relations; powers ltm_graph and visualization feed")
+    Component(graphtrav, "Graph Traversal", "src/graph.ts:traverseGraph", "BFS over memory_relations; powers graph and visualization feed")
     Component(formatter, "Compact Formatter", "src/mcp-server.ts:compact/strip", "Strips embedding blob, truncates content to keep MCP responses small")
     Component(config, "Config Reader", "src/config.ts", "Reads plugin config; respects mcp.enabled flag")
   }
 
   Rel(claude, transport, "JSON-RPC")
   Rel(transport, toolreg, "dispatch")
-  Rel(toolreg, recall, "ltm_recall")
-  Rel(toolreg, learn, "ltm_learn")
-  Rel(toolreg, ctxmerge, "ltm_context, ltm_context_items")
-  Rel(toolreg, graphtrav, "ltm_graph")
+  Rel(toolreg, recall, "recall")
+  Rel(toolreg, learn, "learn")
+  Rel(toolreg, ctxmerge, "context, context_items")
+  Rel(toolreg, graphtrav, "graph")
   Rel(toolreg, formatter, "shape response")
   Rel(toolreg, config, "feature flag check")
   Rel(recall, db, "FTS5 + base table queries")
@@ -245,7 +245,7 @@ sequenceDiagram
 
   Note over Dev,Sum: --- Recall before deciding ---
   Dev->>Claude: prompt that requires past context
-  Claude->>MCP: ltm_recall({ query, project })
+  Claude->>MCP: recall({ query, project })
   MCP->>DB: FTS5(MATCH) → ranked rowids
   alt FTS5 returns < 3 results
     MCP->>DB: semantic fallback (embedding similarity)
@@ -257,7 +257,7 @@ sequenceDiagram
 
   Note over Dev,Sum: --- Work + learn ---
   Dev->>Claude: makes a decision; runs /ltm:memory learn
-  Claude->>MCP: ltm_learn({ content, category, importance, project })
+  Claude->>MCP: learn({ content, category, importance, project })
   MCP->>MCP: redact secrets; compute dedup_key
   MCP->>DB: INSERT memories (trigger writes memories_fts)
   MCP-->>Claude: { id }
@@ -285,8 +285,8 @@ sequenceDiagram
 | Step | Read from | Writes to | Failure mode |
 |------|-----------|-----------|--------------|
 | SessionStart | DB, registry | registry (auto-register only) | Hook silent-fail → no injection; `/ltm:doctor` detects |
-| ltm_recall | DB (FTS5 + base) | DB (last_recalled_at, recall_count) | Returns empty array; never throws into Claude |
-| ltm_learn | — | DB (memories, memories_fts via trigger) | Reject duplicate dedup_key; redact before write |
+| recall | DB (FTS5 + base) | DB (last_recalled_at, recall_count) | Returns empty array; never throws into Claude |
+| learn | — | DB (memories, memories_fts via trigger) | Reject duplicate dedup_key; redact before write |
 | PreCompact | DB | context-summary.md | If write fails, post-compact session loses fallback only |
 | EvaluateSession | transcript signals, DB | DB (memories) | OQ4 — propose vs. auto-write is open |
 | UpdateContext | — | DB (context_items progress) | Trim ensures bounded growth |
@@ -449,7 +449,7 @@ server via `src/shared-db.ts`.
 
 - **MCP-only.** Rejected. There is no MCP equivalent to "this is a fresh session,
   inject context now". Without hooks, the developer would have to manually call
-  `ltm_context` at every session start — defeats J1 and US-1.
+  `context` at every session start — defeats J1 and US-1.
 - **Background daemon.** Rejected. Long-lived process management on developer
   machines is fragile (sleep/wake, terminal close). Also conflates "react to event"
   with "serve queries".
@@ -726,7 +726,7 @@ require user confirmation via a banner at next SessionStart".
 
 ### W11 — No write audit trail
 
-**Symptom.** A memory is wrong; the user can `ltm_forget` it but cannot answer
+**Symptom.** A memory is wrong; the user can `forget` it but cannot answer
 "who/what wrote this in the first place?".
 
 **Direction.** Append-only `memory_audit` table: memory_id, op (insert/update/
@@ -809,8 +809,8 @@ selected at install time. Implementations: `null` (FTS5 only), `local-hash`
 
 ```mermaid
 flowchart LR
-  Learn[ltm_learn] --> EI[EmbeddingProvider Interface]
-  Recall[ltm_recall] --> EI
+  Learn[learn] --> EI[EmbeddingProvider Interface]
+  Recall[recall] --> EI
   EI --> P1[null provider]
   EI --> P2[local-hash provider]
   EI --> P3[claude-tool provider]
@@ -861,7 +861,7 @@ territory. Memory remains per-developer; bundles are a transport.
 
 ### 8.6 C4 — Conflict detection on learn
 
-When `ltm_learn` is called, the Learn Engine first runs a similarity check against
+When `learn` is called, the Learn Engine first runs a similarity check against
 existing memories. If `(similarity > 0.85) AND (polarity_opposite OR same_dedup_topic)`,
 the new memory is staged `pending` with a link to the conflicting memory. The user
 is asked at next SessionStart: *forget*, *supersede*, or *coexist*.
@@ -907,7 +907,7 @@ by adjusting importance instead of guessing.
 
 ### 8.11 C9 — Time-travel replay
 
-A `memory_audit` append-only log (W11) plus a `--at <date>` flag on `ltm_recall`
+A `memory_audit` append-only log (W11) plus a `--at <date>` flag on `recall`
 allows reconstructing the memory state at any past point. Boot a session as if it
 were a month ago: `/ltm:project replay --date 2026-03-15`.
 
@@ -1000,7 +1000,7 @@ Backwards compatible at the MCP contract level. Schema migrates idempotently.
 ### Phase 4 — Janitor (non-breaking, 1.9.x)
 
 - Materialise `decay_score` on `memories` (W4); janitor refreshes on a schedule.
-- Conflict detector (C4) runs on `ltm_learn` and stages conflicting memories
+- Conflict detector (C4) runs on `learn` and stages conflicting memories
   `pending`.
 - Rollup proposer (C6) runs nightly; user reviews via SessionStart banner.
 
