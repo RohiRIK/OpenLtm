@@ -7,11 +7,12 @@ import { Brain, FolderTree, Network, Inbox, Settings, Menu, X } from "lucide-rea
 import Omnibar from "@/components/shell/Omnibar";
 import AskDialog from "@/components/shell/AskDialog";
 import BackendStatusChip from "@/components/shell/BackendStatusChip";
+import ProjectSwitcher from "@/components/shell/ProjectSwitcher";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
-  { href: "/", label: "Projects", icon: FolderTree },
+  { href: "/projects", label: "Projects", icon: FolderTree },
   { href: "/graph", label: "Graph", icon: Network },
   { href: "/inbox", label: "Inbox", icon: Inbox },
   { href: "/settings", label: "Settings", icon: Settings },
@@ -29,14 +30,16 @@ export default function TopNav() {
   return (
     <>
       <header className="fixed top-0 inset-x-0 z-50 flex items-center justify-between px-4 h-14 bg-transparent border-b border-[var(--border)]">
-        <div className="flex items-center gap-6">
-          {/* Logo */}
-          <Link href="/" className="flex items-center gap-2 text-[var(--text-primary)] hover:opacity-80 transition-opacity">
+        <div className="flex items-center gap-4">
+          <Link href="/projects" className="flex items-center gap-2 text-[var(--text-primary)] hover:opacity-80 transition-opacity">
             <Brain className="w-5 h-5 text-[var(--accent)] shrink-0" />
             <span className="font-semibold text-sm tracking-tight hidden sm:inline-block">OpenLTM</span>
           </Link>
-          
-          {/* Navigation Links — desktop */}
+
+          <div className="hidden md:flex items-center gap-1 pl-2 border-l border-[var(--border)] ml-1">
+            <ProjectSwitcher />
+          </div>
+
           <nav className="hidden md:flex items-center gap-1">
             {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
               const active = isActive(pathname, href);
@@ -45,9 +48,9 @@ export default function TopNav() {
                   key={href}
                   href={href}
                   className={cn(
-                    "flex items-center gap-2 px-3 py-1.5 rounded-[22.5px] text-[12px] transition-colors border",
-                    active 
-                      ? "border-[var(--text-primary)] text-[var(--text-primary)]" 
+                    "relative flex items-center gap-2 px-3 py-1.5 rounded-[22.5px] text-[12px] transition-colors border",
+                    active
+                      ? "border-[var(--text-primary)] text-[var(--text-primary)]"
                       : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                   )}
                 >
@@ -59,12 +62,10 @@ export default function TopNav() {
           </nav>
         </div>
 
-        {/* Center - Omnibar */}
         <div className="flex-1 flex justify-center px-4 max-w-xl">
           <Omnibar />
         </div>
 
-        {/* Right - Status + Mobile hamburger */}
         <div className="flex items-center gap-3 shrink-0">
           <AskDialog />
           <ThemeToggle />
@@ -79,7 +80,6 @@ export default function TopNav() {
         </div>
       </header>
 
-      {/* Mobile dropdown nav */}
       {mobileOpen && (
         <div className="fixed top-14 inset-x-0 z-50 bg-[var(--bg-primary)] border-b border-[var(--border)] md:hidden">
           <nav className="flex flex-col px-4 py-3 gap-1">

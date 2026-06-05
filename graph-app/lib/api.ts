@@ -8,6 +8,7 @@ import type {
   FtsResult,
   GraphData,
   HealthData,
+  HealthHistory,
   JanitorRunResult,
   JanitorStatus,
   MemoryDetail,
@@ -139,6 +140,10 @@ export const api = {
 
   // Phase 4: Project Health Score
   projectHealth: (): Promise<ProjectHealthScore[]> => get("/health/projects"),
+
+  // Phase 6: Per-project score history (30d sparkline)
+  healthHistory: (project: string): Promise<HealthHistory> =>
+    get(`/health/history?project=${encodeURIComponent(project)}`),
 
   // Phase 5: Superseded memories
   supersededMemories: (): Promise<SupersededMemory[]> => get("/health/superseded"),

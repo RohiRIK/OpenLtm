@@ -324,3 +324,14 @@ export interface ProjectHealthScore {
   contextItemCount: number;
   lastActivityAt: string | null;
 }
+
+export interface HealthHistoryPoint {
+  date: string;                 // ISO date (YYYY-MM-DD)
+  score: number;                // 0–100
+}
+
+export interface HealthHistory {
+  project: string;
+  points: HealthHistoryPoint[]; // 30 entries, oldest first
+  current: number;              // current score
+}
