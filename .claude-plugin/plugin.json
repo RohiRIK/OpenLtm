@@ -1,12 +1,12 @@
 {
   "name": "ltm",
   "description": "OpenLTM \u2014 Long-Term Memory for AI coding agents: semantic search, context injection, session learning",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "author": {
     "name": "RohiRIK"
   },
   "mcpServers": {
-    "ltm": {
+    "memory": {
       "command": "bun",
       "args": [
         "run",
