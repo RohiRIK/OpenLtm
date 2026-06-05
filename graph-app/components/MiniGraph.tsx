@@ -124,6 +124,14 @@ export default function MiniGraph({ projectName, memories, contextItems, relatio
         .attr("stroke-width", 1.5);
 
       if (isCenter) {
+        // Acid-lime ring — the SECOND rationed use per spec §13.
+        const lime = getComputedStyle(document.documentElement).getPropertyValue("--accent-lime").trim() || "#e4f222";
+        nodeG.append("circle")
+          .attr("cx", n.x).attr("cy", n.y)
+          .attr("r", r + 5)
+          .attr("fill", "none")
+          .attr("stroke", lime)
+          .attr("stroke-width", 2);
         nodeG.append("text")
           .attr("x", n.x).attr("y", n.y + 4)
           .attr("text-anchor", "middle")
