@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.5.0] — 2026-06-05
+
+### Changed
+- **Frontend route rename** — `/pending` → `/inbox` across the web graph-app. The old `/pending` route now 302-redirects to `/inbox` for backward compatibility through v2.7.0; the redirect is removed at v2.8.0 per the redesign spec §8 Q5.
+- **New "Ask" affordance** — A small sparkle-icon button in the top nav opens a dialog powered by the johuniq/ai-prompt-box component (21st.dev). On send, it pipes the query to the existing semantic search endpoint and routes to `/graph?q=…`. The full LLM-mediated ask flow is deferred to v2.6+.
+
+### Added
+- **AI Prompt Box** (johuniq, 21st.dev) — installed via `bunx shadcn@latest add https://21st.dev/r/johuniq/ai-prompt-box`. Self-contained input with expanding textarea, model selector, and file attachments. Drop-in at `graph-app/components/ui/ai-prompt-box.tsx`.
+- **`--accent-lime` CSS token** — Reserved single-accent color for the project layer (Linear territory), added to all 6 themes. Per the redesign spec §13, the token is rationed to two specific uses in v2.6: (a) 2px left bar of selected sub-nav item, (b) ring around the central project node in the mini-graph.
+
+### Notes
+- Phase 1 of the frontend redesign — Cut. See `docs/FRONTEND-REDESIGN-2026-06.md` for the full plan (Phases 1–3, v2.5.0 → v2.7.0).
+- The Anthropic plugin marketplace detects new versions via the `version` field in `.claude-plugin/plugin.json`. Bump in both `package.json` and `.claude-plugin/plugin.json` to keep them in sync.
+
 ## [2.4.0] — 2026-06-04
 
 ### Added
