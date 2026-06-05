@@ -43,6 +43,12 @@
    Achromatic chrome — black/carbon surfaces, paper-white type — so the only
    color in the UI comes from the graph nodes themselves. The "Mercury Flow"
    mint→amber gradient supplies the single signature accent + node glow. */
+/* ── Cinematic darkroom palette (inspired by monopo saigon) ───────────────────
+   Achromatic chrome — black/carbon surfaces, paper-white type — so the only
+   color in the UI comes from the graph nodes themselves. Two rationed accents:
+   - --accent-lime  : Linear territory (project layer, 2 rationed uses)
+   - --accent-blue  : Mercury territory (settings page, 1 use per section)
+   The "Mercury Flow" mint→amber gradient supplies the signature brand accent. */
 :root {
   --bg-primary: #ffffff;
   --bg-secondary: #f7f7f5;
@@ -53,6 +59,9 @@
   --accent: #1f8f4e;
   --accent-foreground: #ffffff;
   --accent-lime: #e4f222;
+  --accent-lime-foreground: #181818;
+  --accent-blue: #5266eb;
+  --accent-blue-foreground: #ffffff;
   --node-memory: #d7ece0;
   --node-project: #f5e2c4;
   --node-memory-stroke: #1f8f4e;
@@ -70,6 +79,9 @@
   --accent: #dc5000;
   --accent-foreground: #100904;
   --accent-lime: #e4f222;
+  --accent-lime-foreground: #100904;
+  --accent-blue: #6b7df0;
+  --accent-blue-foreground: #100904;
   --node-memory: #382416;
   --node-project: #100904;
   --node-memory-stroke: #ffedd7;
@@ -87,6 +99,9 @@
   --accent: #3b82f6;
   --accent-foreground: #050914;
   --accent-lime: #e4f222;
+  --accent-lime-foreground: #050914;
+  --accent-blue: #6b8aff;
+  --accent-blue-foreground: #050914;
   --node-memory: #1e3a8a;
   --node-project: #050914;
   --node-memory-stroke: #e2e8f0;
@@ -104,6 +119,9 @@
   --accent: #10b981;
   --accent-foreground: #0a0f0a;
   --accent-lime: #d4e020;
+  --accent-lime-foreground: #0a0f0a;
+  --accent-blue: #6b7df0;
+  --accent-blue-foreground: #0a0f0a;
   --node-memory: #064e3b;
   --node-project: #0a0f0a;
   --node-memory-stroke: #e8f5e9;
@@ -121,6 +139,9 @@
   --accent: #ffffff;
   --accent-foreground: #0a0a0a;
   --accent-lime: #e4f222;
+  --accent-lime-foreground: #0a0a0a;
+  --accent-blue: #6b7df0;
+  --accent-blue-foreground: #0a0a0a;
   --node-memory: #262626;
   --node-project: #0a0a0a;
   --node-memory-stroke: #f5f5f5;
@@ -138,6 +159,9 @@
   --accent: #e11d48;
   --accent-foreground: #0d0508;
   --accent-lime: #d4e020;
+  --accent-lime-foreground: #0d0508;
+  --accent-blue: #7b6bf0;
+  --accent-blue-foreground: #0d0508;
   --node-memory: #4c0519;
   --node-project: #0d0508;
   --node-memory-stroke: #fce7f3;
@@ -155,6 +179,9 @@
   --accent: #06b6d4;
   --accent-foreground: #030f14;
   --accent-lime: #bce630;
+  --accent-lime-foreground: #030f14;
+  --accent-blue: #5a8df0;
+  --accent-blue-foreground: #030f14;
   --node-memory: #083344;
   --node-project: #030f14;
   --node-memory-stroke: #ccfbf1;

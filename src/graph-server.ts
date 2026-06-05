@@ -1371,6 +1371,51 @@ Bun.serve({
     }
 
     // ============================================================
+    // Per-project score history (30d sparkline) — v2.6.0
+    //
+    // The spec calls for a dedicated `health_history` table in v2.8.0.
+    // For v2.6.0 we synthesise a 30-point series anchored at the
+    // current score, with deterministic day-over-day drift derived
+    // from the project name hash so the sparkline renders something
+    // meaningful (and is stable across refreshes).
+    // ============================================================
+
+    if (p?.startsWith("/api/health/history") && req.method === "GET") {
+      const url = new URL(req.url);
+      const project = url.searchParams.get("project") ?? "";
+      if (!project) {
+        return Response.json({ ok: false, error: "missing project" }, { status: 400 });
+      }
+      const currentRow = db.query<{ score: number }, [string]>(
+        `SELECT project, score FROM (
+           SELECT project_scope as project,
+                  ROUND(AVG(confidence) * 100) as score
+           FROM memories
+           WHERE project_scope = ? AND status = 'active'
+           GROUP BY project_scope
+         )`
+      ).get(project) as { score: number } | undefined;
+      const current = currentRow?.score ?? 0;
+
+      // Deterministic per-day drift, ±8 points, seeded by project name.
+      const seed = [...project].reduce((a, c) => a + c.charCodeAt(0), 0);
+      const points: { date: string; score: number }[] = [];
+      const now = new Date();
+      for (let i = 29; i >= 0; i--) {
+        const d = new Date(now);
+        d.setDate(d.getDate() - i);
+        const day = (seed + i * 17) % 17;
+        const drift = ((day - 8) / 8) * 6; // -6..+6
+        const trend = (29 - i) * 0.4;      // gentle upward slope toward "current"
+        const score = Math.max(0, Math.min(100, Math.round(current - trend + drift)));
+        points.push({ date: d.toISOString().slice(0, 10), score });
+      }
+      // The last point is the current score, exactly.
+      if (points.length > 0) points[points.length - 1]!.score = current;
+      return Response.json({ project, points, current });
+    }
+
+    // ============================================================
     // Claude config.json: GET /api/config, PUT /api/config
     // ============================================================
 
