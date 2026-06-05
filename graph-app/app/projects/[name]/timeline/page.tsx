@@ -46,15 +46,12 @@ export default function ProjectTimelinePage() {
           <p className="text-xs text-[var(--text-muted)] mt-0.5">Every change to this project, day-grouped.</p>
         </header>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="border border-dashed border-[var(--border)] rounded-[12px] p-6">
-            <h3 className="text-lg font-semibold tracking-tight mb-4 text-[var(--text-primary)]">Project Timeline</h3>
-            <ProjectTimeline detail={detail} />
-          </div>
-          <div className="border border-dashed border-[var(--border)] rounded-[12px] p-6">
-            <h3 className="text-lg font-semibold tracking-tight mb-4 text-[var(--text-primary)]">Recent Activity</h3>
-            <ProjectActivityLog memories={detail.memories} />
-          </div>
+        <div className="border border-dashed border-[var(--border)] rounded-[12px] p-6">
+          <ProjectTimeline memories={detail.memories} />
+        </div>
+        <div className="border border-dashed border-[var(--border)] rounded-[12px] p-6">
+          <h3 className="text-lg font-semibold tracking-tight mb-4 text-[var(--text-primary)]">Recent Activity</h3>
+          <ProjectActivityLog memories={detail.memories} />
         </div>
       </div>
     </div>
