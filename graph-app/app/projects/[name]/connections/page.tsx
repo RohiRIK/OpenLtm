@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import ProjectConnections from "@/components/ProjectConnections";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
-import type { ProjectDetail } from "@/lib/types";
+import type { ProjectDetail, GraphNode } from "@/lib/types";
 
 export default function ProjectConnectionsPage() {
   const { name } = useParams<{ name: string }>();
@@ -13,6 +13,7 @@ export default function ProjectConnectionsPage() {
 
   const [detail, setDetail] = useState<ProjectDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<GraphNode | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -39,14 +40,13 @@ export default function ProjectConnectionsPage() {
 
   return (
     <div className="h-full overflow-y-auto custom-scrollbar">
-      <div className="mx-auto max-w-7xl px-6 py-6 space-y-6">
-        <header>
-          <h1 className="text-xl font-semibold tracking-tight text-[var(--text-primary)]">Connections</h1>
-          <p className="text-xs text-[var(--text-muted)] mt-0.5">Force-directed view of every relation in this project.</p>
-        </header>
-        <div className="border border-dashed border-[var(--border)] rounded-[12px] p-6 min-h-[500px]">
-          <ProjectConnections detail={detail} />
-        </div>
+      <div className="mx-auto max-w-7xl px-6 py-6">
+        <ProjectConnections detail={detail} onSelect={setSelected} />
+        {selected && (
+          <p className="mt-2 text-[10px] text-[var(--text-muted)]">
+            Selected: {selected.label} (inspector wiring in v2.7.x patch)
+          </p>
+        )}
       </div>
     </div>
   );

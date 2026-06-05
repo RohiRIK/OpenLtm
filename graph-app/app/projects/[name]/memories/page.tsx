@@ -116,9 +116,17 @@ export default function ProjectMemoriesPage() {
 
           <div className="border border-dashed border-[var(--border)] rounded-[12px] overflow-hidden min-h-[500px] p-4">
             {activeView === "table" ? (
-              <ProjectTableView memories={filteredMemories} onSelect={setSelected} />
+              <ProjectTableView
+                memories={filteredMemories}
+                onSelect={setSelected}
+                onEdit={setSelected}
+              />
             ) : (
-              <ProjectBoardView memories={filteredMemories} onSelect={setSelected} />
+              <ProjectBoardView
+                memories={filteredMemories}
+                onSelect={setSelected}
+                onEdit={setSelected}
+              />
             )}
           </div>
         </div>

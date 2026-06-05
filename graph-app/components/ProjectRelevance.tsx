@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import { ThumbsUp, ThumbsDown } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { AnimatedStatusBadge } from "@/components/ui/animated-status-badge";
 import ExplainBlock from "@/components/ExplainBlock";
+import { nodeColor } from "@/lib/nodeColors";
+import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
 import type { ProjectDetail, RelevanceSignal } from "@/lib/types";
 
@@ -19,14 +20,14 @@ export default function ProjectRelevance({ detail }: ProjectRelevanceProps) {
   const [saved, setSaved] = useState(false);
 
   async function rate(id: number, signal: RelevanceSignal) {
-    const next = signals[id] === signal ? null : signal;
-    setSignals((prev) => ({ ...prev, [id]: next }));
+    const prev = signals[id] ?? null;
+    const next = prev === signal ? null : signal;
+    setSignals((s) => ({ ...s, [id]: next }));
     try {
       await api.setRelevance(id, next);
       setSaved(true);
     } catch {
-      // revert on failure
-      setSignals((prev) => ({ ...prev, [id]: signals[id] ?? null }));
+      setSignals((s) => ({ ...s, [id]: prev }));
     }
   }
 
@@ -43,32 +44,58 @@ export default function ProjectRelevance({ detail }: ProjectRelevanceProps) {
       {detail.memories.length === 0 ? (
         <p className="text-sm text-muted-foreground mt-4">No memories to rate yet.</p>
       ) : (
-        <ul className="space-y-2 mt-4 overflow-y-auto custom-scrollbar flex-1 pr-2">
+        <ul className="space-y-1 mt-4 overflow-y-auto custom-scrollbar flex-1 pr-2">
           {detail.memories.map((m) => {
             const sig = signals[m.id] ?? null;
+            const accent = nodeColor(m.category);
             return (
-              <li key={m.id} className="flex items-center gap-2 p-2 rounded-md hover:bg-white/5 transition-colors">
-                <span className="flex-1 min-w-0 truncate text-sm text-muted-foreground" title={m.label || m.content}>
+              <li
+                key={m.id}
+                className="flex items-center gap-2 p-2 rounded-md hover:bg-white/5 transition-colors"
+              >
+                <span
+                  className="flex-1 min-w-0 truncate text-sm text-muted-foreground"
+                  title={m.label || m.content}
+                >
                   {m.label || m.content}
                 </span>
-                <Button
-                  variant={sig === "works" ? "default" : "ghost"}
-                  size="icon"
-                  className="h-7 w-7 shrink-0"
-                  aria-label="Works for me"
+                <button
+                  type="button"
                   onClick={() => rate(m.id, "works")}
+                  aria-label="Works for me"
+                  aria-pressed={sig === "works"}
+                  className={cn(
+                    "h-8 w-8 grid place-items-center rounded transition-colors shrink-0",
+                    sig === "works"
+                      ? "text-white"
+                      : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                  )}
+                  style={{
+                    backgroundColor: sig === "works" ? accent : "transparent",
+                    border: `1px solid ${sig === "works" ? accent : "var(--border)"}`,
+                  }}
+                  title="Works for me"
                 >
                   <ThumbsUp className="w-3.5 h-3.5" />
-                </Button>
-                <Button
-                  variant={sig === "doesnt" ? "destructive" : "ghost"}
-                  size="icon"
-                  className="h-7 w-7 shrink-0"
-                  aria-label="Doesn't work for me"
+                </button>
+                <button
+                  type="button"
                   onClick={() => rate(m.id, "doesnt")}
+                  aria-label="Doesn't work for me"
+                  aria-pressed={sig === "doesnt"}
+                  className={cn(
+                    "h-8 w-8 grid place-items-center rounded transition-colors shrink-0",
+                    sig === "doesnt"
+                      ? "text-white bg-rose-500 border border-rose-500"
+                      : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                  )}
+                  style={{
+                    borderColor: sig === "doesnt" ? "#f43f5e" : "var(--border)",
+                  }}
+                  title="Doesn't work for me"
                 >
                   <ThumbsDown className="w-3.5 h-3.5" />
-                </Button>
+                </button>
               </li>
             );
           })}
