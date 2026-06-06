@@ -1,0 +1,11 @@
+# Semgrep scan excludes.
+# .aegis/ — prior scan output artifacts, not source.
+.aegis/
+# .opencode/skills/ — security-skill docs contain intentional example credential
+# patterns (e.g. SecretSafeHandling/CloudCredentialPatterns.md) used to teach
+# detection. They are documentation, not live secrets.
+.opencode/skills/
+.git/
+node_modules/
+dist/
+build/

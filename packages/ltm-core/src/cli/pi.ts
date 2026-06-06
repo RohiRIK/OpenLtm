@@ -24,6 +24,7 @@ function findPiCli(): string | null {
 
 function isAlreadyInstalled(piCmd: string): boolean {
   try {
+    // nosemgrep: javascript.lang.security.detect-child-process.detect-child-process -- piCmd is validated against /^[a-zA-Z0-9/_.-]+$/ (installPi line 42) or hardcoded "pi" from findPiCli; no user-controlled input reaches the shell.
     const out = execSync(`${piCmd} list`, { encoding: "utf8", stdio: "pipe" });
     return out.includes(PACKAGE_NAME);
   } catch {
@@ -62,6 +63,7 @@ export async function installPi(opts: {
   }
 
   try {
+    // nosemgrep: javascript.lang.security.detect-child-process.detect-child-process -- piCmd validated at line 42; PACKAGE_SOURCE is a hardcoded module constant. No injection vector.
     execSync(`${piCmd} install ${PACKAGE_SOURCE}`, { stdio: "pipe" });
     return { target: "pi", status: "installed", detail: `${piCmd} install ${PACKAGE_SOURCE}` };
   } catch (err) {
