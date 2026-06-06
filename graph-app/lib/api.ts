@@ -90,6 +90,14 @@ export const api = {
   reload: async (): Promise<void> => {
     await fetch(`${BASE}/reload`, { method: "POST" });
   },
+  reveal: async (path?: string): Promise<{ ok: boolean; path?: string; error?: string }> => {
+    const res = await fetch(`${BASE}/reveal`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(path ? { path } : {}),
+    });
+    return res.json();
+  },
 
   // Phase 2: Settings
   getSettings: (): Promise<Record<string, string>> => get("/settings"),

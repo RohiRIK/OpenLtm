@@ -28,16 +28,18 @@ export default function SystemSection() {
   const [dbSize, setDbSize] = useState<string>("");
 
   const load = useCallback(async () => {
-    const [s, m, st] = await Promise.all([
+    const [s, m, stRes] = await Promise.allSettled([
       api.getSettings(),
       api.getModels(),
-      api.storage().catch(() => null),
+      api.storage(),
     ]);
-    setSettings(s);
-    setModels(m);
-    if (st) {
-      setDbPath(st.path);
-      setDbSize(formatBytes(st.size));
+    if (s.status === "fulfilled") setSettings(s.value);
+    if (m.status === "fulfilled") setModels(m.value);
+    if (stRes.status === "fulfilled") {
+      setDbPath(stRes.value.path);
+      setDbSize(formatBytes(stRes.value.size));
+    } else {
+      setDbSize("— (storage endpoint offline)");
     }
   }, []);
 
@@ -54,6 +56,14 @@ export default function SystemSection() {
       setTimeout(() => setSaved(false), 1500);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleReveal = async () => {
+    if (!dbPath) return;
+    const res = await api.reveal(dbPath);
+    if (!res.ok) {
+      setDbSize(`— (${res.error ?? "open failed"})`);
     }
   };
 
@@ -94,7 +104,9 @@ export default function SystemSection() {
             </dl>
             <button
               type="button"
-              className="mt-3 inline-flex items-center gap-1 text-xs text-[var(--accent-blue)] hover:underline"
+              onClick={handleReveal}
+              disabled={!dbPath}
+              className="mt-3 inline-flex items-center gap-1 text-xs text-[var(--accent-blue)] hover:underline disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:no-underline"
             >
               Open in Finder <ExternalLink className="w-3 h-3" />
             </button>
