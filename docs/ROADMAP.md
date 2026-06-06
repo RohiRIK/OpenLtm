@@ -117,7 +117,7 @@ Each phase aligns with `ARCHITECTURE.md §9`. Versions are guidance; ship cadenc
 |---|---|
 | Arch | C1 Pluggable embedding provider interface (Gemini / OpenAI / Ollama / disabled) |
 | PRD | G-E project-scoped semantic embeddings (provider configurable) |
-| PRD | G-C auto-categorisation on `ltm_learn` (uses embedding provider when enabled) |
+| PRD | G-C auto-categorisation on `learn` (uses embedding provider when enabled) |
 | Arch | C8 Recall result explainer — show why each result ranked where it did |
 | UX | §8.3 S2 Smart recall surfacing — uses C1 + C8 |
 | DB | `memory_embeddings` table split (pending DB-SPEC §7) |

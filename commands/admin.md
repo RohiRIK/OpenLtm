@@ -101,7 +101,7 @@ Query the append-only memory audit log (`memory_audit` table). Every write to `m
 | `--since <iso>` | Only events after this ISO date (e.g. `2026-05-01`) |
 | `--limit N` | Max rows to return (default 50) |
 
-Call `mcp__ltm__ltm_admin_audit` with the provided filters and display the result as a table:
+Call `mcp__plugin_ltm_memory__admin_audit` with the provided filters and display the result as a table:
 
 ```
 ID | Memory | Op     | Actor            | Session   | When

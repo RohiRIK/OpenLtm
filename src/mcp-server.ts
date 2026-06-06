@@ -54,7 +54,7 @@ const server = new McpServer(
 // ─── Tools ───────────────────────────────────────────────────────────────────
 
 server.tool(
-  "ltm_recall",
+  "recall",
   "Surface prior decisions, gotchas, and patterns before a non-trivial task, or when starting work in an unfamiliar area. Ranks long-term memories by query, category, project scope, or tags. Skip for trivial one-liners.",
   {
     query: z.string().optional().describe("Full-text search query"),
@@ -77,11 +77,11 @@ server.tool(
 );
 
 server.tool(
-  "ltm_learn",
-  "Store or reinforce a memory after discovering a non-obvious pattern, gotcha, or architectural decision worth preserving across sessions. Provide a concise title: a noun-phrase label (≤60 chars) summarising the memory — e.g. 'Repository pattern for all DAO layers'. You generate it inline; no extra LLM call needed.",
+  "learn",
+  "Store or reinforce a memory after discovering a non-obvious pattern, gotcha, or architectural decision worth keeping across sessions. Skip facts already derivable from the code or git history. Always pass a concise title (the title param explains how).",
   {
     content: z.string().describe("The insight, pattern, or decision to store"),
-    title: z.string().max(60).optional().describe("Short label for the memory (≤60 chars, noun-phrase style). Always provide this — the agent generates it, no extra LLM call needed."),
+    title: z.string().max(60).optional().describe("Short noun-phrase label (≤60 chars) — e.g. 'Repository pattern for all DAO layers'. Always provide it; you generate it inline, no extra LLM call needed."),
     category: z.enum(["preference", "architecture", "gotcha", "pattern", "workflow", "constraint"]).optional().describe("Category (auto-detected when omitted)"),
     importance: z.number().int().min(1).max(5).optional().describe("Importance 1-5 (default 3, 5=never decays)"),
     tags: z.array(z.string()).optional().describe("Tags for categorization"),
@@ -133,7 +133,7 @@ server.tool(
 );
 
 server.tool(
-  "ltm_relate",
+  "relate",
   "Link two memories with a typed relationship when they connect — e.g. a decision caused a gotcha, or a pattern applies to an architecture.",
   {
     source_id: z.number().int(),
@@ -147,7 +147,7 @@ server.tool(
 );
 
 server.tool(
-  "ltm_forget",
+  "forget",
   "Delete a memory by ID when it is wrong, outdated, or the user requests removal. Cascades to its relations.",
   {
     id: z.number().int(),
@@ -160,7 +160,7 @@ server.tool(
 );
 
 server.tool(
-  "ltm_admin_audit",
+  "admin_audit",
   "Query the memory audit log. Returns a list of audit events (insert, update, forget, redact, etc.) with before/after snapshots. Use for tracing who wrote or deleted a memory.",
   {
     memory_id: z.number().int().optional().describe("Filter to a specific memory ID"),
@@ -184,7 +184,7 @@ server.tool(
 );
 
 server.tool(
-  "ltm_context",
+  "context",
   "Restore project goals, decisions, and gotchas at session start or when switching projects. Returns merged context (globals + project-scoped memories).",
   {
     project: z.string().describe("Project name from registry"),
@@ -196,7 +196,7 @@ server.tool(
 );
 
 server.tool(
-  "ltm_graph",
+  "graph",
   "Traverse the memory graph from seed nodes when exploring connections between memories or tracing decision chains. Builds a reasoning context from the traversal.",
   {
     memory_ids: z.array(z.number().int()).min(1).describe("Starting memory IDs for traversal"),
@@ -232,7 +232,7 @@ server.tool(
 );
 
 server.tool(
-  "ltm_context_items",
+  "context_items",
   "List specific context types — goals, decisions, progress, or gotchas — for a project. Returns structured context items.",
   {
     project: z.string().describe("Project name from registry"),
@@ -319,7 +319,7 @@ server.prompt(
       role: "user",
       content: {
         type: "text",
-        text: `Before starting work on "${topic}", use the ltm_recall tool to search for relevant memories, past decisions, and gotchas related to this topic. Summarize what you find and note any decisions that should be followed.`,
+        text: `Before starting work on "${topic}", use the recall tool to search for relevant memories, past decisions, and gotchas related to this topic. Summarize what you find and note any decisions that should be followed.`,
       },
     }],
   }),
@@ -334,7 +334,7 @@ server.prompt(
       role: "user",
       content: {
         type: "text",
-        text: `Extract learnable patterns, gotchas, and architectural decisions from this session summary. For each insight, use ltm_learn to store it with the appropriate category and importance.\n\nSession summary:\n${summary}`,
+        text: `Extract learnable patterns, gotchas, and architectural decisions from this session summary. For each insight, use learn to store it with the appropriate category and importance.\n\nSession summary:\n${summary}`,
       },
     }],
   }),
@@ -349,7 +349,7 @@ server.prompt(
       role: "user",
       content: {
         type: "text",
-        text: `Use ltm_recall to find memories related to "${question}", then use ltm_graph on the top result IDs to traverse connected memories. Synthesize the chain of reasoning, conflicts, and reinforcements into a coherent answer.`,
+        text: `Use recall to find memories related to "${question}", then use graph on the top result IDs to traverse connected memories. Synthesize the chain of reasoning, conflicts, and reinforcements into a coherent answer.`,
       },
     }],
   }),
@@ -369,14 +369,14 @@ server.prompt(
         role: "user",
         content: {
           type: "text",
-          text: `We just made an architectural decision that should be preserved for future sessions. Store it using ltm_learn.\n\nDecision: ${decision}\nRationale: ${rationale}${project ? `\nProject: ${project}` : ""}\n\nStore with category=architecture, importance=4, and include the rationale in the content so future recall explains the "why".`,
+          text: `We just made an architectural decision that should be preserved for future sessions. Store it using learn.\n\nDecision: ${decision}\nRationale: ${rationale}${project ? `\nProject: ${project}` : ""}\n\nStore with category=architecture, importance=4, and include the rationale in the content so future recall explains the "why".`,
         },
       },
       {
         role: "assistant",
         content: {
           type: "text",
-          text: `I'll store this decision now using ltm_learn with category=architecture and importance=4 so it persists across sessions and surfaces in future context loads.`,
+          text: `I'll store this decision now using learn with category=architecture and importance=4 so it persists across sessions and surfaces in future context loads.`,
         },
       },
     ],
@@ -385,7 +385,7 @@ server.prompt(
 
 server.prompt(
   "context_before_work",
-  "Get full project context before starting work — combines ltm_context and ltm_recall for a complete picture",
+  "Get full project context before starting work — combines context and recall for a complete picture",
   {
     project: z.string().describe("Project name from the LTM registry"),
     topic: z.string().describe("What you are about to work on"),
@@ -396,14 +396,14 @@ server.prompt(
         role: "user",
         content: {
           type: "text",
-          text: `Before starting work on "${topic}" in project "${project}", gather full context:\n\n1. Call ltm_context(project="${project}") to load goals, decisions, and gotchas.\n2. Call ltm_recall(query="${topic}", project="${project}") to surface relevant past patterns.\n3. Synthesize: list any active decisions, known gotchas, or prior work that affects this task.`,
+          text: `Before starting work on "${topic}" in project "${project}", gather full context:\n\n1. Call context(project="${project}") to load goals, decisions, and gotchas.\n2. Call recall(query="${topic}", project="${project}") to surface relevant past patterns.\n3. Synthesize: list any active decisions, known gotchas, or prior work that affects this task.`,
         },
       },
       {
         role: "assistant",
         content: {
           type: "text",
-          text: `I'll call ltm_context and ltm_recall now, then synthesize the relevant context before proceeding with "${topic}".`,
+          text: `I'll call context and recall now, then synthesize the relevant context before proceeding with "${topic}".`,
         },
       },
     ],

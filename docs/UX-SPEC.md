@@ -80,7 +80,7 @@ The plugin is reachable from these entry points, in order of frequency:
 1. **Implicit (every session)** — SessionStart hook. ~95% of all plugin
    "use" by volume goes through here.
 2. **MCP tool calls from Claude itself** — when CLAUDE.md instructions
-   tell Claude to `ltm_recall` before non-trivial work.
+   tell Claude to `recall` before non-trivial work.
 3. **User slash command** — `/ltm:*` typed by the developer.
 4. **Skill auto-trigger** — `ContinuousLearning`, `GitLearn`, `Learned`,
    `session-context` skills load when their trigger phrases appear.
@@ -119,7 +119,7 @@ The single most-used command. Groups four subcommands.
 | | |
 |---|---|
 | **Purpose** | Search past memories before deciding. Primary read path. |
-| **Trigger** | Manual (user types) OR Claude calls `mcp__ltm__ltm_recall` per CLAUDE.md instructions. |
+| **Trigger** | Manual (user types) OR Claude calls `mcp__plugin_ltm_memory__recall` per CLAUDE.md instructions. |
 | **Inputs** | Positional `<query>` · `--category X` · `--project X` · `--limit N` (default 10) |
 | **Output** | Per-result line: `[id] content · category · ★importance · ✓confirmed · #tags · →relations` |
 | **Latency target** | < 200 ms p50 (PRD G2, Q1) |
@@ -300,7 +300,7 @@ START
 
 | | |
 |---|---|
-| **Purpose** | Pre-task context retrieval. Calls `ltm_context` + `ltm_recall`, synthesizes. |
+| **Purpose** | Pre-task context retrieval. Calls `context` + `recall`, synthesizes. |
 | **Trigger** | Before starting a non-trivial task. |
 | **Output** | Three blocks: Project State, Relevant Memories, Synthesis. |
 
@@ -682,10 +682,10 @@ Comprehensive list of failure modes with ideal UX.
 
 | Code | Scenario | Current | Ideal |
 |------|----------|---------|-------|
-| M1 | `ltm_recall` with no DB | "no results" | `Empty LTM. /ltm:project init to start.` |
-| M2 | `ltm_learn` with empty content | review fallback | OK as-is. |
-| M3 | `ltm_forget` with bad ID | error | `Memory [m_xyz] not found.` |
-| M4 | `ltm_relate` with bad type | error | List 6 valid types. |
+| M1 | `recall` with no DB | "no results" | `Empty LTM. /ltm:project init to start.` |
+| M2 | `learn` with empty content | review fallback | OK as-is. |
+| M3 | `forget` with bad ID | error | `Memory [m_xyz] not found.` |
+| M4 | `relate` with bad type | error | List 6 valid types. |
 | M5 | DB locked (concurrent write) | "SQLITE_BUSY" | `Another session is writing — retrying…` (auto-retry 3x) |
 
 ### 6.3 Schema/Migration Errors
@@ -849,8 +849,8 @@ power users can scan, novices can explore.
 
 ### 8.3 S2 — Smart Recall Surfacing
 
-**Today:** Claude calls `ltm_recall` only when CLAUDE.md tells it to.
-**Magnificent:** A lightweight pre-tool-use hook fires `ltm_recall` whenever:
+**Today:** Claude calls `recall` only when CLAUDE.md tells it to.
+**Magnificent:** A lightweight pre-tool-use hook fires `recall` whenever:
 
 - User mentions a known tag (e.g., #supabase, #auth) → preempt with relevant gotcha.
 - User starts a TDD/spec/build flow → inject project's design memories.
@@ -1015,7 +1015,7 @@ For frontend-developer to implement progressively:
 | Surface          | Implements | Where it lives          | Priority |
 |------------------|------------|-------------------------|----------|
 | Context block    | SessionStart inject  | Top of every session   | Built |
-| Recall card      | inline `ltm_recall` result | In conversation        | Built |
+| Recall card      | inline `recall` result | In conversation        | Built |
 | Conflict modal   | G-F        | Pre-write block         | P1 |
 | Weekly digest    | S3         | `/ltm:health --review`  | P1 |
 | Onboarding wizard| G-O / S5   | First-run flow          | P0 |

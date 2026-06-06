@@ -68,6 +68,21 @@ const settings = JSON.parse(readFileSync(settingsJson, "utf-8"));
 const hooks: Record<string, HookEntry[]> = settings.hooks ?? {};
 settings.hooks = hooks;
 
+// ── Permissions: auto-allow the LTM MCP server so its tools never prompt ──────
+// MCP tools are registered as mcp__plugin_ltm_memory__<tool> (recall, learn,
+// forget, relate, context, context_items, graph). Without an allowlist entry
+// they prompt on every call. The whole-server rule grants all of them at once.
+// Mutated here so the writeFileSync in either install branch below persists it.
+const LTM_MCP_RULE = "mcp__plugin_ltm_memory";
+const permissions: { allow?: string[]; deny?: string[] } = (settings.permissions ??= {});
+permissions.allow ??= [];
+if (!permissions.allow.includes(LTM_MCP_RULE)) {
+  permissions.allow.push(LTM_MCP_RULE);
+  console.log(`  ✔ Auto-allowed LTM MCP tools (${LTM_MCP_RULE}) in ~/.claude/settings.json`);
+} else {
+  console.log("  ✔ LTM MCP tools already auto-allowed in ~/.claude/settings.json");
+}
+
 // Detect marketplace install: plugin system manages hooks via hooks.json.
 // hooks.json exists in both dev and marketplace installs, but the plugin system
 // only reads it for marketplace installs. Best signal: CLAUDE_PLUGIN_DATA is set,

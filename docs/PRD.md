@@ -37,7 +37,7 @@ A **magnificent** LTM is one where:
 | # | Goal | How we know |
 |---|------|-------------|
 | G1 | Eliminate cross-session amnesia for active projects | 95%+ of sessions on an active project start with relevant context auto-injected |
-| G2 | Make recall faster than re-derivation | Median `ltm_recall` round-trip < 200 ms; user reports "saved me from re-debating X" |
+| G2 | Make recall faster than re-derivation | Median `recall` round-trip < 200 ms; user reports "saved me from re-debating X" |
 | G3 | Keep the developer in flow | Zero mandatory prompts; all LTM ops are background or 1-keystroke |
 | G4 | Survive plugin updates and machine moves | DB at known path, JSON export, schema migrations versioned and idempotent |
 | G5 | Be safe by default | No secret ever lands in the DB; redaction on write; scan command for retroactive cleanup |
@@ -110,13 +110,13 @@ The cross-session JTBDs the LTM plugin solves:
 
 | Tool | Purpose |
 |------|---------|
-| `ltm_recall` | Search memories by natural-language query. FTS5 + semantic fallback. Filters: project, category, importance. Primary read path. |
-| `ltm_learn` | Store a new memory. Required: text, category. Optional: importance, project, tags. Auto-redacts secrets on write. |
-| `ltm_forget` | Soft-delete a memory by id. Used for stale or wrong memories. |
-| `ltm_relate` | Create a typed edge between two memories (e.g., decision → gotcha). Powers the graph view. |
-| `ltm_context` | Restore project state at session start: goal + decisions + recent progress + gotchas. |
-| `ltm_context_items` | List specific context types (goal / decision / progress / gotcha) for a project. |
-| `ltm_graph` | Traverse memory edges. Used by the visualization server and by Claude when tracing decision chains. |
+| `recall` | Search memories by natural-language query. FTS5 + semantic fallback. Filters: project, category, importance. Primary read path. |
+| `learn` | Store a new memory. Required: text, category. Optional: importance, project, tags. Auto-redacts secrets on write. |
+| `forget` | Soft-delete a memory by id. Used for stale or wrong memories. |
+| `relate` | Create a typed edge between two memories (e.g., decision → gotcha). Powers the graph view. |
+| `context` | Restore project state at session start: goal + decisions + recent progress + gotchas. |
+| `context_items` | List specific context types (goal / decision / progress / gotcha) for a project. |
+| `graph` | Traverse memory edges. Used by the visualization server and by Claude when tracing decision chains. |
 
 ### 4.2 Slash Commands (current grouped surface, v1.4.17+)
 
@@ -201,10 +201,10 @@ and for **system-architect** to design against.
 - **Given** total restored context exceeds 60 lines, **when** injected, **then** it is truncated to ~60 lines with a "+N more — run /ltm:memory recall" footer.
 
 ### US-2 — Recall before deciding
-**As** Pat, **I want** `ltm_recall` to surface prior decisions on a topic, **so that** I don't contradict past work.
+**As** Pat, **I want** `recall` to surface prior decisions on a topic, **so that** I don't contradict past work.
 
 **Acceptance criteria:**
-- **Given** a memory exists with text "we use Bun, not npm", **when** I call `ltm_recall("javascript package manager")`, **then** that memory ranks in the top 3 results.
+- **Given** a memory exists with text "we use Bun, not npm", **when** I call `recall("javascript package manager")`, **then** that memory ranks in the top 3 results.
 - **Given** the same DB, **when** the FTS5 query returns < 3 results, **then** semantic fallback runs and merges results, deduplicated by id.
 - **Given** I pass `category: "gotcha"`, **when** I recall, **then** only gotchas are returned.
 - **Given** a project filter, **when** I recall, **then** only memories tagged with that project (or no project) are returned.
@@ -280,7 +280,7 @@ and for **system-architect** to design against.
 
 **Acceptance criteria:**
 - **Given** project A and B are both registered, **when** I open a session in B's cwd, **then** the injected context contains only B's `context_items` plus globals.
-- **Given** an `ltm_recall` call without a `project` filter from inside B, **when** ranking, **then** B's memories are boosted vs. A's.
+- **Given** an `recall` call without a `project` filter from inside B, **when** ranking, **then** B's memories are boosted vs. A's.
 - **Given** I move a project to a new path, **when** I run `/ltm:project register`, **then** registry updates and existing memories remain associated.
 
 ### US-13 — Initialize a project goal
@@ -337,7 +337,7 @@ Show how a project's understanding changed between two timestamps. "What did we
 believe two months ago vs. today?" Powers retrospectives and onboarding. **Why
 magnificent:** memory becomes a first-class historical artifact, not just a cache.
 
-### G-C — Auto-categorization on `ltm_learn`
+### G-C — Auto-categorization on `learn`
 Today the user picks `--category`. Use a lightweight classifier (heuristic or model
 call) to suggest category and importance. **Why magnificent:** drops the friction of
 `learn` to truly 1 keystroke.
@@ -433,15 +433,15 @@ value) follow.
 ### 8.1 Activation
 - **A1.** % of installed users who have ≥ 1 memory after 7 days. Target: > 70%.
 - **A2.** % of installed users who run `/ltm:project init` within 7 days. Target: > 50%.
-- **A3.** Median time from install to first `ltm_learn` call. Target: < 24h.
+- **A3.** Median time from install to first `learn` call. Target: < 24h.
 
 ### 8.2 Engagement
-- **E1.** `ltm_recall` calls per active session. Target: ≥ 3.
-- **E2.** `ltm_learn` calls per active session. Target: ≥ 1.
+- **E1.** `recall` calls per active session. Target: ≥ 3.
+- **E2.** `learn` calls per active session. Target: ≥ 1.
 - **E3.** % of sessions where SessionStart hook successfully injects context. Target: > 95%.
 
 ### 8.3 Quality
-- **Q1.** Median `ltm_recall` round-trip latency. Target: < 200 ms.
+- **Q1.** Median `recall` round-trip latency. Target: < 200 ms.
 - **Q2.** % of recalls where the user used a top-3 result (proxied by next-action
   alignment). Target: > 60%.
 - **Q3.** Decay accuracy: % of memories the user `forget`s that were already flagged

@@ -1,6 +1,6 @@
 {
   "name": "@rohirik/ltm-core",
-  "version": "2.2.0",
+  "version": "2.7.0",
   "description": "Shared LTM storage engine — path-agnostic SQLite core used by Claude Code, OpenCode, and Pi adapters",
   "type": "module",
   "main": "./src/index.ts",
@@ -15,7 +15,13 @@
     "type": "git",
     "url": "https://github.com/RohiRIK/claude-ltm-plugin"
   },
-  "keywords": ["ltm", "long-term-memory", "claude-code", "sqlite", "memory"],
+  "keywords": [
+    "ltm",
+    "long-term-memory",
+    "claude-code",
+    "sqlite",
+    "memory"
+  ],
   "license": "MIT",
   "publishConfig": {
     "access": "public"

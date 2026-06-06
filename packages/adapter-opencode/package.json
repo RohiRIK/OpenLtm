@@ -1,6 +1,6 @@
 {
   "name": "@rohirik/opencode-ltm",
-  "version": "2.2.0",
+  "version": "2.7.0",
   "description": "LTM (Long-Term Memory) plugin for OpenCode — share memories with Claude Code and Pi",
   "type": "module",
   "main": "./src/index.ts",
@@ -15,7 +15,12 @@
     "type": "git",
     "url": "https://github.com/RohiRIK/claude-ltm-plugin"
   },
-  "keywords": ["opencode", "ltm", "long-term-memory", "plugin"],
+  "keywords": [
+    "opencode",
+    "ltm",
+    "long-term-memory",
+    "plugin"
+  ],
   "license": "MIT",
   "publishConfig": {
     "access": "public"
@@ -29,8 +34,12 @@
     "bun-types": ">=1.0.0"
   },
   "peerDependenciesMeta": {
-    "@opencode-ai/plugin": { "optional": true },
-    "bun-types": { "optional": true }
+    "@opencode-ai/plugin": {
+      "optional": true
+    },
+    "bun-types": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/bun": "latest"

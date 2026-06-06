@@ -1,15 +1,20 @@
 {
   "name": "@rohirik/pi-ltm",
-  "version": "2.2.0",
+  "version": "2.7.0",
   "description": "LTM (Long-Term Memory) native extension for Pi — share memories with Claude Code and OpenCode",
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
     ".": "./dist/index.js"
   },
-  "files": ["dist", "src"],
+  "files": [
+    "dist",
+    "src"
+  ],
   "pi": {
-    "extensions": ["./dist/index.js"]
+    "extensions": [
+      "./dist/index.js"
+    ]
   },
   "scripts": {
     "build": "bunx esbuild src/index.ts --bundle --platform=node --format=esm --target=esnext --outfile=dist/index.js --external:bun:sqlite --external:bun:test --external:@rohirik/ltm-core --minify",
@@ -21,7 +26,13 @@
     "type": "git",
     "url": "https://github.com/RohiRIK/claude-ltm-plugin"
   },
-  "keywords": ["pi", "pi-coding-agent", "ltm", "long-term-memory", "extension"],
+  "keywords": [
+    "pi",
+    "pi-coding-agent",
+    "ltm",
+    "long-term-memory",
+    "extension"
+  ],
   "license": "MIT",
   "publishConfig": {
     "access": "public"
@@ -33,7 +44,9 @@
     "bun-types": ">=1.0.0"
   },
   "peerDependenciesMeta": {
-    "bun-types": { "optional": true }
+    "bun-types": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/bun": "latest"

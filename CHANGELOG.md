@@ -12,6 +12,7 @@
 - **⌘K search history** — SpotlightModal now shows the last 10 queries from `localStorage` (`ltm.searchHistory`, deduped) when the query is empty. Submitting a search pushes to history.
 - **`--accent-blue` and `--accent-lime-foreground` tokens** — added to all 6 themes. Mercury blue is rationed to one primary CTA per Settings section; acid lime stays rationed to the 2 use-sites from v2.5.0.
 - **Animated Status Badge** (isaiahbjork, 21st.dev) — used in `Settings → Health` for the Janitor running state.
+- **Auto-allow the LTM MCP server on install** — `scripts/install-wiring.ts` adds `mcp__plugin_ltm_memory` to `permissions.allow` in `~/.claude/settings.json` idempotently (dev and marketplace installs). The plugin's MCP tools (`recall`, `learn`, `forget`, `relate`, `context`, `context_items`, `graph`) no longer prompt on every call; the action is logged, not silent.
 
 ### Changed
 - **Component refactors** — `ProjectTableView`, `ProjectBoardView`, `ProjectTimeline`, `ProjectConnections`, `ProjectRelevance`, `StaleMemoryAlert` rewritten to the redesign spec:
@@ -24,6 +25,15 @@
 - **`/project/[name]` → `/projects/[name]`** — `/project/[name]` is now a 5-line server redirect. Kept for backward compatibility through v2.7.x; removed at v2.8.0 per redesign spec §8 Q5.
 - **`/` → `/projects`** — the home page is now `/projects`; the old `/` 307-redirects there.
 - **`AppShell` wraps in `ProjectProvider`** — the TopNav `ProjectSwitcher` is now project-aware on every route.
+- **GitLearn runs key-free via a Haiku subagent** — `skills/GitLearn/SKILL.md` (→ v1.2.0) spawns a Haiku subagent (Agent tool) that reads commit diffs and stores memories through the `learn` MCP tool. Removes the LLM-API-key dependency on the interactive path and keeps raw diffs out of the main thread's context. The background post-commit hook still calls an LLM API directly (a detached process cannot spawn a subagent).
+- **`Learned` skill points at live sources only** — `skills/Learned/SKILL.md` now references `summary.md` (auto-updated by the EvaluateSession hook) and LTM recall, instead of the removed per-session archive files.
+
+### Removed
+- **Per-session `Learned/patterns/*.md` archives** — relic snapshots no longer written by any code path; their content was already imported into the LTM database. Removed from the repo and the plugin cache.
+
+### Fixed
+- **Version sync across sub-packages** — `packages/ltm-core`, `packages/adapter-pi`, and `packages/adapter-opencode` were stranded at `2.2.0` while the plugin advanced. All workspace packages, the plugin manifest, the README badge, and `docs/ARCHITECTURE.md` are now aligned to the source-of-truth version.
+- **Stale MCP tool name in learned-pattern records** — references to the renamed `mcp__plugin_ltm_ltm__ltm_learn` eliminated (canonical is `mcp__plugin_ltm_memory__learn`).
 
 ### Notes
 - Phases 2 + 3 of the frontend redesign — Restructure + Refine. See `docs/FRONTEND-REDESIGN-2026-06.md` for the full plan.

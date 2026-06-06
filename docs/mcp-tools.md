@@ -10,31 +10,31 @@ If you ever need to call them yourself (e.g. from a custom hook or script), this
 
 | Tool | Description |
 |------|-------------|
-| `ltm_recall` | Search memories. FTS5 first, semantic fallback if needed. |
-| `ltm_learn` | Store or reinforce a memory. Deduplicates automatically. |
-| `ltm_forget` | Delete a memory by ID. Cascades to relations. |
-| `ltm_relate` | Create a typed relationship between two memories. |
-| `ltm_graph` | Traverse the memory graph from seed nodes. |
-| `ltm_context` | Get merged context (globals + project-scoped) for a project. |
-| `ltm_context_items` | List context items by type (goal/decision/progress/gotcha). |
+| `recall` | Search memories. FTS5 first, semantic fallback if needed. |
+| `learn` | Store or reinforce a memory. Deduplicates automatically. |
+| `forget` | Delete a memory by ID. Cascades to relations. |
+| `relate` | Create a typed relationship between two memories. |
+| `graph` | Traverse the memory graph from seed nodes. |
+| `context` | Get merged context (globals + project-scoped) for a project. |
+| `context_items` | List context items by type (goal/decision/progress/gotcha). |
 
 ---
 
 ## When each tool runs
 
-- **`ltm_recall`** — fired by the `Learned` skill at session start, and by `/ltm:memory recall`
-- **`ltm_learn`** — fired by the `ContinuousLearning` skill on session end, and by `/ltm:memory learn`
-- **`ltm_forget`** — fired by `/ltm:memory forget <id>`
-- **`ltm_relate`** — fired by `/ltm:memory relate <src> <tgt> <type>`, and by `autoRelate: true` in config
-- **`ltm_graph`** — fired by graph-server HTTP API; available to custom tools
-- **`ltm_context`** — fired by the `SessionStart` hook to inject project context
-- **`ltm_context_items`** — fired by `/ltm:project analyze` to render the context panel
+- **`recall`** — fired by the `Learned` skill at session start, and by `/ltm:memory recall`
+- **`learn`** — fired by the `ContinuousLearning` skill on session end, and by `/ltm:memory learn`
+- **`forget`** — fired by `/ltm:memory forget <id>`
+- **`relate`** — fired by `/ltm:memory relate <src> <tgt> <type>`, and by `autoRelate: true` in config
+- **`graph`** — fired by graph-server HTTP API; available to custom tools
+- **`context`** — fired by the `SessionStart` hook to inject project context
+- **`context_items`** — fired by `/ltm:project analyze` to render the context panel
 
 ---
 
 ## Relationship types
 
-`ltm_relate` accepts these types: `supports`, `contradicts`, `refines`, `depends_on`, `related_to`, `supersedes`.
+`relate` accepts these types: `supports`, `contradicts`, `refines`, `depends_on`, `related_to`, `supersedes`.
 
 The graph view in `localhost:7332` colors edges by type — `contradicts` shows red, `supports` shows green, the rest are blue.
 

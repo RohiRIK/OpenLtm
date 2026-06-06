@@ -42,7 +42,7 @@ Migration overlay: `src/shared-db.ts:runMigrations()` (idempotent column adds).
 
 ### 1.1 `memories`
 
-The core table. Every durable insight the plugin has stored, whether from `ltm_learn`,
+The core table. Every durable insight the plugin has stored, whether from `learn`,
 GitLearn backfill, EvaluateSession, or bundle import.
 
 ```sql
@@ -159,7 +159,7 @@ No additional indexes needed: the composite PK covers `(memory_id, tag_id)` look
 
 ### 1.4 `memory_relations`
 
-Knowledge graph edges. Six typed relationship directions. Used by `ltm_relate` and traversed by `ltm_graph` (BFS via `src/graph.ts`).
+Knowledge graph edges. Six typed relationship directions. Used by `relate` and traversed by `graph` (BFS via `src/graph.ts`).
 
 ```sql
 CREATE TABLE memory_relations (
@@ -248,7 +248,7 @@ Known keys (as of v1.4.20):
 
 ### 2.2 Hot-path scan analysis
 
-**Hot path 1: `ltm_recall` (most frequent)**
+**Hot path 1: `recall` (most frequent)**
 
 Query skeleton:
 ```sql
@@ -474,7 +474,7 @@ LIMIT 10;
 
 The decay multiply moves into SQL, uses the pre-materialised `decay_score`, and the query becomes O(log N + k). The semantic fallback becomes the only O(N) path, resolved by the `memory_embeddings` split (Phase 1) and an ANN index (Phase 3 stretch goal).
 
-**Trade-off:** Write amplification. Every `ltm_learn` does not update `decay_score` — the janitor does. There is a staleness window of up to 24 hours. This is acceptable: decay is a rank modifier, not a hard filter. A freshly-learned memory has `decay_score = 1.0` (default) which is correct.
+**Trade-off:** Write amplification. Every `learn` does not update `decay_score` — the janitor does. There is a staleness window of up to 24 hours. This is acceptable: decay is a rank modifier, not a hard filter. A freshly-learned memory has `decay_score = 1.0` (default) which is correct.
 
 **Janitor run record:** stored in `settings` as `janitor.last_run_at`. The `/ltm:health` command surfaces it.
 
@@ -938,7 +938,7 @@ The semantic fallback triggers at < 3 FTS5 results. At 100k memories, queries th
 SQLite auto-analyzes when a table changes significantly (controlled by `PRAGMA analysis_limit`). Manual schedule:
 
 - `PRAGMA ANALYZE;` — run by janitor weekly; updates query planner statistics.
-- `PRAGMA VACUUM;` — **not** scheduled automatically; recommended after large deletions (e.g., after a bulk `ltm_forget` or deprecated memory archival). Document in `/ltm:admin` as a manual command.
+- `PRAGMA VACUUM;` — **not** scheduled automatically; recommended after large deletions (e.g., after a bulk `forget` or deprecated memory archival). Document in `/ltm:admin` as a manual command.
 - `PRAGMA wal_checkpoint(TRUNCATE);` — run by janitor after each pass to truncate the WAL file and reclaim disk space.
 
 ---
@@ -1099,7 +1099,7 @@ All settings keys should be documented here and updated as phases add keys.
 | `janitor.run_interval_hours` | integer | 24 | 4 | How often janitor runs |
 | `janitor.retention_days_events` | integer | 90 | 1 | hook_events retention window |
 | `recall.fts_min_results` | integer | 3 | 0 | Threshold below which semantic fallback triggers |
-| `recall.top_n` | integer | 10 | 0 | Default result count for ltm_recall |
+| `recall.top_n` | integer | 10 | 0 | Default result count for recall |
 | `sync.enabled` | boolean | `false` | 6 | Master switch for multi-device sync |
 | `sync.relay_url` | string | null | 6 | Relay endpoint URL |
 | `sync.device_id` | UUID | null | 6 | Assigned at first sync setup |

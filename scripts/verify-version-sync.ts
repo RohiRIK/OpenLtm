@@ -5,9 +5,12 @@
  * Source of truth: package.json → version
  *
  * Checked files:
- *   - .claude-plugin/plugin.json  →  "version": "X.Y.Z"
- *   - README.md                   →  badge version-X.Y.Z-blue
- *   - docs/ARCHITECTURE.md        →  "against plugin vX.Y.Z"
+ *   - .claude-plugin/plugin.json     →  "version": "X.Y.Z"
+ *   - README.md                      →  badge version-X.Y.Z-blue
+ *   - docs/ARCHITECTURE.md           →  "against plugin vX.Y.Z"
+ *   - packages/ltm-core/package.json      →  "version": "X.Y.Z"
+ *   - packages/adapter-pi/package.json    →  "version": "X.Y.Z"
+ *   - packages/adapter-opencode/package.json →  "version": "X.Y.Z"
  *
  * Usage: bun run scripts/verify-version-sync.ts
  * Exit code: 0 if all match, 1 if any mismatch.
@@ -45,6 +48,24 @@ const checks: Check[] = [
     pattern: /against plugin v([0-9]+\.[0-9]+\.[0-9]+)/,
     extract: (m) => m[1],
     label: "docs/ARCHITECTURE.md",
+  },
+  {
+    file: "packages/ltm-core/package.json",
+    pattern: /"version"\s*:\s*"([^"]+)"/,
+    extract: (m) => m[1],
+    label: "packages/ltm-core",
+  },
+  {
+    file: "packages/adapter-pi/package.json",
+    pattern: /"version"\s*:\s*"([^"]+)"/,
+    extract: (m) => m[1],
+    label: "packages/adapter-pi",
+  },
+  {
+    file: "packages/adapter-opencode/package.json",
+    pattern: /"version"\s*:\s*"([^"]+)"/,
+    extract: (m) => m[1],
+    label: "packages/adapter-opencode",
   },
 ];
 
