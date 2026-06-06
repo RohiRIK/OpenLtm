@@ -1,9 +1,9 @@
 # ARCHITECTURE — OpenLTM Plugin
 
-**Version:** 1.2 (against plugin v2.7.0)
-**Owner:** system-architect (dev-team)
-**Status:** Baseline architecture spec; companion to `docs/PRD.md`
-**Last updated:** 2026-04-28
+* **Version:** 1.2 (against plugin v2.7.0)
+* **Owner:** Rohi Rikman
+* **Status:** Baseline architecture spec; companion to `docs/PRD.md`
+* **Last updated:** 2026-04-28
 
 This document describes the as-built architecture of the OpenLTM plugin, an honest
 assessment of its weaknesses, and a target "magnificent" architecture with a phased
