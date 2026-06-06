@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Github, FileText, Heart, ExternalLink } from "lucide-react";
+import { MessageCircle, FileText, Heart, ExternalLink } from "lucide-react";
 import { api } from "@/lib/api";
 
 interface AboutData {
@@ -22,7 +22,7 @@ export default function AboutSection() {
       .then(() => {
         if (!alive) return;
         setData({
-          version: "2.5.0",
+          version: "2.7.0",
           schemaVersion: 4,
           lastRecall: null,
           license: "MIT — © RohiRIK",
@@ -56,7 +56,7 @@ export default function AboutSection() {
           rel="noopener noreferrer"
           className="flex items-center gap-2 text-xs text-[var(--accent-blue)] hover:underline"
         >
-          <Github className="w-3.5 h-3.5" /> Send feedback
+          <MessageCircle className="w-3.5 h-3.5" /> Send feedback
           <ExternalLink className="w-3 h-3" />
         </a>
         <a
