@@ -23,6 +23,7 @@ import type {
   SettingsModels,
   SimilarResult,
   Stats,
+  StorageInfo,
   SupersededMemory,
   Tag,
 } from "./types";
@@ -75,6 +76,7 @@ export const api = {
   // Existing routes
   graph: (): Promise<GraphData> => get("/graph"),
   stats: (): Promise<Stats> => get("/stats"),
+  storage: (): Promise<StorageInfo> => get("/storage"),
   tags: (): Promise<Tag[]> => get("/tags"),
   memory: (id: number): Promise<MemoryDetail> => get(`/memory/${id}`),
   search: (q: string): Promise<SearchResult[]> =>
