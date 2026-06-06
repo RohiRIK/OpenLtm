@@ -84,12 +84,40 @@ export default function ProjectOverviewPage() {
           </div>
 
           <div className="border border-dashed border-[var(--border)] rounded-[12px] p-6">
-            <Link
-              href={`/projects/${encodeURIComponent(projectName)}/memories`}
-              className="text-sm text-[var(--accent)] hover:underline"
-            >
-              Browse all {detail.memories.length} memories →
-            </Link>
+            <ul className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+              <li>
+                <Link
+                  href={`/projects/${encodeURIComponent(projectName)}/memories`}
+                  className="text-[var(--accent)] hover:underline"
+                >
+                  Browse all {detail.memories.length} memories →
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href={`/projects/${encodeURIComponent(projectName)}/connections`}
+                  className="text-[var(--accent)] hover:underline"
+                >
+                  {detail.relations.length === 1 ? "View 1 connection" : `View ${detail.relations.length} connections`} →
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href={`/projects/${encodeURIComponent(projectName)}/timeline`}
+                  className="text-[var(--accent)] hover:underline"
+                >
+                  Timeline →
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href={`/projects/${encodeURIComponent(projectName)}/health`}
+                  className="text-[var(--accent)] hover:underline"
+                >
+                  Health →
+                </Link>
+              </li>
+            </ul>
           </div>
         </div>
       </div>
