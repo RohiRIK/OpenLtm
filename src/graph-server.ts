@@ -863,6 +863,38 @@ Bun.serve({
       broadcast({ type: "refresh" });
       return Response.json({ ok: true });
     }
+    if (p === "/api/reveal" && req.method === "POST") {
+      let target = DB_PATH;
+      const body = await req.json().catch(() => ({})) as { path?: string };
+      if (body?.path && typeof body.path === "string") target = body.path;
+      if (!existsSync(target)) {
+        return Response.json({ ok: false, error: "Path not found", path: target }, { status: 404 });
+      }
+      const platform = process.platform;
+      let cmd: string[];
+      let args: string[];
+      if (platform === "darwin") {
+        cmd = ["open", "-R", target];
+        args = [];
+      } else if (platform === "win32") {
+        cmd = ["explorer"];
+        args = [`/select,${target}`];
+      } else {
+        cmd = ["xdg-open"];
+        args = [dirname(target)];
+      }
+      try {
+        const proc = Bun.spawn({ cmd: [...cmd, ...args], stdout: "ignore", stderr: "pipe" });
+        const exit = await proc.exited;
+        if (exit !== 0) {
+          const err = await new Response(proc.stderr).text();
+          return Response.json({ ok: false, error: err.trim() || `exit ${exit}` }, { status: 500 });
+        }
+        return Response.json({ ok: true, path: target });
+      } catch (e) {
+        return Response.json({ ok: false, error: String(e) }, { status: 500 });
+      }
+    }
 
     // ── Layout routes (G7) ────────────────────────────────────────────────────
     if (p === "/api/layout" && req.method === "GET") {
