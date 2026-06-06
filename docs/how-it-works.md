@@ -73,7 +73,7 @@ The score formula:
 score = importance × confidence × decay_factor
 ```
 
-A memory's `decay_factor` shrinks toward 0 as it ages past its half-life. Below 0.25, it's **soft-deprecated** — still returned by `ltm_recall` if you ask explicitly, but no longer auto-injected at session start.
+A memory's `decay_factor` shrinks toward 0 as it ages past its half-life. Below 0.25, it's **soft-deprecated** — still returned by `recall` if you ask explicitly, but no longer auto-injected at session start.
 
 This is intentional. A gotcha you never revisited for six months probably no longer applies. If you want it permanent, set `importance: 5`. If you're not sure, set `importance: 3` and let it ride.
 

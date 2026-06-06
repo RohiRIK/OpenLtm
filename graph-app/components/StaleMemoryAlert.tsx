@@ -19,6 +19,8 @@ interface StaleMemory {
 const STALE_THRESHOLD = 0.3;
 const VISIBLE_LIMIT = 10;
 
+const EMPTY: MemoryNode[] = [];
+
 interface StaleMemoryAlertProps {
   memories?: MemoryNode[];
   projectName?: string;
@@ -51,7 +53,7 @@ export default function StaleMemoryAlert({
     return () => { alive = false; };
   }, [memoriesProp]);
 
-  const memories = memoriesProp ?? fetched ?? [];
+  const memories = memoriesProp ?? fetched ?? EMPTY;
 
   useEffect(() => {
     const list: StaleMemory[] = [];

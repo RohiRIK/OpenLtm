@@ -18,9 +18,9 @@ const MAX_INJECT_LINES = 60;
 const MAX_LTM_LINES    = 30;
 const MAX_CONFLICT_LINES = 5;
 const MAX_AGE_MS       = 30 * 24 * 60 * 60 * 1000;
-const LTM_REMINDER     = "⚡ LTM MCP live — use mcp__ltm__ltm_recall before tasks, mcp__ltm__ltm_learn after discoveries.\n";
+const LTM_REMINDER     = "⚡ LTM MCP live — use mcp__plugin_ltm_memory__recall before tasks, mcp__plugin_ltm_memory__learn after discoveries.\n";
 const LTM_REPO_SLUG    = "RohiRIK/claude-ltm-plugin";
-const LTM_DIRECTIVE   = "⚡ LTM Active — Before starting work: call `ltm_recall` with task keywords. Check `ltm_context` for project state. After decisions: call `ltm_learn` to store them.\n\n";
+const LTM_DIRECTIVE   = "⚡ LTM Active — Before starting work: call `recall` with task keywords. Check `context` for project state. After decisions: call `learn` to store them.\n\n";
 
 function defaultName(cwd: string): string {
   const last = cwd.replace(/\/$/, "").split("/").pop() ?? "";

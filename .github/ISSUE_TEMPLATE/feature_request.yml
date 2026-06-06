@@ -12,7 +12,7 @@ body:
     attributes:
       label: What would you like?
       description: Clear description of the feature
-      placeholder: "It would be great if ltm_recall could..."
+      placeholder: "It would be great if recall could..."
     validations:
       required: true
 

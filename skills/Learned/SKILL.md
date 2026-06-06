@@ -16,17 +16,17 @@ Session learnings distilled into reusable patterns. Use this skill when past wor
 | "what did we learn", "past patterns", "previous sessions" | Review accumulated knowledge |
 | "what worked before", "known gotchas", "lessons learned" | Pull relevant session patterns |
 | "review past decisions", "reference earlier fixes" | Check historical context |
-| "when should I reuse this", "has this been solved before" | Search summary + pattern files |
+| "when should I reuse this", "has this been solved before" | Search the learning summary |
 
 ## Knowledge Sources
 
-- `skills/Learned/summary.md` — condensed session summaries and recent learning history
-- `skills/Learned/patterns/*.md` — detailed per-session pattern notes and fixes
+- `skills/Learned/summary.md` — condensed session summaries and recent learning history, auto-updated by the EvaluateSession hook.
+- Durable patterns also live in the LTM database — query them with `mcp__plugin_ltm_memory__recall`.
 
 ## How to Use
 
-- Read the summary first for a fast overview.
-- Open a matching pattern file when you need the exact reasoning, gotcha, or implementation detail.
+- Read the summary for a fast overview of recent learnings.
+- Recall from LTM (`mcp__plugin_ltm_memory__recall`) when you need the exact reasoning, gotcha, or implementation detail behind a past decision.
 - Prefer previously validated approaches when the current problem matches an earlier session.
 - Treat the accumulated notes as project memory, not instructions to add new workflow logic.
 

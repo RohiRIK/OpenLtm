@@ -1,76 +1,92 @@
 ---
 name: GitLearn
-description: "Retroactive Git commit learning for extracting memories from git history; use when onboarding a repo, backfilling past learnings, or after a productive sprint. Trigger phrases: 'git learn', 'review past commits', 'backfill learnings'."
+description: "Mines LTM memories from past git commits. Use when onboarding a repo into LTM, backfilling history after enabling gitLearn, or harvesting patterns after a sprint."
 user-invocable: false
-version: 1.0.0
+version: 1.2.0
 ---
 
-# /git-learn — Retroactive Git Commit Learning
+# GitLearn — Retroactive Git Commit Learning
 
-Extract LTM memories from past git commits in the current repository.
+Extract durable LTM memories from past git commits by delegating the read-and-extract
+work to a Haiku subagent. The subagent reads the diffs and stores memories via the
+`learn` MCP tool, so this path needs **no API key** and keeps the main thread's
+context clean (raw diffs stay in the subagent).
 
-## Usage
+## Scope
 
-```
-/git-learn                    # last 10 commits
-/git-learn --commits 20       # last N commits
-/git-learn --since 2026-03-01 # commits since date
-```
+| Invocation arg | Commits processed |
+|----------------|-------------------|
+| *(none)* | last 10 |
+| `--commits N` | last N |
+| `--since YYYY-MM-DD` | all commits since that date |
 
 ## When to Use
 
-- Onboarding a new project into LTM — seed memories from existing commit history
-- After enabling `gitLearnEnabled` for the first time — backfill past learnings
-- After a productive sprint — extract patterns from a batch of commits
+- Onboarding a new project into LTM — seed memories from existing commit history.
+- Backfilling history after enabling `gitLearnEnabled` for the first time.
+- Harvesting reusable patterns after a productive sprint.
+
+## How It Works
+
+The background post-commit hook (`GitCommit.ts`) calls an LLM API directly and needs
+a configured key. This skill runs interactively instead, so it spawns a **Haiku
+subagent** via the Agent tool. Spawning a subagent is valid here because skills
+execute in the live Claude Code session, which has the Agent tool available.
 
 ## Instructions for Claude
 
-### Step 1 — Check config
+### Step 1 — Resolve scope
 
-Verify `gitLearnEnabled` is true in `~/.claude/config.json`. If not, warn:
-> "gitLearnEnabled is false. Enable it first or this will have no effect on future commits."
-
-### Step 2 — Collect commits
+Determine the commit range from the invocation arg (default: last 10). Capture the
+repo root so the subagent runs git in the right directory:
 
 ```bash
-# Default: last 10
-git log --oneline -10
-
-# With --commits N
-git log --oneline -N
-
-# With --since <date>
-git log --oneline --since="<date>"
+git rev-parse --show-toplevel
+git log --pretty=format:'%H %s' -<N>   # or --since="<date>"
 ```
 
-### Step 3 — Extract from each commit
+### Step 2 — Spawn one Haiku subagent
 
-For each commit hash, run:
+Call the Agent tool once with `subagent_type: "general-purpose"` and `model: "haiku"`.
+A single subagent processes the whole batch — do not spawn one per commit.
 
-```bash
-CLAUDE_PLUGIN_ROOT=<plugin-root> bun run <plugin-root>/hooks/src/GitCommit.ts   --extract "$(bun -e "
-    const { spawnSync } = require('child_process');
-    const hash = '<HASH>';
-    const diff = spawnSync('git', ['show', '--unified=3', '--no-color', hash], { encoding: 'utf-8' }).stdout.slice(0, 4000);
-    const message = spawnSync('git', ['log', '-1', '--pretty=format:%s', hash], { encoding: 'utf-8' }).stdout.trim();
-    const files = spawnSync('git', ['diff-tree', '--no-commit-id', '-r', '--name-only', hash], { encoding: 'utf-8' }).stdout.trim().split('\n').filter(Boolean);
-    const projectName = require('path').basename(process.cwd());
-    console.log(JSON.stringify({ diff, commitMsg: message, hash, files, projectName }));
-  ")"
-```
-
-Note: The `--extract` mode runs synchronously — wait for each before the next.
-
-### Step 4 — Report
-
-After processing all commits:
+Fill this template, substituting the repo root, the commit list, and the project name
+(the repo directory basename):
 
 ```
-Processed <N> commits.
-Memories stored: check with /ltm:memory recall or mcp__ltm__ltm_recall.
+You are mining durable engineering memories from git commits into the LTM database.
+Work in repo root: <REPO_ROOT>
+
+TASK:
+1. For each commit hash below, run `git show --unified=3 --no-color <hash>` and read the diff.
+   Commits: <HASH_LIST>
+2. Extract ONLY durable, reusable learnings — architectural decisions, gotchas, or
+   reusable patterns that would help in a FUTURE session. Each under 120 chars.
+3. Skip noise: pure version bumps, changelog edits, pure-docs commits with no design
+   rationale, trivial style/token renames, CI rebuild commits. If a commit teaches
+   nothing reusable, store nothing for it.
+4. Store each learning by calling `mcp__plugin_ltm_memory__learn` with:
+   - content: the learning (concise, <120 chars)
+   - category: architecture (decisions) | gotcha | pattern
+   - importance: 3 for patterns/decisions, 4 for gotchas
+   - project_scope: "<PROJECT_NAME>"
+   - source: "git-commit:<short7hash>"
+   - tags: up to 5 changed file paths from that commit
+   The learn tool dedupes by content, so reinforcing is safe.
+
+Be selective — quality over quantity. Only call git (read-only) and the learn MCP tool;
+write no files. Return a compact table: short-hash | #memories stored | one-line reason,
+plus the total count.
 ```
+
+### Step 3 — Report
+
+Relay the subagent's table and total. Memories are stored with
+`source: "git-commit:<hash>"` and file-path tags, queryable via
+`mcp__plugin_ltm_memory__recall`.
 
 ## Memory Integration
 
-Before: `mcp__ltm__ltm_recall query="git commit patterns"` — check what's already stored.
-After: memories appear with `source: "git-commit:<hash>"` and file tags.
+- Before: `mcp__plugin_ltm_memory__recall query="git commit patterns"` — check what's
+  already stored, so the subagent reinforces rather than duplicates.
+- After: confirm new rows with a recall scoped to the project.

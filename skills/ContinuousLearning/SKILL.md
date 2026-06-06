@@ -24,15 +24,15 @@ Recall before non-trivial work and capture genuinely new insights — the goal i
 
 **Example 1 — User asks about past architecture:**
 > User: "What's our caching strategy?"
-> LLM: Calls `ltm_recall(query="caching strategy architecture")` → uses results in response.
+> LLM: Calls `recall(query="caching strategy architecture")` → uses results in response.
 
 **Example 2 — User discovers a gotcha:**
 > User: "Don't use npm in this project, it's broken with our setup."
-> LLM: Calls `ltm_learn(content="Don't use npm - broken with our setup", category="gotcha", importance=4)` → confirms stored.
+> LLM: Calls `learn(content="Don't use npm - broken with our setup", category="gotcha", importance=4)` → confirms stored.
 
 **Example 3 — User starts new feature:**
 > User: "Add auth to the API."
-> LLM: Calls `ltm_recall(query="auth")` + `ltm_context(project="api")` → incorporates prior decisions.
+> LLM: Calls `recall(query="auth")` + `context(project="api")` → incorporates prior decisions.
 
 ## Quick Reference
 

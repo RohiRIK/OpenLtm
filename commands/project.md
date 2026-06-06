@@ -72,12 +72,12 @@ Do NOT create context-goals.md or similar files. DB is the source of truth.
 This command orchestrates context retrieval in the right order.
 
 **1 — Get project context:**
-Call `mcp__ltm__ltm_context(project="<project>")`.
+Call `mcp__plugin_ltm_memory__context(project="<project>")`.
 
 Returns: `globals` (importance ≥ 4) + `scoped` (importance ≥ 3).
 
 **2 — Search relevant memories:**
-Call `mcp__ltm__ltm_recall(query="<topic>")`.
+Call `mcp__plugin_ltm_memory__recall(query="<topic>")`.
 
 **3 — Synthesize:**
 Note any decisions, gotchas, or patterns relevant to the user's request.
@@ -90,8 +90,8 @@ Output format:
 ## Context Analysis — <project>
 
 ### Project State
-- Goals: [from ltm_context scoped]
-- Active Decisions: [from ltm_context globals]
+- Goals: [from context scoped]
+- Active Decisions: [from context globals]
 
 ### Relevant Memories
 - [id] <memory> [category]

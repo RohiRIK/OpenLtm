@@ -33,7 +33,7 @@ Usage: /ltm:memory <subcommand>
 
 ## recall
 
-Search LTM memories. Call `mcp__ltm__ltm_recall` with parsed args:
+Search LTM memories. Call `mcp__plugin_ltm_memory__recall` with parsed args:
 
 | Arg | Field |
 |-----|-------|
@@ -50,7 +50,7 @@ FTS5 supports `AND`, `OR`, `NOT`, phrase matching (`"bun sqlite"`). Results rank
 
 ## learn
 
-Store a memory via `mcp__ltm__ltm_learn`. Parse args:
+Store a memory via `mcp__plugin_ltm_memory__learn`. Parse args:
 
 | Arg | Field | Default |
 |-----|-------|---------|
@@ -61,11 +61,11 @@ Store a memory via `mcp__ltm__ltm_learn`. Parse args:
 | `--tags t1,t2` | `tags` | — |
 | `--save-context` | also write to `context_items` | off |
 
-If no args given, review the session for extractable insights. Extract each, classify, then call `ltm_learn` for each.
+If no args given, review the session for extractable insights. Extract each, classify, then call `learn` for each.
 
 **Dedup:** calling with identical content reinforces — never creates duplicates.
 
-When `--save-context` is present, after `ltm_learn`, also resolve project from `~/.claude/projects/registry.json`, map category to context type (architecture/decision → `decision`, gotcha → `gotcha`, goal → `goal` replacing existing, else → `progress`), then:
+When `--save-context` is present, after `learn`, also resolve project from `~/.claude/projects/registry.json`, map category to context type (architecture/decision → `decision`, gotcha → `gotcha`, goal → `goal` replacing existing, else → `progress`), then:
 
 ```bash
 bun --eval "
@@ -86,10 +86,10 @@ console.log('ok');
 
 ## forget
 
-1. Recall the memory to show what will be deleted: `mcp__ltm__ltm_recall` with the ID or a targeted query.
+1. Recall the memory to show what will be deleted: `mcp__plugin_ltm_memory__recall` with the ID or a targeted query.
 2. Show the user: content, tags, relations.
 3. Confirm before deleting.
-4. Call `mcp__ltm__ltm_forget` with `{ id }`.
+4. Call `mcp__plugin_ltm_memory__forget` with `{ id }`.
 5. Report: `Deleted [id]. N relations removed.`
 
 Requires explicit ID — use `recall` first if needed. Irreversible.
@@ -98,7 +98,7 @@ Requires explicit ID — use `recall` first if needed. Irreversible.
 
 ## relate
 
-Call `mcp__ltm__ltm_relate` with `{ source_id, target_id, relationship_type }`.
+Call `mcp__plugin_ltm_memory__relate` with `{ source_id, target_id, relationship_type }`.
 
 | Type | Meaning |
 |------|---------|
