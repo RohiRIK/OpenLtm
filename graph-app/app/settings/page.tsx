@@ -6,6 +6,19 @@ import { api } from "@/lib/api";
 import type { SettingsModels } from "@/lib/types";
 import SettingsForm from "@/components/SettingsForm";
 
+function formatBytes(n: number): string {
+  if (!Number.isFinite(n) || n < 0) return "—";
+  if (n < 1024) return `${n} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let v = n / 1024;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i++;
+  }
+  return `${v.toFixed(v >= 10 ? 0 : 1)} ${units[i]}`;
+}
+
 export default function SystemSection() {
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [models, setModels] = useState<SettingsModels | null>(null);
@@ -15,9 +28,17 @@ export default function SystemSection() {
   const [dbSize, setDbSize] = useState<string>("");
 
   const load = useCallback(async () => {
-    const [s, m] = await Promise.all([api.getSettings(), api.getModels()]);
+    const [s, m, st] = await Promise.all([
+      api.getSettings(),
+      api.getModels(),
+      api.storage().catch(() => null),
+    ]);
     setSettings(s);
     setModels(m);
+    if (st) {
+      setDbPath(st.path);
+      setDbSize(formatBytes(st.size));
+    }
   }, []);
 
   useEffect(() => {

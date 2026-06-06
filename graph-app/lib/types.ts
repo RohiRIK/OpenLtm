@@ -77,6 +77,15 @@ export interface Stats {
 export interface Capabilities {
   vec: boolean;
   honker: boolean;
+  live?: boolean;
+}
+
+export interface StorageInfo {
+  path: string;
+  size: number;
+  exists: boolean;
+  wal: number;
+  shm: number;
 }
 
 export interface Tag {

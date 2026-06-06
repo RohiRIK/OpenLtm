@@ -5,7 +5,7 @@
  */
 import type { SQLQueryBindings } from "bun:sqlite";
 import { Database } from "bun:sqlite";
-import { existsSync, mkdirSync, readFileSync, writeFileSync, watch } from "fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync, watch } from "fs";
 import { dirname, join } from "path";
 
 import { homedir } from "os";
@@ -840,6 +840,19 @@ Bun.serve({
     if (p === "/api/capabilities") {
       const caps = getCapabilities();
       return Response.json({ vec: caps.vec, honker: caps.honker, live: ltmListener.running });
+    }
+    if (p === "/api/storage") {
+      const exists = existsSync(DB_PATH);
+      const size = exists ? statSync(DB_PATH).size : 0;
+      const walExists = existsSync(DB_PATH + "-wal");
+      const shmExists = existsSync(DB_PATH + "-shm");
+      return Response.json({
+        path: DB_PATH,
+        size,
+        exists,
+        wal: walExists ? statSync(DB_PATH + "-wal").size : 0,
+        shm: shmExists ? statSync(DB_PATH + "-shm").size : 0,
+      });
     }
     if (p === "/api/tags")             return Response.json(getTags());
     if (p === "/api/search") {
