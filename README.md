@@ -1,12 +1,14 @@
 <div align="center">
 
+<img src="assets/openltm-banner.png" alt="OpenLTM — Long-Term Memory for AI coding agents, now open source" width="820" />
+
 # OpenLTM
 
 ### You explained your auth layer once. Why does Claude ask again tomorrow?
 
 **Long-Term Memory for AI coding agents** — Claude Code, OpenCode, and Pi
 
-[![Version](https://img.shields.io/badge/version-2.7.0-blue?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.8.0-blue?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Runtime](https://img.shields.io/badge/runtime-Bun-f472b6?style=flat-square&logo=bun)](https://bun.sh)
 [![Database](https://img.shields.io/badge/database-SQLite-003B57?style=flat-square&logo=sqlite)](https://sqlite.org)
@@ -16,6 +18,20 @@
 Persistent semantic memory that survives every session, every update, every compaction.
 
 </div>
+
+---
+
+## 📣 Now open source
+
+**OpenLTM was born as a private memory layer for Claude Code. Today it's fully open source under MIT.**
+
+Same engine — automatic capture, semantic recall, importance-weighted decay, a queryable memory graph — now yours to read, fork, and extend. What started as one developer's "stop re-explaining my codebase" plugin is now an open foundation for **agent memory** across Claude Code, OpenCode, and Pi.
+
+- 🔓 **MIT licensed** — no cloud, no account, no telemetry. Your memory lives in a local SQLite DB you own.
+- 🧩 **Provider-agnostic** — one core (`@rohirik/openltm-core`), thin adapters per host.
+- 🛠 **Hackable** — hooks, skills, janitor providers, and the graph visualizer are all in the open.
+
+> Migrating from an earlier install? The marketplace is now [`RohiRIK/OpenLtm`](https://github.com/RohiRIK/OpenLtm) and the plugin is `openltm`. Your existing memory database carries over.
 
 ---
 
@@ -49,7 +65,7 @@ Four ideas. No exceptions.
 
 ```bash
 claude plugin marketplace add https://github.com/RohiRIK/OpenLtm
-claude plugin install ltm
+claude plugin install openltm
 ```
 
 Restart Claude Code. That's it. Four Claude Code hooks + one git post-commit hook auto-wire, four commands load, five skills activate, and your `openltm.db` migrates or creates itself.
