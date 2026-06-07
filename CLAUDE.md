@@ -44,29 +44,6 @@ The plugin system reads from the cache, not the source repo. Changes only take e
 - The cache file is patched directly (immediate), OR
 - The user clicks "Update now" in the plugin UI (requires version bump)
 
-## Available MCP Tools
+## Memory Contract
 
-| Tool | When to use | When to skip |
-|------|-------------|--------------|
-| `recall` | Before a non-trivial task, or when entering an unfamiliar area — surfaces past decisions, patterns, gotchas. | Trivial one-liners. |
-| `learn` | After discovering a non-obvious pattern, architectural decision, or gotcha worth keeping across sessions. | Facts derivable from the code or git history. |
-| `forget` | When a memory is wrong, outdated, or the user asks to remove it. | — |
-| `relate` | When two memories connect — e.g. a decision caused a gotcha, a pattern applies to an architecture. | — |
-| `context` | At session start or when switching projects — restores goals, decisions, gotchas. | Mid-task within the same project. |
-| `context_items` | To list one context type (goals, decisions, progress, gotchas) for a project. | — |
-| `graph` | When exploring connections between memories or tracing a decision chain. | — |
-
-## Usage Pattern
-
-1. Call `recall` with the task topic before starting work
-2. Call `learn` after discovering non-obvious patterns or making key decisions
-3. Use `context` at session start to restore project state
-
-## Memory Categories
-
-- **preference** — Project conventions, style preferences, tool choices
-- **architecture** — System design decisions, structural patterns
-- **gotcha** — Pitfalls to avoid, common mistakes, edge cases
-- **pattern** — Reusable solutions, proven approaches
-- **workflow** — Process steps, how things get done
-- **constraint** — Requirements, limitations, must-follow rules
+Tool names, the recall-before / learn-after ritual, memory categories, and the Spec/Plan phase map all live in the **Ltm** skill (`skills/Ltm/SKILL.md`) — the single source of truth. It auto-loads on memory work; load it explicitly with `SkillSearch('ltm memory contract')` if you need the names mid-task.

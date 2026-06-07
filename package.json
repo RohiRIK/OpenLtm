@@ -1,9 +1,11 @@
 {
   "name": "openltm",
-  "version": "2.7.1",
+  "version": "2.7.3",
   "description": "OpenLTM — Long-Term Memory for AI coding agents (Claude Code, OpenCode, Pi)",
   "private": true,
-  "workspaces": ["packages/*"],
+  "workspaces": [
+    "packages/*"
+  ],
   "type": "module",
   "scripts": {
     "build:hooks": "bunx esbuild hooks/src/GitCommit.ts --bundle --platform=node --format=esm --outfile=hooks/GitCommit.bundle.mjs --external:bun:sqlite --external:bun:ffi --external:bun:jsc --minify",
