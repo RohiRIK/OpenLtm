@@ -24,16 +24,16 @@ function makeBak(name: string, ageSeconds: number = 120): string {
 
 describe("enforceRetention", () => {
   it("returns empty result on empty directory", async () => {
-    const result = await enforceRetention(1, { dbPath: join(tmpDir, "ltm.db") });
+    const result = await enforceRetention(1, { dbPath: join(tmpDir, "openltm.db") });
     expect(result.deleted).toEqual([]);
     expect(result.kept).toEqual([]);
     expect(result.warnings).toEqual([]);
   });
 
   it("keeps all files when under max", async () => {
-    const a = makeBak("ltm.db.bak-2026-01-01T00-00-00-000Z", 200);
-    const b = makeBak("ltm.db.bak-2026-01-02T00-00-00-000Z", 200);
-    const result = await enforceRetention(5, { dbPath: join(tmpDir, "ltm.db") });
+    const a = makeBak("openltm.db.bak-2026-01-01T00-00-00-000Z", 200);
+    const b = makeBak("openltm.db.bak-2026-01-02T00-00-00-000Z", 200);
+    const result = await enforceRetention(5, { dbPath: join(tmpDir, "openltm.db") });
     expect(result.deleted).toEqual([]);
     expect(result.kept.sort()).toEqual([a, b].sort());
     expect(existsSync(a)).toBe(true);
@@ -41,12 +41,12 @@ describe("enforceRetention", () => {
   });
 
   it("deletes oldest when over max", async () => {
-    const f1 = makeBak("ltm.db.bak-2026-01-01T00-00-00-000Z", 200);
-    const f2 = makeBak("ltm.db.bak-2026-01-02T00-00-00-000Z", 200);
-    const f3 = makeBak("ltm.db.bak-2026-01-03T00-00-00-000Z", 200);
-    const f4 = makeBak("ltm.db.bak-2026-01-04T00-00-00-000Z", 200);
-    const f5 = makeBak("ltm.db.bak-2026-01-05T00-00-00-000Z", 200);
-    const result = await enforceRetention(2, { dbPath: join(tmpDir, "ltm.db") });
+    const f1 = makeBak("openltm.db.bak-2026-01-01T00-00-00-000Z", 200);
+    const f2 = makeBak("openltm.db.bak-2026-01-02T00-00-00-000Z", 200);
+    const f3 = makeBak("openltm.db.bak-2026-01-03T00-00-00-000Z", 200);
+    const f4 = makeBak("openltm.db.bak-2026-01-04T00-00-00-000Z", 200);
+    const f5 = makeBak("openltm.db.bak-2026-01-05T00-00-00-000Z", 200);
+    const result = await enforceRetention(2, { dbPath: join(tmpDir, "openltm.db") });
     expect(result.deleted.sort()).toEqual([f1, f2, f3].sort());
     expect(result.kept.sort()).toEqual([f4, f5].sort());
     expect(existsSync(f1)).toBe(false);
@@ -54,11 +54,11 @@ describe("enforceRetention", () => {
   });
 
   it("never deletes the currentBackupPath", async () => {
-    const f1 = makeBak("ltm.db.bak-2026-01-01T00-00-00-000Z", 200);
-    const f2 = makeBak("ltm.db.bak-2026-01-02T00-00-00-000Z", 200);
-    const f3 = makeBak("ltm.db.bak-2026-01-03T00-00-00-000Z", 200);
+    const f1 = makeBak("openltm.db.bak-2026-01-01T00-00-00-000Z", 200);
+    const f2 = makeBak("openltm.db.bak-2026-01-02T00-00-00-000Z", 200);
+    const f3 = makeBak("openltm.db.bak-2026-01-03T00-00-00-000Z", 200);
     const result = await enforceRetention(1, {
-      dbPath: join(tmpDir, "ltm.db"),
+      dbPath: join(tmpDir, "openltm.db"),
       currentBackupPath: f2,
     });
     expect(result.deleted).not.toContain(f2);
@@ -66,10 +66,10 @@ describe("enforceRetention", () => {
   });
 
   it("skips files newer than gracePeriodMs", async () => {
-    const old = makeBak("ltm.db.bak-2026-01-01T00-00-00-000Z", 200);
-    const fresh = makeBak("ltm.db.bak-2026-06-03T16-00-00-000Z", 0);
+    const old = makeBak("openltm.db.bak-2026-01-01T00-00-00-000Z", 200);
+    const fresh = makeBak("openltm.db.bak-2026-06-03T16-00-00-000Z", 0);
     const result = await enforceRetention(0, {
-      dbPath: join(tmpDir, "ltm.db"),
+      dbPath: join(tmpDir, "openltm.db"),
       gracePeriodMs: 60_000,
     });
     expect(result.deleted).toEqual([old]);
@@ -95,22 +95,22 @@ describe("enforceRetention", () => {
   });
 
   it("does not touch non-.bak files", async () => {
-    writeFileSync(join(tmpDir, "ltm.db"), "active");
-    writeFileSync(join(tmpDir, "ltm.db-shm"), "shm");
-    writeFileSync(join(tmpDir, "ltm.db-wal"), "wal");
-    const bak = makeBak("ltm.db.bak-2026-01-01T00-00-00-000Z", 200);
-    const result = await enforceRetention(0, { dbPath: join(tmpDir, "ltm.db") });
+    writeFileSync(join(tmpDir, "openltm.db"), "active");
+    writeFileSync(join(tmpDir, "openltm.db-shm"), "shm");
+    writeFileSync(join(tmpDir, "openltm.db-wal"), "wal");
+    const bak = makeBak("openltm.db.bak-2026-01-01T00-00-00-000Z", 200);
+    const result = await enforceRetention(0, { dbPath: join(tmpDir, "openltm.db") });
     expect(result.deleted).toEqual([bak]);
-    expect(existsSync(join(tmpDir, "ltm.db"))).toBe(true);
-    expect(existsSync(join(tmpDir, "ltm.db-shm"))).toBe(true);
-    expect(existsSync(join(tmpDir, "ltm.db-wal"))).toBe(true);
+    expect(existsSync(join(tmpDir, "openltm.db"))).toBe(true);
+    expect(existsSync(join(tmpDir, "openltm.db-shm"))).toBe(true);
+    expect(existsSync(join(tmpDir, "openltm.db-wal"))).toBe(true);
   });
 
   it("is idempotent and silent when files disappear before the call", async () => {
-    const f1 = makeBak("ltm.db.bak-2026-01-01T00-00-00-000Z", 200);
-    const f2 = makeBak("ltm.db.bak-2026-01-02T00-00-00-000Z", 200);
+    const f1 = makeBak("openltm.db.bak-2026-01-01T00-00-00-000Z", 200);
+    const f2 = makeBak("openltm.db.bak-2026-01-02T00-00-00-000Z", 200);
     rmSync(f1);
-    const result = await enforceRetention(0, { dbPath: join(tmpDir, "ltm.db") });
+    const result = await enforceRetention(0, { dbPath: join(tmpDir, "openltm.db") });
     expect(result.deleted).toEqual([f2]);
     expect(result.warnings).toEqual([]);
     expect(result.kept).toEqual([]);

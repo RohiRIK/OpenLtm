@@ -1,19 +1,19 @@
 {
-  "name": "ltm",
+  "name": "OpenLtm",
   "owner": {
     "name": "RohiRIK",
     "email": "rohi5054@gmail.com"
   },
   "metadata": {
     "description": "OpenLTM — Long-Term Memory for AI coding agents (Claude Code, OpenCode, Pi)",
-    "version": "2.7.5"
+    "version": "2.8.0"
   },
   "plugins": [
     {
-      "name": "ltm",
+      "name": "openltm",
       "source": "./",
       "description": "Persistent semantic memory for AI coding agents — semantic search, context injection, session learning, and memory graph visualizer.",
-      "version": "2.7.5",
+      "version": "2.8.0",
       "author": {
         "name": "RohiRIK"
       },

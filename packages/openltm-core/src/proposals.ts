@@ -34,7 +34,7 @@ export interface PendingProposal {
 
 function getProposalsDir(): string {
   const base = process.env.CLAUDE_PLUGIN_DATA
-    ?? join(homedir(), ".claude", "plugins", "data", "ltm-ltm");
+    ?? join(homedir(), ".claude", "plugins", "data", "OpenLtm-openltm");
   return join(base, "proposals");
 }
 

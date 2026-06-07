@@ -8,7 +8,7 @@
  *   - .claude-plugin/plugin.json     →  "version": "X.Y.Z"
  *   - README.md                      →  badge version-X.Y.Z-blue
  *   - docs/ARCHITECTURE.md           →  "against plugin vX.Y.Z"
- *   - packages/ltm-core/package.json      →  "version": "X.Y.Z"
+ *   - packages/openltm-core/package.json      →  "version": "X.Y.Z"
  *   - packages/adapter-pi/package.json    →  "version": "X.Y.Z"
  *   - packages/adapter-opencode/package.json →  "version": "X.Y.Z"
  *
@@ -50,10 +50,10 @@ const checks: Check[] = [
     label: "docs/ARCHITECTURE.md",
   },
   {
-    file: "packages/ltm-core/package.json",
+    file: "packages/openltm-core/package.json",
     pattern: /"version"\s*:\s*"([^"]+)"/,
     extract: (m) => m[1],
-    label: "packages/ltm-core",
+    label: "packages/openltm-core",
   },
   {
     file: "packages/adapter-pi/package.json",

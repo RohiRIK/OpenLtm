@@ -26,7 +26,7 @@ const QUERIES = [
 ];
 
 beforeAll(async () => {
-  const { getDb, waitForInit } = await import("@rohirik/ltm-core");
+  const { getDb, waitForInit } = await import("@rohirik/openltm-core");
   // Ensure all migrations have applied before seeding or calling recall().
   await waitForInit();
   const db = getDb();
@@ -53,7 +53,7 @@ beforeAll(async () => {
 
   batchInsert(10_000);
 
-  const { recall: recallFn } = await import("@rohirik/ltm-core");
+  const { recall: recallFn } = await import("@rohirik/openltm-core");
   recall = recallFn as typeof recall;
 }, 60_000);
 

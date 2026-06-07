@@ -2,7 +2,7 @@
 import { parseArgs } from "node:util";
 import { readdirSync, statSync, existsSync } from "fs";
 import { dirname, join } from "path";
-import { enforceRetention, getRetentionDefault } from "../packages/ltm-core/src/migrations.js";
+import { enforceRetention, getRetentionDefault } from "../packages/openltm-core/src/migrations.js";
 
 const HELP = `Usage: bun run cleanup:bak [options]
 
@@ -11,7 +11,7 @@ Options:
   --keep <N>      Number of most-recent .bak files to keep (default: \${LTM_BACKUP_RETENTION:-1}).
   --yes, -y       Skip the confirmation prompt.
   --no-grace      Override the 60s grace period (delete files newer than 60s).
-  --path <path>   Database path (default: \$LTM_DB_PATH or ./data/ltm.db).
+  --path <path>   Database path (default: \$LTM_DB_PATH or ./data/openltm.db).
   --help, -h      Print this help and exit.
 
 The active database file (<db-path>) is never touched.`;
@@ -67,14 +67,14 @@ function parseCli(argv: string[]): ParsedArgs {
 function resolveDbPath(cliPath: string | null): string {
   if (cliPath) return cliPath;
   if (process.env["LTM_DB_PATH"]) return process.env["LTM_DB_PATH"]!;
-  return join(import.meta.dir, "..", "data", "ltm.db");
+  return join(import.meta.dir, "..", "data", "openltm.db");
 }
 
 function listBakFiles(dbPath: string): { path: string; size: number; mtime: number }[] {
   const dir = dirname(dbPath);
   if (!existsSync(dir)) return [];
   return readdirSync(dir)
-    .filter((f) => f.startsWith("ltm.db.bak-"))
+    .filter((f) => f.startsWith("openltm.db.bak-"))
     .map((f) => {
       const fullPath = join(dir, f);
       const st = statSync(fullPath);

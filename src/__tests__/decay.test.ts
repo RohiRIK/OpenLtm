@@ -4,12 +4,12 @@ import { unlinkSync } from "fs";
 const dbPath = `/tmp/test-ltm-decay-${Date.now()}.db`;
 process.env.LTM_DB_PATH = dbPath;
 
-let computeDecayScore: (memory: import("@rohirik/ltm-core").Memory) => number;
+let computeDecayScore: (memory: import("@rohirik/openltm-core").Memory) => number;
 
 /** Build a minimal Memory object for testing decay. */
 function makeMemory(
-  overrides: Partial<import("@rohirik/ltm-core").Memory> = {}
-): import("@rohirik/ltm-core").Memory {
+  overrides: Partial<import("@rohirik/openltm-core").Memory> = {}
+): import("@rohirik/openltm-core").Memory {
   const now = new Date().toISOString();
   return {
     id: 1,
@@ -35,7 +35,7 @@ function daysAgo(n: number): string {
 }
 
 beforeAll(async () => {
-  const db = await import("@rohirik/ltm-core");
+  const db = await import("@rohirik/openltm-core");
   computeDecayScore = db.computeDecayScore;
 });
 

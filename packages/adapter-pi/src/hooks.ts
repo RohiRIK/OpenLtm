@@ -1,4 +1,4 @@
-import { recall, learn } from "@rohirik/ltm-core";
+import { recall, learn } from "@rohirik/openltm-core";
 
 type PiAny = any;
 

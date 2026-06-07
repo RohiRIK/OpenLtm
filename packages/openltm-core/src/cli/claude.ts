@@ -13,25 +13,25 @@ import type { InstallResult } from "./types.js";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const MCP_NAME = "ltm";
+const MCP_NAME = "openltm";
 const MCP_ENTRY: McpServerEntry = {
   command: "bunx",
-  args: ["@rohirik/ltm-core", "mcp-serve"],
-  env: { LTM_DB_PATH: "~/.claude/plugins/data/ltm-ltm/ltm.db" },
+  args: ["@rohirik/openltm-core", "mcp-serve"],
+  env: { LTM_DB_PATH: "~/.claude/plugins/data/OpenLtm-openltm/openltm.db" },
 };
 
 const HOOKS: Array<{ event: string; args: string[] }> = [
   {
     event: "SessionStart",
-    args: ["@rohirik/ltm-core", "hook", "--name", "SessionStart"],
+    args: ["@rohirik/openltm-core", "hook", "--name", "SessionStart"],
   },
   {
     event: "PreCompact",
-    args: ["@rohirik/ltm-core", "hook", "--name", "PreCompact"],
+    args: ["@rohirik/openltm-core", "hook", "--name", "PreCompact"],
   },
   {
     event: "PostEditCheck",
-    args: ["@rohirik/ltm-core", "hook", "--name", "PostEditCheck"],
+    args: ["@rohirik/openltm-core", "hook", "--name", "PostEditCheck"],
   },
 ];
 

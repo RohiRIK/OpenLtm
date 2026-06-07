@@ -127,7 +127,7 @@ export async function runJanitor(): Promise<JanitorRunResult> {
     errors,
   };
 
-  // Persist run stats to settings for /ltm:health
+  // Persist run stats to settings for /openltm:health
   await Promise.all([
     setSetting(SETTING_KEYS.JANITOR_LAST_RUN_AT,          result.timestamp),
     setSetting(SETTING_KEYS.JANITOR_LAST_DECAY_REFRESHED, String(decayResult.refreshed)),

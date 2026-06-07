@@ -4,7 +4,7 @@ import { join } from "path";
 import { Database } from "bun:sqlite";
 
 const dbPath = `/tmp/test-pi-ltm-${process.pid}-${Date.now()}.db`;
-const SCHEMA_PATH = join(import.meta.dir, "..", "..", "..", "ltm-core", "src", "schema.sql");
+const SCHEMA_PATH = join(import.meta.dir, "..", "..", "..", "openltm-core", "src", "schema.sql");
 
 function createMockPi() {
   const tools: Array<{
@@ -27,7 +27,7 @@ function createMockPi() {
 }
 
 beforeAll(async () => {
-  const { runPendingMigrations, _setDbForTesting } = await import("@rohirik/ltm-core");
+  const { runPendingMigrations, _setDbForTesting } = await import("@rohirik/openltm-core");
   const db = new Database(dbPath, { create: true });
   db.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
   db.exec(readFileSync(SCHEMA_PATH, "utf-8"));
@@ -80,7 +80,7 @@ describe("Pi LTM extension — registerHooks()", () => {
   });
 
   it("before_agent_start returns systemPrompt with Prior Knowledge when memories exist", async () => {
-    const { learn } = await import("@rohirik/ltm-core");
+    const { learn } = await import("@rohirik/openltm-core");
     learn({
       content: "Pi test memory — use strict types",
       category: "pattern",

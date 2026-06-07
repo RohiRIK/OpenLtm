@@ -3,10 +3,10 @@
  *
  * Priority chain for DB path:
  *  1. LTM_DB_PATH env var            → explicit override, always wins
- *  2. $CLAUDE_PLUGIN_DATA/ltm.db     → marketplace install (with auto-migrate from legacy)
+ *  2. $CLAUDE_PLUGIN_DATA/openltm.db     → marketplace install (with auto-migrate from legacy)
  *  3. configOverride.dbPath           → injected by callers (used in tests, MCP server init)
  *     OR ~/.claude/config.json ltm.dbPath
- *  4. ~/.claude/memory/ltm.db        → dev / git-clone fallback
+ *  4. ~/.claude/memory/openltm.db        → dev / git-clone fallback
  */
 import { existsSync, readFileSync, mkdirSync, copyFileSync } from "fs";
 import { join } from "path";
@@ -27,8 +27,8 @@ export function getDbPath(configOverride?: DbPathOptions): string {
 
   // 2. Marketplace install — use plugin data dir, auto-migrate from legacy if needed
   if (process.env.CLAUDE_PLUGIN_DATA) {
-    const targetDb = join(process.env.CLAUDE_PLUGIN_DATA, "ltm.db");
-    const legacyDb = join(CLAUDE_DIR, "memory", "ltm.db");
+    const targetDb = join(process.env.CLAUDE_PLUGIN_DATA, "openltm.db");
+    const legacyDb = join(CLAUDE_DIR, "memory", "openltm.db");
     if (!configOverride?.skipAutoMigrate && !existsSync(targetDb) && existsSync(legacyDb)) {
       mkdirSync(process.env.CLAUDE_PLUGIN_DATA, { recursive: true });
       copyFileSync(legacyDb, targetDb);
@@ -51,7 +51,7 @@ export function getDbPath(configOverride?: DbPathOptions): string {
   }
 
   // 4. Legacy fallback
-  return join(CLAUDE_DIR, "memory", "ltm.db");
+  return join(CLAUDE_DIR, "memory", "openltm.db");
 }
 
 export function getSchemaPath(): string {

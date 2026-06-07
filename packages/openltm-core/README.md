@@ -1,15 +1,15 @@
-# @rohirik/ltm-core
+# @rohirik/openltm-core
 
 Shared LTM storage engine and CLI installer for Claude Code, OpenCode, and Pi.
 
 ## Install
 
 ```bash
-bunx @rohirik/ltm-core          # auto-detect Claude Code, OpenCode, Pi
-bunx @rohirik/ltm-core --claude # Claude Code only
-bunx @rohirik/ltm-core --opencode
-bunx @rohirik/ltm-core --pi
-bunx @rohirik/ltm-core --dry-run --claude  # preview without writing
+bunx @rohirik/openltm-core          # auto-detect Claude Code, OpenCode, Pi
+bunx @rohirik/openltm-core --claude # Claude Code only
+bunx @rohirik/openltm-core --opencode
+bunx @rohirik/openltm-core --pi
+bunx @rohirik/openltm-core --dry-run --claude  # preview without writing
 ```
 
 The installer auto-detects which agents are installed on your machine and
@@ -20,7 +20,7 @@ idempotent — safe to run multiple times.
 
 ### Claude Code (`~/.claude/settings.json`)
 
-- Adds the `ltm` MCP server entry (`bunx @rohirik/ltm-core mcp-serve`)
+- Adds the `ltm` MCP server entry (`bunx @rohirik/openltm-core mcp-serve`)
 - Wires three lifecycle hooks: `SessionStart`, `PreCompact`, `PostEditCheck`
 
 ### OpenCode (`opencode.json`)
@@ -36,7 +36,7 @@ idempotent — safe to run multiple times.
 All agents share a single SQLite database:
 
 ```
-~/.claude/plugins/data/ltm-ltm/ltm.db
+~/.claude/plugins/data/OpenLtm-openltm/openltm.db
 ```
 
 ## CLI flags
@@ -55,7 +55,7 @@ config directories.
 ## Programmatic API
 
 ```typescript
-import { installClaude, installOpenCode, installPi, detectAgents } from "@rohirik/ltm-core/cli";
+import { installClaude, installOpenCode, installPi, detectAgents } from "@rohirik/openltm-core/cli";
 
 const detected = detectAgents(); // { claude: true, opencode: false, pi: false }
 const result = await installClaude({ dryRun: true });

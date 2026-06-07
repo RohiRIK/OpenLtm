@@ -1,6 +1,6 @@
-# HookIntegration — How Hooks Connect to ltm.db
+# HookIntegration — How Hooks Connect to openltm.db
 
-The four hooks that interact with `$CLAUDE_PLUGIN_DATA/ltm.db`:
+The four hooks that interact with `$CLAUDE_PLUGIN_DATA/openltm.db`:
 
 ## Hook → DB Action Table
 
@@ -15,7 +15,7 @@ The four hooks that interact with `$CLAUDE_PLUGIN_DATA/ltm.db`:
 
 All hooks check `existsSync(DB_PATH)` before importing DB modules.
 
-If `ltm.db` does not exist:
+If `openltm.db` does not exist:
 - Hooks fall back to reading/writing the 4 `.md` context files directly
 - `context-summary.md` is still written (from `.md` files)
 - Session context injection still works
@@ -24,7 +24,7 @@ This ensures the system degrades gracefully when the DB has not been initialized
 
 ## SessionStart LTM Injection
 
-When `ltm.db` exists, `SessionStart` calls `getContextMerge(project)` from `db.ts`:
+When `openltm.db` exists, `SessionStart` calls `getContextMerge(project)` from `db.ts`:
 - **Globals:** All memories with `importance = 5` (no project scope)
 - **Scoped:** Top 15 memories for the current project, ranked by importance DESC
 

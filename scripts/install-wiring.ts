@@ -30,17 +30,17 @@ if (!pluginData) {
 }
 
 if (pluginData) {
-  const targetDb  = join(pluginData, "ltm.db");
-  const legacyDb  = join(CLAUDE_DIR, "memory", "ltm.db");
+  const targetDb  = join(pluginData, "openltm.db");
+  const legacyDb  = join(CLAUDE_DIR, "memory", "openltm.db");
   const hasTarget = existsSync(targetDb);
   if (!hasTarget && existsSync(legacyDb)) {
     mkdirSync(pluginData, { recursive: true });
     copyFileSync(legacyDb, targetDb);
-    console.log(`  ✔ Migrated ltm.db → ${targetDb}`);
+    console.log(`  ✔ Migrated openltm.db → ${targetDb}`);
   } else if (!hasTarget) {
-    console.log("  ✔ Fresh install — ltm.db will be created on first run");
+    console.log("  ✔ Fresh install — openltm.db will be created on first run");
   } else {
-    console.log(`  ✔ ltm.db ready at ${targetDb}`);
+    console.log(`  ✔ openltm.db ready at ${targetDb}`);
   }
 }
 const settingsJson = join(CLAUDE_DIR, "settings.json");
@@ -69,11 +69,11 @@ const hooks: Record<string, HookEntry[]> = settings.hooks ?? {};
 settings.hooks = hooks;
 
 // ── Permissions: auto-allow the LTM MCP server so its tools never prompt ──────
-// MCP tools are registered as mcp__plugin_ltm_memory__<tool> (recall, learn,
+// MCP tools are registered as mcp__plugin_openltm_memory__<tool> (recall, learn,
 // forget, relate, context, context_items, graph). Without an allowlist entry
 // they prompt on every call. The whole-server rule grants all of them at once.
 // Mutated here so the writeFileSync in either install branch below persists it.
-const LTM_MCP_RULE = "mcp__plugin_ltm_memory";
+const LTM_MCP_RULE = "mcp__plugin_openltm_memory";
 const permissions: { allow?: string[]; deny?: string[] } = (settings.permissions ??= {});
 permissions.allow ??= [];
 if (!permissions.allow.includes(LTM_MCP_RULE)) {
@@ -205,8 +205,8 @@ const knownMarketplacesPath = join(CLAUDE_DIR, "plugins", "known_marketplaces.js
 if (existsSync(knownMarketplacesPath)) {
   const marketplaces = JSON.parse(readFileSync(knownMarketplacesPath, "utf-8"));
   const ltm = marketplaces.ltm;
-  if (ltm?.source?.source === "git" && ltm.source.url?.includes("RohiRIK/claude-ltm-plugin")) {
-    marketplaces.ltm.source = { source: "github", repo: "RohiRIK/claude-ltm-plugin" };
+  if (ltm?.source?.source === "git" && ltm.source.url?.includes("RohiRIK/OpenLtm")) {
+    marketplaces.ltm.source = { source: "github", repo: "RohiRIK/OpenLtm" };
     writeFileSync(knownMarketplacesPath, JSON.stringify(marketplaces, null, 2));
     console.log("  ✔ Switched ltm marketplace source to github (enables API-based update checks)");
   }

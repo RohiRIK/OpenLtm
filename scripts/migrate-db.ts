@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * migrate-db.ts
- * Detects where ltm.db lives and migrates it to CLAUDE_PLUGIN_DATA if needed.
+ * Detects where openltm.db lives and migrates it to CLAUDE_PLUGIN_DATA if needed.
  *
  * Exit codes: 0 = ok, 1 = error
  */
@@ -11,7 +11,7 @@ import { join } from "path";
 import { homedir } from "os";
 
 const CLAUDE_DIR   = join(homedir(), ".claude");
-const legacyDb     = join(CLAUDE_DIR, "memory", "ltm.db");
+const legacyDb     = join(CLAUDE_DIR, "memory", "openltm.db");
 const pluginData   = process.env.CLAUDE_PLUGIN_DATA;
 const ltmDbPath    = process.env.LTM_DB_PATH;
 
@@ -27,7 +27,7 @@ if (ltmDbPath) {
 
 // 2. Marketplace install (CLAUDE_PLUGIN_DATA set)
 if (pluginData) {
-  const targetDb = join(pluginData, "ltm.db");
+  const targetDb = join(pluginData, "openltm.db");
   const hasTarget = existsSync(targetDb);
   const hasLegacy = existsSync(legacyDb);
 
@@ -51,7 +51,7 @@ if (pluginData) {
     console.log(`✅ Migration complete (${(size / 1024).toFixed(1)} KB)`);
     console.log(`ℹ  Legacy DB kept at ${legacyDb} — safe to delete manually.`);
   } else {
-    console.log(`✅ Fresh install — no legacy DB found. ltm.db will be created at:`);
+    console.log(`✅ Fresh install — no legacy DB found. openltm.db will be created at:`);
     console.log(`   ${targetDb}`);
   }
   process.exit(0);
@@ -65,5 +65,5 @@ if (hasLegacy) {
   const size = statSync(legacyDb).size;
   console.log(`✅ DB found (${(size / 1024).toFixed(1)} KB) — no migration needed.`);
 } else {
-  console.log(`✅ Fresh install — ltm.db will be created on first write.`);
+  console.log(`✅ Fresh install — openltm.db will be created on first write.`);
 }

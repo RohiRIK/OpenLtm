@@ -93,8 +93,8 @@ export default function SystemSection() {
             <dl className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
               <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-md border border-dashed border-[var(--border)]">
                 <dt className="text-[var(--text-muted)]">Path</dt>
-                <dd className="font-mono text-[var(--text-primary)] truncate" title={dbPath || "ltm.db (next to plugin)"}>
-                  {dbPath || "ltm.db"}
+                <dd className="font-mono text-[var(--text-primary)] truncate" title={dbPath || "openltm.db (next to plugin)"}>
+                  {dbPath || "openltm.db"}
                 </dd>
               </div>
               <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-md border border-dashed border-[var(--border)]">

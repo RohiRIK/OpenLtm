@@ -1,5 +1,5 @@
 import type { ToolDefinition } from "@opencode-ai/plugin";
-import { recall, learn, forget, relate, getContextMerge } from "@rohirik/ltm-core";
+import { recall, learn, forget, relate, getContextMerge } from "@rohirik/openltm-core";
 
 export function buildTools(_dbPath: string): ToolDefinition[] {
   return [

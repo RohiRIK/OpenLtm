@@ -78,7 +78,7 @@ export function mergeMcpEntry(
  * @param settings - Existing Claude settings object (not mutated).
  * @param hookName - Event name e.g. `"SessionStart"`.
  * @param command  - Executable e.g. `"bunx"`.
- * @param args     - Argument list e.g. `["@rohirik/ltm-core", "hook", "--name", "SessionStart"]`.
+ * @param args     - Argument list e.g. `["@rohirik/openltm-core", "hook", "--name", "SessionStart"]`.
  */
 export function wireHooks(
   settings: ClaudeSettings,

@@ -44,7 +44,7 @@ The 21Dev/Referral principles that drove these cuts:
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│  [🧠 OpenLTM]  [⌥ claude-ltm-plugin ▾]   Projects  Graph  Inbox(3)  Settings  ···  [⌘K Search...]  ···  [● live · 82] [☾] │
+│  [🧠 OpenLTM]  [⌥ OpenLtm ▾]   Projects  Graph  Inbox(3)  Settings  ···  [⌘K Search...]  ···  [● live · 82] [☾] │
 └────────────────────────────────────────────────────────────────────────┘
        │              │                    └──── 4 nav items ────┘                  │                  └─ status ─┘
        │              └─ Project Switcher (always visible, click to swap)         └─ Omnibar (already built)
@@ -88,7 +88,7 @@ The cognitive science of navigation (Jakob Nielsen, Edward Tufte, the *Informati
 
 A **Project** is the unit of work that memory is anchored to. It is:
 
-- **Bounded** — a folder, repo, or topic ("claude-ltm-plugin", "ai-soc-assistant", "general architecture").
+- **Bounded** — a folder, repo, or topic ("OpenLtm", "ai-soc-assistant", "general architecture").
 - **Has a goal** — 1-3 sentences captured at registration. This is the first thing injected at SessionStart.
 - **Has captured state** — goal · decisions · progress · gotchas. These are the *context* that Claude sees.
 - **Has memories** — discrete insights (preference, pattern, gotcha, decision) that can be recalled, related, decayed, redacted.
@@ -118,7 +118,7 @@ The current product has all of these but crammed into one 263-line page (see `ap
 The default landing for a project. What the user sees when they "open" a project.
 
 **Above the fold (one screen, no scroll):**
-- **Project name + health chip** (e.g., "claude-ltm-plugin · 82/100 · 🟢")
+- **Project name + health chip** (e.g., "OpenLtm · 82/100 · 🟢")
 - **Goal** — 1-3 sentences, editable inline. The first thing any new agent sees.
 - **State panel** — 4 columns: Goals · Decisions · Progress · Gotchas (collapsible)
 - **Mini-graph** — small, low-detail, shows last 30 days of activity. Click to open Connections view.
@@ -188,13 +188,13 @@ The "F" nav item in the current product was a partial project switcher with no I
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  [🧠 OpenLTM]  [⌥ claude-ltm-plugin ▾]      Projects  Graph … │
+│  [🧠 OpenLTM]  [⌥ OpenLtm ▾]      Projects  Graph … │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 - Lives to the right of the logo, before the nav pills
 - Click → dropdown of all registered projects + **"All projects (global)"** (first-class option, per Q4) + "Add new project"
-- **Memory injection scope follows this switcher** — when you're "in" claude-ltm-plugin, that project is the default scope for recall and graph
+- **Memory injection scope follows this switcher** — when you're "in" OpenLtm, that project is the default scope for recall and graph
 - The switcher persists across page navigation (it's a global context, not a per-page state)
 
 This is what the "F" was trying to be, but with proper IA and visual weight.
@@ -223,7 +223,7 @@ The current graph is a **free-form force-directed cluster of all memories across
 
 A spatial overview, but **opinionated structure** — not a free-for-all.
 
-- **Auto-clustered by topic** using the existing `clusters` API. Each cluster is labeled (e.g., "auth & RLS", "Bun tooling", "claude-ltm-plugin internals") with a colored hull.
+- **Auto-clustered by topic** using the existing `clusters` API. Each cluster is labeled (e.g., "auth & RLS", "Bun tooling", "OpenLtm internals") with a colored hull.
 - **Project boundary visible** when in "all projects" mode — nodes from each project get a subtle background tint.
 - **Category colors preserved** — the existing `nodeColors.ts` system stays.
 - **Selection model:**
@@ -373,7 +373,7 @@ The new Settings has 5 clearly separated sections, in this order:
 - **At-risk memories** count
 - **Pending learnings** count
 - **Hook status** (SessionStart, PreCompact, EvaluateSession, UpdateContext)
-- **Run diagnostics** button (replaces the old `/ltm:doctor`)
+- **Run diagnostics** button (replaces the old `/openltm:doctor`)
 - **Last decay scan** timestamp
 
 #### Section 4: Advanced (collapsed by default)
@@ -404,7 +404,7 @@ Some settings are global (one value for the whole system), some are per-project 
 - **System-level settings** (default, in Settings)
 - **Project-level overrides** (in `/projects/:name/settings` — a new sub-route)
 
-Example: Inject top N. The system default is 15. The project "claude-ltm-plugin" might want 25 (it has more memory). The user goes to that project's settings to override.
+Example: Inject top N. The system default is 15. The project "OpenLtm" might want 25 (it has more memory). The user goes to that project's settings to override.
 
 UI pattern: Each Behavior setting has two controls — "Default (system)" and "Override for this project." Override is opt-in.
 

@@ -1,4 +1,4 @@
-/** Canonical event names written to hooks.log — consumed by /ltm:health for activity aggregation. */
+/** Canonical event names written to hooks.log — consumed by /openltm:health for activity aggregation. */
 export const EVENTS = {
   SESSION_START:      "session.start",
   SESSION_EVALUATED:  "session.evaluated",

@@ -16,7 +16,7 @@ import type { LtmCoreConfig } from "./adapterTypes.js";
 export let DB_PATH = getDbPath();
 let SCHEMA_PATH = getSchemaPath();
 
-/** Configure ltm-core with host-specific paths. Call before first getDb(). */
+/** Configure openltm-core with host-specific paths. Call before first getDb(). */
 export function configure(config: LtmCoreConfig): void {
   DB_PATH = config.dbPath;
   if (config.schemaPath) SCHEMA_PATH = config.schemaPath;

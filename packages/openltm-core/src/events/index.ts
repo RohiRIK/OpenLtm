@@ -96,7 +96,7 @@ export function isCrossProcessSyncEnabled(): boolean {
 
 /**
  * Push a `memory_added` event so sibling agent processes (Claude Code,
- * OpenCode, Pi) sharing one ltm.db can react to a memory created elsewhere.
+ * OpenCode, Pi) sharing one openltm.db can react to a memory created elsewhere.
  * No-op unless the `ltm.crossProcessSync` flag is on AND Honker is available.
  * Returns true only when the notify was actually sent.
  */

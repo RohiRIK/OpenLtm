@@ -153,7 +153,7 @@ describe("runInstallCli — orchestration", () => {
     const settings = JSON.parse(
       readFileSync(join(tmpDir, ".claude", "settings.json"), "utf8"),
     ) as Record<string, unknown>;
-    const ltm = (settings["mcpServers"] as Record<string, unknown>)["ltm"] as {
+    const ltm = (settings["mcpServers"] as Record<string, unknown>)["openltm"] as {
       command: string;
     };
     expect(ltm.command).toBe("bunx");

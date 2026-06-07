@@ -90,7 +90,7 @@ export interface CliRunResult {
 }
 
 /**
- * runInstallCli — main orchestrator for the `bunx @rohirik/ltm-core` flow.
+ * runInstallCli — main orchestrator for the `bunx @rohirik/openltm-core` flow.
  *
  * 1. If no target flags → call detectAgents()
  * 2. If nothing found and no flags → exit 2
@@ -178,7 +178,7 @@ export async function runInstallCli(opts: CliRunOpts): Promise<CliRunResult> {
   const hasErrors = results.some((r) => r.status === "error");
 
   if (!silent) {
-    clack.outro("Done. Shared DB: ~/.claude/plugins/data/ltm-ltm/ltm.db");
+    clack.outro("Done. Shared DB: ~/.claude/plugins/data/OpenLtm-openltm/openltm.db");
   }
 
   return { exitCode: hasErrors ? 1 : 0, results };

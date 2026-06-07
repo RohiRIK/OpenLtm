@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { buildExplainer, computeTemperature } from "@rohirik/ltm-core";
+import { buildExplainer, computeTemperature } from "@rohirik/openltm-core";
 const now = new Date().toISOString();
 const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
 

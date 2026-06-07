@@ -1,5 +1,5 @@
 import type { Hooks } from "@opencode-ai/plugin";
-import { recall } from "@rohirik/ltm-core";
+import { recall } from "@rohirik/openltm-core";
 
 const MAX_CONTEXT_MEMORIES = 10;
 const PRIOR_KNOWLEDGE_HEADER = "## Prior Knowledge (LTM)\n\n";

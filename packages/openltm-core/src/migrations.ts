@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * migrations.ts — Versioned schema migration runner for ltm.db
+ * migrations.ts — Versioned schema migration runner for openltm.db
  * Uses bun:sqlite and Bun file APIs exclusively.
  *
  * CLI: bun migrations.ts [--status | --up | --down | --reset]
@@ -117,7 +117,7 @@ export interface EnforceRetentionResult {
 /**
  * Enforce a maximum number of .bak files alongside the database.
  *
- * Filenames are `ltm.db.bak-<ISO-timestamp>`. ISO timestamps sort lexically,
+ * Filenames are `openltm.db.bak-<ISO-timestamp>`. ISO timestamps sort lexically,
  * so sorting by filename = sorting by creation time. We keep the newest N
  * and delete the rest. Files newer than `gracePeriodMs` (default 60s) are
  * skipped to avoid racing with a concurrent writer.
@@ -139,7 +139,7 @@ export async function enforceRetention(
     return result;
   }
 
-  const files = readdirSync(dir).filter((f) => f.startsWith("ltm.db.bak-"));
+  const files = readdirSync(dir).filter((f) => f.startsWith("openltm.db.bak-"));
   if (files.length === 0) return result;
 
   const now = Date.now();

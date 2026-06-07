@@ -22,15 +22,15 @@ export const REGISTRY_PATH = join(PROJECTS_DIR, "registry.json");
 export function getDbPath(): string {
   if (process.env.LTM_DB_PATH) return process.env.LTM_DB_PATH;
   if (process.env.CLAUDE_PLUGIN_DATA) {
-    const targetDb = join(process.env.CLAUDE_PLUGIN_DATA, "ltm.db");
-    const legacyDb = join(CLAUDE_DIR, "memory", "ltm.db");
+    const targetDb = join(process.env.CLAUDE_PLUGIN_DATA, "openltm.db");
+    const legacyDb = join(CLAUDE_DIR, "memory", "openltm.db");
     if (!existsSync(targetDb) && existsSync(legacyDb)) {
       mkdirSync(process.env.CLAUDE_PLUGIN_DATA, { recursive: true });
       copyFileSync(legacyDb, targetDb);
     }
     return targetDb;
   }
-  return join(CLAUDE_DIR, "memory", "ltm.db");
+  return join(CLAUDE_DIR, "memory", "openltm.db");
 }
 
 export interface ProjectResolution {

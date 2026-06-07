@@ -10,7 +10,7 @@ export interface LtmCoreConfig {
   autoRelate?: boolean;
 }
 
-/** Session context passed from the host to ltm-core hooks. */
+/** Session context passed from the host to openltm-core hooks. */
 export interface LtmAdapterContext {
   cwd: string;
   project?: string;

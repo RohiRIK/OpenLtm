@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# claude-ltm-plugin installer (dev/git-clone flow)
+# OpenLtm installer (dev/git-clone flow)
 # Safe to run multiple times.
-# db lives at ~/.claude/memory/ltm.db — never touched by this script.
+# db lives at ~/.claude/memory/openltm.db — never touched by this script.
 #
 # Usage:
-#   git clone https://github.com/RohiRIK/claude-ltm-plugin ~/Projects/claude-ltm-plugin
-#   cd ~/Projects/claude-ltm-plugin && bash install.sh
+#   git clone https://github.com/RohiRIK/OpenLtm ~/Projects/OpenLtm
+#   cd ~/Projects/OpenLtm && bash install.sh
 
 set -e
 
 PLUGIN_ROOT="$(cd "$(dirname "$0")" && pwd)"
-DB_PATH="$HOME/.claude/memory/ltm.db"
+DB_PATH="$HOME/.claude/memory/openltm.db"
 
-echo "claude-ltm-plugin installer"
+echo "OpenLtm installer"
 echo "Plugin root: $PLUGIN_ROOT"
 echo ""
 

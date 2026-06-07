@@ -2,7 +2,7 @@
  * Pi extension entry point.
  *
  * Pi loads extensions with Node.js, not Bun — so bun:sqlite is unavailable.
- * We bridge LTM tools by spawning the ltm-core MCP server as a Bun child
+ * We bridge LTM tools by spawning the openltm-core MCP server as a Bun child
  * process and proxying calls via newline-delimited JSON-RPC (MCP stdio transport).
  *
  * Pattern adapted from context-mode's Pi adapter (MIT).
@@ -59,10 +59,10 @@ function findMcpServer(): string | null {
       // continue to next strategy
     }
   }
-  // 2. ltm-core package (if mcp-server is added in a future version)
+  // 2. openltm-core package (if mcp-server is added in a future version)
   try {
     const req = createRequire(import.meta.url);
-    const pkgJson = req.resolve("@rohirik/ltm-core/package.json");
+    const pkgJson = req.resolve("@rohirik/openltm-core/package.json");
     const script = resolve(dirname(pkgJson), "src", "mcp-server.ts");
     if (existsSync(script)) return script;
   } catch {

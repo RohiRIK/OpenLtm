@@ -1,5 +1,5 @@
 /**
- * cli.test.ts — unit tests for packages/ltm-core/src/cli/types.ts and cli/install.ts
+ * cli.test.ts — unit tests for packages/openltm-core/src/cli/types.ts and cli/install.ts
  *
  * RED phase: these tests are written before implementation.
  * They define the contract for the CLI installer stub.

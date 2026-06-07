@@ -17,7 +17,7 @@ const dbPath = `/tmp/test-ltm-decay-unit-${process.pid}-${Date.now()}.db`;
 const schemaPath = join(import.meta.dir, "..", "..", "..", "src", "schema.sql");
 
 let db: Database;
-let runDecay: typeof import("@rohirik/ltm-core").runDecay;
+let runDecay: typeof import("@rohirik/openltm-core").runDecay;
 
 function daysAgoSql(n: number): string {
   return new Date(Date.now() - n * 86_400_000).toISOString();
@@ -56,13 +56,13 @@ beforeAll(async () => {
   db.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
   db.exec(readFileSync(schemaPath, "utf-8"));
 
-  const { _setDbForTesting } = await import("@rohirik/ltm-core");
+  const { _setDbForTesting } = await import("@rohirik/openltm-core");
   _setDbForTesting(db);
 
-  const { runPendingMigrations } = await import("@rohirik/ltm-core");
+  const { runPendingMigrations } = await import("@rohirik/openltm-core");
   await runPendingMigrations(db);
 
-  const mod = await import("@rohirik/ltm-core");
+  const mod = await import("@rohirik/openltm-core");
   runDecay = mod.runDecay;
 }, 30_000);
 
@@ -144,7 +144,7 @@ describe("runDecay() SQL batch", () => {
 
 describe("touchMemory()", () => {
   it("updates last_used_at to a more recent value", async () => {
-    const { touchMemory } = await import("@rohirik/ltm-core");
+    const { touchMemory } = await import("@rohirik/openltm-core");
     // Insert with an explicit old SQLite-format timestamp so comparison is unambiguous
     const oldTs = "2020-01-01 00:00:00";
     db.run(

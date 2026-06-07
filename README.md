@@ -48,25 +48,25 @@ Four ideas. No exceptions.
 ### Marketplace (recommended)
 
 ```bash
-claude plugin marketplace add https://github.com/RohiRIK/claude-ltm-plugin
+claude plugin marketplace add https://github.com/RohiRIK/OpenLtm
 claude plugin install ltm
 ```
 
-Restart Claude Code. That's it. Four Claude Code hooks + one git post-commit hook auto-wire, four commands load, five skills activate, and your `ltm.db` migrates or creates itself.
+Restart Claude Code. That's it. Four Claude Code hooks + one git post-commit hook auto-wire, four commands load, five skills activate, and your `openltm.db` migrates or creates itself.
 
 ### bunx (no clone)
 
 ```bash
-bunx @rohirik/ltm-core          # auto-detect Claude Code, OpenCode
-bunx @rohirik/ltm-core --pi     # experimental Pi adapter
-bunx @rohirik/ltm-core --dry-run --claude  # preview without writing
+bunx @rohirik/openltm-core          # auto-detect Claude Code, OpenCode
+bunx @rohirik/openltm-core --pi     # experimental Pi adapter
+bunx @rohirik/openltm-core --dry-run --claude  # preview without writing
 ```
 
 ### Dev / git clone
 
 ```bash
-git clone https://github.com/RohiRIK/claude-ltm-plugin ~/Projects/claude-ltm-plugin
-cd ~/Projects/claude-ltm-plugin && bash install.sh
+git clone https://github.com/RohiRIK/OpenLtm ~/Projects/OpenLtm
+cd ~/Projects/OpenLtm && bash install.sh
 ```
 
 ---
@@ -78,10 +78,10 @@ Start a new session. Context is injected at the top automatically.
 Then try:
 
 ```
-/ltm:memory recall auth       — what do we know about auth in this project?
-/ltm:memory learn <insight>   — save something worth keeping
-/ltm:health                   — memory health + decay summary
-/ltm:project init             — set a goal for the current project
+/openltm:memory recall auth       — what do we know about auth in this project?
+/openltm:memory learn <insight>   — save something worth keeping
+/openltm:health                   — memory health + decay summary
+/openltm:project init             — set a goal for the current project
 ```
 
 That's it. The rest is hooks doing the work.
@@ -94,7 +94,7 @@ That's it. The rest is hooks doing the work.
 Claude Code
    │
    ├── 4 Commands  ──┐
-   ├── 5 Skills    ──┼──▶  ltm MCP server  ──▶  ltm.db
+   ├── 5 Skills    ──┼──▶  ltm MCP server  ──▶  openltm.db
    └── 5 Hooks     ──┘                        (memories, tags,
                                                 context_items,
                                                 memory_relations,
@@ -108,11 +108,11 @@ Full deep-dive — schema, hook architecture, decay formula, ADRs — in [How It
 ## Verify
 
 ```bash
-/ltm:health                    # plugin health + hooks + decay
-/ltm:memory recall test        # returns results (or "no results" on fresh install)
+/openltm:health                    # plugin health + hooks + decay
+/openltm:memory recall test        # returns results (or "no results" on fresh install)
 ```
 
-Start a new session — you should see context injected at the top. If not, run `/ltm:health` to diagnose.
+Start a new session — you should see context injected at the top. If not, run `/openltm:health` to diagnose.
 
 ---
 
@@ -137,7 +137,7 @@ Open an issue first to discuss the change. PRs welcome.
 
 Every change requires a version bump in both `package.json` and `.claude-plugin/plugin.json`. See [Changelog](CHANGELOG.md) for conventions.
 
-[Report a Bug](https://github.com/RohiRIK/claude-ltm-plugin/issues)
+[Report a Bug](https://github.com/RohiRIK/OpenLtm/issues)
 
 ---
 

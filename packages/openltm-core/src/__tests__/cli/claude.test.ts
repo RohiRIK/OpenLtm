@@ -39,7 +39,7 @@ describe("installClaude", () => {
     const s = readSettings(tmpDir);
     const servers = s["mcpServers"] as Record<string, unknown>;
     expect(servers).toBeDefined();
-    expect(servers["ltm"]).toBeDefined();
+    expect(servers["openltm"]).toBeDefined();
 
     const hooks = s["hooks"] as Record<string, unknown[]>;
     expect(hooks).toBeDefined();
@@ -72,7 +72,7 @@ describe("installClaude", () => {
     const s = readSettings(tmpDir);
     const servers = s["mcpServers"] as Record<string, unknown>;
     expect(servers["existingTool"]).toBeDefined();
-    expect(servers["ltm"]).toBeDefined();
+    expect(servers["openltm"]).toBeDefined();
   });
 
   it("dryRun=true does not write any files", async () => {
@@ -97,12 +97,12 @@ describe("installClaude", () => {
     await installClaude({ homedir: tmpDir });
 
     const s = readSettings(tmpDir);
-    const ltm = (s["mcpServers"] as Record<string, unknown>)["ltm"] as {
+    const ltm = (s["mcpServers"] as Record<string, unknown>)["openltm"] as {
       command: string;
       args: string[];
     };
     expect(ltm.command).toBe("bunx");
-    expect(ltm.args).toEqual(["@rohirik/ltm-core", "mcp-serve"]);
+    expect(ltm.args).toEqual(["@rohirik/openltm-core", "mcp-serve"]);
   });
 
   it("includes all 3 hook events with correct command", async () => {
@@ -116,7 +116,7 @@ describe("installClaude", () => {
       const entries = hooks[event];
       expect(entries.length).toBeGreaterThan(0);
       expect(entries[0]!.command).toBe("bunx");
-      expect(entries[0]!.args[0]).toBe("@rohirik/ltm-core");
+      expect(entries[0]!.args[0]).toBe("@rohirik/openltm-core");
     }
   });
 });

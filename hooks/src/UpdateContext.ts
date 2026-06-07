@@ -6,7 +6,7 @@ import { resolveProject, PROJECTS_DIR, CLAUDE_DIR, getDbPath } from "../lib/reso
 import { readStdinPassthrough, parseHookInput, readFileSafe, appendLine, trimToLines, safeRun } from "../lib/hookUtils.js";
 import { logHook, logEvent } from "../lib/hookLogger.js";
 import { EVENTS } from "../lib/eventNames.js";
-import { appendProgress, addDecision, addGotcha, emitEvent } from "@rohirik/ltm-core";
+import { appendProgress, addDecision, addGotcha, emitEvent } from "@rohirik/openltm-core";
 
 const TOOL_NAMES = new Set(["Write", "Edit", "MultiEdit"]);
 const MAX_PROGRESS_LINES = 20;

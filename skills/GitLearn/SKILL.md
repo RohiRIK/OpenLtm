@@ -69,10 +69,10 @@ skip, how to map categories, and which fields to store.
 
 Relay the subagent's table and total. Memories are stored with
 `source: "git-commit:<hash>"` and file-path tags, queryable via
-`mcp__plugin_ltm_memory__recall`.
+`mcp__plugin_openltm_memory__recall`.
 
 ## Memory Integration
 
-- Before: `mcp__plugin_ltm_memory__recall query="git commit patterns"` — check what's
+- Before: `mcp__plugin_openltm_memory__recall query="git commit patterns"` — check what's
   already stored, so the subagent reinforces rather than duplicates.
 - After: confirm new rows with a recall scoped to the project.

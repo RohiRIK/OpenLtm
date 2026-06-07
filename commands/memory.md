@@ -8,32 +8,32 @@ Parse the first word of the arguments as `<subcommand>`. Pass remaining words as
 If no subcommand given, show:
 
 ```
-Usage: /ltm:memory <subcommand>
+Usage: /openltm:memory <subcommand>
 
   recall   — search memories
-              /ltm:memory recall [query] [--category X] [--project X] [--limit N]
+              /openltm:memory recall [query] [--category X] [--project X] [--limit N]
 
   learn    — store insight
-              /ltm:memory learn [insight] [--category X] [--importance N] [--save-context]
+              /openltm:memory learn [insight] [--category X] [--importance N] [--save-context]
 
   forget   — delete memory by ID
-              /ltm:memory forget <id> [reason]
+              /openltm:memory forget <id> [reason]
 
   relate   — link two memories
-              /ltm:memory relate <src-id> <tgt-id> <type>
+              /openltm:memory relate <src-id> <tgt-id> <type>
 
   propose  — review pending memory proposals from EvaluateSession
-              /ltm:memory propose            — list all pending proposals
-              /ltm:memory propose review     — show proposals interactively
-              /ltm:memory propose accept <session-id> <index>
-              /ltm:memory propose reject <session-id> <index>
+              /openltm:memory propose            — list all pending proposals
+              /openltm:memory propose review     — show proposals interactively
+              /openltm:memory propose accept <session-id> <index>
+              /openltm:memory propose reject <session-id> <index>
 ```
 
 ---
 
 ## recall
 
-Search LTM memories. Call `mcp__plugin_ltm_memory__recall` with parsed args:
+Search LTM memories. Call `mcp__plugin_openltm_memory__recall` with parsed args:
 
 | Arg | Field |
 |-----|-------|
@@ -50,7 +50,7 @@ FTS5 supports `AND`, `OR`, `NOT`, phrase matching (`"bun sqlite"`). Results rank
 
 ## learn
 
-Store a memory via `mcp__plugin_ltm_memory__learn`. Parse args:
+Store a memory via `mcp__plugin_openltm_memory__learn`. Parse args:
 
 | Arg | Field | Default |
 |-----|-------|---------|
@@ -86,10 +86,10 @@ console.log('ok');
 
 ## forget
 
-1. Recall the memory to show what will be deleted: `mcp__plugin_ltm_memory__recall` with the ID or a targeted query.
+1. Recall the memory to show what will be deleted: `mcp__plugin_openltm_memory__recall` with the ID or a targeted query.
 2. Show the user: content, tags, relations.
 3. Confirm before deleting.
-4. Call `mcp__plugin_ltm_memory__forget` with `{ id }`.
+4. Call `mcp__plugin_openltm_memory__forget` with `{ id }`.
 5. Report: `Deleted [id]. N relations removed.`
 
 Requires explicit ID — use `recall` first if needed. Irreversible.
@@ -98,7 +98,7 @@ Requires explicit ID — use `recall` first if needed. Irreversible.
 
 ## relate
 
-Call `mcp__plugin_ltm_memory__relate` with `{ source_id, target_id, relationship_type }`.
+Call `mcp__plugin_openltm_memory__relate` with `{ source_id, target_id, relationship_type }`.
 
 | Type | Meaning |
 |------|---------|

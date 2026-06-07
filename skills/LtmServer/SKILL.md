@@ -8,7 +8,7 @@ version: 1.1.0
 
 # LTM Graph Server
 
-Obsidian-style force graph at **http://localhost:7332** visualizing `ltm.db`.
+Obsidian-style force graph at **http://localhost:7332** visualizing `openltm.db`.
 
 ## Quick Reference
 

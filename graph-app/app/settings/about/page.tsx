@@ -26,7 +26,7 @@ export default function AboutSection() {
           schemaVersion: 4,
           lastRecall: null,
           license: "MIT — © RohiRIK",
-          feedbackUrl: "https://github.com/RohiRIK/claude-ltm-plugin/issues",
+          feedbackUrl: "https://github.com/RohiRIK/OpenLtm/issues",
           changelogHref: "/api/changelog",
         });
       })

@@ -1,8 +1,8 @@
 # MemoryReference — LTM Command Reference
 
-Full reference for `/ltm:memory learn`, `/ltm:memory recall`, `/ltm:memory forget`, and `/ltm:memory relate`, backed by `$CLAUDE_PLUGIN_ROOT/src/db.ts`.
+Full reference for `/openltm:memory learn`, `/openltm:memory recall`, `/openltm:memory forget`, and `/openltm:memory relate`, backed by `$CLAUDE_PLUGIN_ROOT/src/db.ts`.
 
-## /ltm:memory learn — Store an Insight
+## /openltm:memory learn — Store an Insight
 
 **When to use:** After discovering a non-obvious pattern, gotcha, preference, or architecture decision that should survive across projects and sessions.
 
@@ -44,17 +44,17 @@ const memId = promote(itemId); // returns new memory id, or null if not promotab
 
 ---
 
-## /ltm:memory recall — Search Memories
+## /openltm:memory recall — Search Memories
 
 **When to use:** Before starting work on a topic to surface relevant past decisions. Skip for trivial one-liners.
 
 **Syntax:**
 ```
-/ltm:memory recall [query]
-/ltm:memory recall [query] --tags tag1,tag2
-/ltm:memory recall [query] --category pattern
-/ltm:memory recall [query] --project myapp
-/ltm:memory recall [query] --limit 10
+/openltm:memory recall [query]
+/openltm:memory recall [query] --tags tag1,tag2
+/openltm:memory recall [query] --category pattern
+/openltm:memory recall [query] --project myapp
+/openltm:memory recall [query] --limit 10
 ```
 
 **FTS5 query syntax:**
@@ -67,13 +67,13 @@ const memId = promote(itemId); // returns new memory id, or null if not promotab
 
 ---
 
-## /ltm:memory forget — Delete a Memory
+## /openltm:memory forget — Delete a Memory
 
 **When to use:** When a memory is wrong, stale, or superseded.
 
 **Steps:**
-1. Run `/ltm:memory recall <topic>` first to find the memory ID
-2. Run `/ltm:memory forget <id> [reason]`
+1. Run `/openltm:memory recall <topic>` first to find the memory ID
+2. Run `/openltm:memory forget <id> [reason]`
 3. Confirm with user before deletion (irreversible)
 4. CASCADE removes all `memory_tags` and `memory_relations` rows
 
@@ -85,11 +85,11 @@ forget({ id, reason });
 
 ---
 
-## /ltm:memory relate — Link Two Memories
+## /openltm:memory relate — Link Two Memories
 
 **When to use:** When you recognize a conceptual connection between two existing memories.
 
-**Syntax:** `/ltm:memory relate <src_id> <tgt_id> <type>`
+**Syntax:** `/openltm:memory relate <src_id> <tgt_id> <type>`
 
 **Relationship types:**
 | Type | Meaning |

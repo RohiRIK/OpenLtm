@@ -10,7 +10,7 @@ import { extractProposals } from "../lib/llmExtract.js";
 import { writeProposals, type MemoryProposal } from "../lib/proposalQueue.js";
 import { readConfigSync } from "../../src/config.js";
 import type { Config } from "../../src/config.js";
-import { emitEvent } from "@rohirik/ltm-core";
+import { emitEvent } from "@rohirik/openltm-core";
 
 const PLUGIN_ROOT = process.env.CLAUDE_PLUGIN_ROOT ?? join(CLAUDE_DIR, "memory");
 const LEARNED_DIR = join(PLUGIN_ROOT, "skills", "Learned");
@@ -23,7 +23,7 @@ const MIN_SESSION_MESSAGES = 5; // Lowered for testing
 
 // Proposals dir: ${CLAUDE_PLUGIN_DATA}/proposals/ or fallback to plugin data dir
 const PLUGIN_DATA_DIR = process.env.CLAUDE_PLUGIN_DATA
-  ?? join(homedir(), ".claude", "plugins", "data", "ltm-ltm");
+  ?? join(homedir(), ".claude", "plugins", "data", "OpenLtm-openltm");
 const PROPOSALS_DIR = join(PLUGIN_DATA_DIR, "proposals");
 
 async function findTranscript(sessionId: string | undefined): Promise<{ path: string, id: string } | null> {

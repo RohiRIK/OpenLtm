@@ -3,7 +3,7 @@
  *
  * Honker (durable queues, pub/sub, scheduler) is an OPTIONAL loadable SQLite
  * extension. honker-bun's `open()` manages its OWN connection + update watcher
- * over the same ltm.db file, so queue/events/scheduler share a single handle
+ * over the same openltm.db file, so queue/events/scheduler share a single handle
  * created here. Everything degrades to null when:
  *   - the capability probe reports honker unavailable (getCapabilities().honker)
  *   - LTM_HONKER_EXT is unset / the binary is missing

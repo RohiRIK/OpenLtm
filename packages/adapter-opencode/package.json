@@ -13,7 +13,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/RohiRIK/claude-ltm-plugin"
+    "url": "https://github.com/RohiRIK/OpenLtm"
   },
   "keywords": [
     "opencode",
@@ -26,7 +26,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@rohirik/ltm-core": "workspace:*",
+    "@rohirik/openltm-core": "workspace:*",
     "zod": "^3.0.0"
   },
   "peerDependencies": {

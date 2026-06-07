@@ -2,11 +2,11 @@
  * cli/hook.ts — Hook dispatcher stub.
  *
  * Full hook logic lives in the Claude Code plugin (hooks/src/).
- * When invoked via `bunx @rohirik/ltm-core hook --name <hookName>`, this
+ * When invoked via `bunx @rohirik/openltm-core hook --name <hookName>`, this
  * stub exits cleanly (exit 0) so Claude Code does not treat the absent hook
  * runner as an error.
  *
- * A future phase can wire actual hook logic here once ltm-core ships the
+ * A future phase can wire actual hook logic here once openltm-core ships the
  * compiled hook handlers.
  */
 

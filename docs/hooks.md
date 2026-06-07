@@ -2,7 +2,7 @@
 
 Hooks are the lifeblood of OpenLTM. They run automatically at session boundaries — no manual setup, no opt-in checklist, no "remember to run this." On install, four Claude Code lifecycle hooks and one git post-commit hook wire themselves automatically. You see them only when something goes wrong.
 
-If a hook fails, run `/ltm:health` to diagnose.
+If a hook fails, run `/openltm:health` to diagnose.
 
 ---
 

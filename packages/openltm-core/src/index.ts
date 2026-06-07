@@ -1,4 +1,4 @@
-// @rohirik/ltm-core — public API
+// @rohirik/openltm-core — public API
 export type { LtmCoreConfig, LtmAdapterContext, LtmAdapterOptions } from "./adapterTypes.js";
 
 // DB singleton + configuration

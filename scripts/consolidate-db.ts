@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * consolidate-db.ts — CLI tool to detect, report, and merge duplicate ltm.db files.
+ * consolidate-db.ts — CLI tool to detect, report, and merge duplicate openltm.db files.
  *
  * Usage:
  *   bun run scripts/consolidate-db.ts [--dry-run]
@@ -37,12 +37,12 @@ function getKnownPaths(): { label: string; path: string }[] {
       path: getDbPath({ skipAutoMigrate: true }),
     },
     {
-      label: "legacy (~/.claude/memory/ltm.db)",
-      path: join(HOME, ".claude", "memory", "ltm.db"),
+      label: "legacy (~/.claude/memory/openltm.db)",
+      path: join(HOME, ".claude", "memory", "openltm.db"),
     },
     {
-      label: "dev (data/ltm.db)",
-      path: join(import.meta.dir, "..", "data", "ltm.db"),
+      label: "dev (data/openltm.db)",
+      path: join(import.meta.dir, "..", "data", "openltm.db"),
     },
   ];
 }
@@ -201,7 +201,7 @@ async function main(): Promise<void> {
   const existing = infos.filter((i) => i.exists && !i.error);
 
   if (existing.length === 0) {
-    console.log("\n⚠  No ltm.db files found. Nothing to consolidate.");
+    console.log("\n⚠  No openltm.db files found. Nothing to consolidate.");
     process.exit(0);
   }
 

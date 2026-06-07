@@ -45,7 +45,7 @@ describe("SessionStart auto-onboard (P5-0.5)", () => {
     const { exitCode, stdout } = await runHook(tmpPluginData);
     expect(exitCode).toBe(0);
     expect(stdout).toContain("auto-onboarded");
-    expect(stdout).toContain("/ltm:onboard to customize");
+    expect(stdout).toContain("/openltm:onboard to customize");
   }, 30_000);
 
   it("does not print auto-onboard message when flag is present", async () => {

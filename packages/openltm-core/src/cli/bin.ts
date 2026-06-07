@@ -3,14 +3,14 @@
  * cli/bin.ts — ltm CLI entrypoint.
  *
  * Usage:
- *   bunx @rohirik/ltm-core                    # auto-detect agents
- *   bunx @rohirik/ltm-core --claude           # Claude Code only
- *   bunx @rohirik/ltm-core --opencode         # OpenCode only
- *   bunx @rohirik/ltm-core --pi               # Pi only
- *   bunx @rohirik/ltm-core --dry-run --claude # preview without writing
+ *   bunx @rohirik/openltm-core                    # auto-detect agents
+ *   bunx @rohirik/openltm-core --claude           # Claude Code only
+ *   bunx @rohirik/openltm-core --opencode         # OpenCode only
+ *   bunx @rohirik/openltm-core --pi               # Pi only
+ *   bunx @rohirik/openltm-core --dry-run --claude # preview without writing
  *
- *   bunx @rohirik/ltm-core hook --name <hookName>  # lifecycle hook stub
- *   bunx @rohirik/ltm-core mcp-serve               # MCP server (future)
+ *   bunx @rohirik/openltm-core hook --name <hookName>  # lifecycle hook stub
+ *   bunx @rohirik/openltm-core mcp-serve               # MCP server (future)
  */
 import { runInstallCli } from "./install.js";
 import { runHook } from "./hook.js";
@@ -19,7 +19,7 @@ function printHelp(): void {
   process.stdout.write(
     [
       "",
-      "  bunx @rohirik/ltm-core [options]",
+      "  bunx @rohirik/openltm-core [options]",
       "",
       "  Options:",
       "    --claude        Install into Claude Code",

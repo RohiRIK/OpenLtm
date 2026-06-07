@@ -27,7 +27,7 @@ Status: 🟢 ≥70 · 🟡 40–69 · 🔴 <40
 | Context coverage (goal/decision/gotcha/progress) | 20% |
 | Session activity (any access ≤14 days) | 20% |
 
-If the server is NOT running, show: `(graph server offline — start with /ltm:admin server)`
+If the server is NOT running, show: `(graph server offline — start with /openltm:admin server)`
 
 ---
 
@@ -41,7 +41,7 @@ import { readFileSync, existsSync, statSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 
-const PLUGIN_DATA = process.env.CLAUDE_PLUGIN_DATA ?? join(homedir(), '.claude', 'plugins', 'data', 'ltm-ltm');
+const PLUGIN_DATA = process.env.CLAUDE_PLUGIN_DATA ?? join(homedir(), '.claude', 'plugins', 'data', 'OpenLtm-openltm');
 const JSONL_LOG = join(PLUGIN_DATA, 'logs', 'ltm.jsonl');
 const HOOKS_LOG = join(homedir(), '.claude', 'logs', 'hooks.log');
 
@@ -123,7 +123,7 @@ import { existsSync, statSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 
-const PLUGIN_DATA = process.env.CLAUDE_PLUGIN_DATA ?? join(homedir(), '.claude', 'plugins', 'data', 'ltm-ltm');
+const PLUGIN_DATA = process.env.CLAUDE_PLUGIN_DATA ?? join(homedir(), '.claude', 'plugins', 'data', 'OpenLtm-openltm');
 const JSONL_LOG = join(PLUGIN_DATA, 'logs', 'ltm.jsonl');
 const HOOKS_LOG = join(homedir(), '.claude', 'logs', 'hooks.log');
 

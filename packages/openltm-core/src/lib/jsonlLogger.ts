@@ -33,7 +33,7 @@ let _lastRotateCheck = 0;
 export function getLogPath(): string {
   if (_logPath) return _logPath;
   const base = process.env.CLAUDE_PLUGIN_DATA
-    ?? join(homedir(), ".claude", "plugins", "data", "ltm-ltm");
+    ?? join(homedir(), ".claude", "plugins", "data", "OpenLtm-openltm");
   _logPath = join(base, "logs", "ltm.jsonl");
   return _logPath;
 }

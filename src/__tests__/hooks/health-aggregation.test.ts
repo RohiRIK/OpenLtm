@@ -1,5 +1,5 @@
 /**
- * Integration test for /ltm:health activity aggregation.
+ * Integration test for /openltm:health activity aggregation.
  * Seeds a temp hooks.log with known event entries and verifies
  * the aggregation script produces the correct counts.
  */
@@ -62,7 +62,7 @@ async function runAggregation(): Promise<string> {
   return out.trim();
 }
 
-describe("/ltm:health activity aggregation", () => {
+describe("/openltm:health activity aggregation", () => {
   it("counts events within the 24h window", async () => {
     const raw = await runAggregation();
     const counts = JSON.parse(raw) as Record<string, number>;

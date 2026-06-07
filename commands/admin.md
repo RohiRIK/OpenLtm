@@ -9,7 +9,7 @@ Parse the first word of the arguments as `<subcommand>`. Pass remaining words as
 If no subcommand given, show:
 
 ```
-Usage: /ltm:admin <subcommand>
+Usage: /openltm:admin <subcommand>
 
   migrate [status|up|down|reset|--legacy]   — schema migrations + legacy DB detection
   scan    [--project X] [--dry-run]         — scan memories for secrets and redact
@@ -30,7 +30,7 @@ Manage versioned LTM schema migrations and legacy DB path migration.
 | `up` | Apply next pending migration |
 | `down` | Rollback last applied migration |
 | `reset` | Rollback ALL (requires confirmation) |
-| `--legacy` | Trigger legacy `~/.claude/memory/ltm.db` → plugin data migration |
+| `--legacy` | Trigger legacy `~/.claude/memory/openltm.db` → plugin data migration |
 
 ```bash
 bun run "${CLAUDE_PLUGIN_ROOT}/src/migrations.ts" --<arg>
@@ -41,7 +41,7 @@ For `reset`: ask user to confirm with "yes" before running.
 After schema migration check, also detect legacy DB:
 
 ```bash
-[ -f "$HOME/.claude/memory/ltm.db" ] && [ ! -f "$CLAUDE_PLUGIN_DATA/ltm.db" ] && echo "⚠ Legacy DB found at ~/.claude/memory/ltm.db. Run /ltm:admin migrate --legacy to migrate it."
+[ -f "$HOME/.claude/memory/openltm.db" ] && [ ! -f "$CLAUDE_PLUGIN_DATA/openltm.db" ] && echo "⚠ Legacy DB found at ~/.claude/memory/openltm.db. Run /openltm:admin migrate --legacy to migrate it."
 ```
 
 When `--legacy` is the argument:
@@ -101,7 +101,7 @@ Query the append-only memory audit log (`memory_audit` table). Every write to `m
 | `--since <iso>` | Only events after this ISO date (e.g. `2026-05-01`) |
 | `--limit N` | Max rows to return (default 50) |
 
-Call `mcp__plugin_ltm_memory__admin_audit` with the provided filters and display the result as a table:
+Call `mcp__plugin_openltm_memory__admin_audit` with the provided filters and display the result as a table:
 
 ```
 ID | Memory | Op     | Actor            | Session   | When

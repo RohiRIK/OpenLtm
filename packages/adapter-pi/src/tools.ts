@@ -1,4 +1,4 @@
-import { recall, learn, forget } from "@rohirik/ltm-core";
+import { recall, learn, forget } from "@rohirik/openltm-core";
 
 type PiAny = any; // Pi's extension API — no published types package
 

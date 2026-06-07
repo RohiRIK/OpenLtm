@@ -26,11 +26,11 @@ beforeAll(async () => {
     );
   }
 
-  const { _setDbForTesting, waitForInit } = await import("@rohirik/ltm-core");
+  const { _setDbForTesting, waitForInit } = await import("@rohirik/openltm-core");
   _setDbForTesting(db);
   await waitForInit();
 
-  const { runPendingMigrations } = await import("@rohirik/ltm-core");
+  const { runPendingMigrations } = await import("@rohirik/openltm-core");
   await runPendingMigrations(db);
 }, 30_000);
 

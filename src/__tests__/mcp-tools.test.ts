@@ -6,14 +6,14 @@ import { Database } from "bun:sqlite";
 const dbPath = `/tmp/test-ltm-mcp-tools-${process.pid}-${Date.now()}.db`;
 const SCHEMA_PATH = join(import.meta.dir, "..", "..", "src", "schema.sql");
 
-let learn: (input: import("@rohirik/ltm-core").LearnInput) => import("@rohirik/ltm-core").LearnResult;
-let recall: (input?: import("@rohirik/ltm-core").RecallInput) => Promise<import("@rohirik/ltm-core").MemoryWithRelations[]>;
+let learn: (input: import("@rohirik/openltm-core").LearnInput) => import("@rohirik/openltm-core").LearnResult;
+let recall: (input?: import("@rohirik/openltm-core").RecallInput) => Promise<import("@rohirik/openltm-core").MemoryWithRelations[]>;
 let forget: (input: { id: number; reason?: string; skipExport?: boolean }) => void;
-let relate: (input: { source_id: number; target_id: number; relationship_type: import("@rohirik/ltm-core").RelationshipType }) => void;
-let getContextMerge: (project: string) => { globals: import("@rohirik/ltm-core").Memory[]; scoped: import("@rohirik/ltm-core").Memory[] };
+let relate: (input: { source_id: number; target_id: number; relationship_type: import("@rohirik/openltm-core").RelationshipType }) => void;
+let getContextMerge: (project: string) => { globals: import("@rohirik/openltm-core").Memory[]; scoped: import("@rohirik/openltm-core").Memory[] };
 
 beforeAll(async () => {
-  const { runPendingMigrations, _setDbForTesting } = await import("@rohirik/ltm-core");
+  const { runPendingMigrations, _setDbForTesting } = await import("@rohirik/openltm-core");
 
   const db = new Database(dbPath, { create: true });
   db.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;");
@@ -21,7 +21,7 @@ beforeAll(async () => {
   await runPendingMigrations(db);
   _setDbForTesting(db);
 
-  const mod = await import("@rohirik/ltm-core");
+  const mod = await import("@rohirik/openltm-core");
   learn = mod.learn;
   recall = mod.recall;
   forget = mod.forget;

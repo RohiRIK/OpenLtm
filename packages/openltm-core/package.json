@@ -1,5 +1,5 @@
 {
-  "name": "@rohirik/ltm-core",
+  "name": "@rohirik/openltm-core",
   "version": "2.7.0",
   "description": "Shared LTM storage engine — path-agnostic SQLite core used by Claude Code, OpenCode, and Pi adapters",
   "type": "module",
@@ -13,7 +13,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/RohiRIK/claude-ltm-plugin"
+    "url": "https://github.com/RohiRIK/OpenLtm"
   },
   "keywords": [
     "ltm",

@@ -17,14 +17,14 @@
     ]
   },
   "scripts": {
-    "build": "bunx esbuild src/index.ts --bundle --platform=node --format=esm --target=esnext --outfile=dist/index.js --external:bun:sqlite --external:bun:test --external:@rohirik/ltm-core --minify",
+    "build": "bunx esbuild src/index.ts --bundle --platform=node --format=esm --target=esnext --outfile=dist/index.js --external:bun:sqlite --external:bun:test --external:@rohirik/openltm-core --minify",
     "prepublishOnly": "bun run build",
     "typecheck": "bunx tsc --noEmit",
     "test": "bun test"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/RohiRIK/claude-ltm-plugin"
+    "url": "https://github.com/RohiRIK/OpenLtm"
   },
   "keywords": [
     "pi",
@@ -38,7 +38,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@rohirik/ltm-core": "workspace:*"
+    "@rohirik/openltm-core": "workspace:*"
   },
   "peerDependencies": {
     "bun-types": ">=1.0.0"

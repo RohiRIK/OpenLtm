@@ -6,7 +6,7 @@ on:
     paths:
       - 'hooks/src/**'
       - 'hooks/lib/**'
-      - 'packages/ltm-core/src/**'
+      - 'packages/openltm-core/src/**'
       - 'package.json'
 
 permissions:
