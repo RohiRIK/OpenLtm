@@ -31,3 +31,6 @@ node-compile-cache/
 .aegis/
 .antigravitycli/
 
+
+# macOS
+.DS_Store
