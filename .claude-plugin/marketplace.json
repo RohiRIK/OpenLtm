@@ -6,14 +6,14 @@
   },
   "metadata": {
     "description": "OpenLTM — Long-Term Memory for AI coding agents (Claude Code, OpenCode, Pi)",
-    "version": "2.7.4"
+    "version": "2.7.5"
   },
   "plugins": [
     {
       "name": "ltm",
       "source": "./",
       "description": "Persistent semantic memory for AI coding agents — semantic search, context injection, session learning, and memory graph visualizer.",
-      "version": "2.7.4",
+      "version": "2.7.5",
       "author": {
         "name": "RohiRIK"
       },
