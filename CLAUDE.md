@@ -24,14 +24,15 @@ Every task follows this workflow:
 
 **After EVERY fix, feature, or change that touches any file in this repo:**
 
-1. Bump the patch version in **BOTH** files:
+1. Bump the patch version in **ALL THREE** files:
    - `package.json` → `"version": "X.Y.Z"`
    - `.claude-plugin/plugin.json` → `"version": "X.Y.Z"`
-2. Both files MUST always have the same version number.
+   - `.claude-plugin/marketplace.json` → `metadata.version` **and** `plugins[0].version`
+2. All version fields MUST match. Verify: `claude plugin validate .` passes with no version-mismatch warning.
 3. Commit with `release: bump version to X.Y.Z`
 4. Push to GitHub.
 
-**Why:** The Claude Code plugin marketplace detects new versions via the version field in `.claude-plugin/plugin.json`. If the version is not bumped, users never see the update and "Update now" does nothing.
+**Why:** The Claude Code plugin marketplace detects new versions via the version field in `.claude-plugin/plugin.json`. If the version is not bumped, users never see the update and "Update now" does nothing. A stale `marketplace.json` version triggers a `claude plugin validate` warning and version drift.
 
 **Do not skip this step even for tiny one-line fixes.**
 
