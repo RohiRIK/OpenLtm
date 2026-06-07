@@ -7,6 +7,9 @@ graph-app/node_modules/
 graph-app/test-results/
 graph-app/tsconfig.tsbuildinfo
 
+# Rename scratch workspace — local only, contains DB backup (never commit)
+.rename/
+
 # User data — never commit
 data/openltm.db
 data/openltm.db-shm
@@ -34,3 +37,8 @@ node-compile-cache/
 
 # macOS
 .DS_Store
+
+# Local dev tooling (Aegis / OpenCode) — not for public repo
+aegis-policy.json
+opencode.json
+.opencode/
