@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/openltm-banner.png" alt="OpenLTM — Long-Term Memory for AI coding agents, now open source" width="820" />
+<img src="assets/openltm-banner.jpeg" alt="OpenLTM — Long-Term Memory for AI coding agents, now open source" width="820" />
 
 # OpenLTM
 
