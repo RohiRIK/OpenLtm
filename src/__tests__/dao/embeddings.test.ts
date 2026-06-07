@@ -41,10 +41,10 @@ beforeAll(async () => {
   mem3Id = Number(r3.lastInsertRowid);
 
   // Run migration 010 to create memory_embeddings + drop embedding column
-  const { _setDbForTesting, waitForInit } = await import("@rohirik/ltm-core");
+  const { _setDbForTesting, waitForInit } = await import("@rohirik/openltm-core");
   _setDbForTesting(db);
   await waitForInit();
-  const { runPendingMigrations } = await import("@rohirik/ltm-core");
+  const { runPendingMigrations } = await import("@rohirik/openltm-core");
   await runPendingMigrations(db);
 }, 30_000);
 
@@ -57,12 +57,12 @@ afterAll(() => {
 
 describe("getEmbedding", () => {
   it("returns null when no embedding stored", async () => {
-    const { getEmbedding } = await import("@rohirik/ltm-core");
+    const { getEmbedding } = await import("@rohirik/openltm-core");
     expect(getEmbedding(db, mem1Id)).toBeNull();
   });
 
   it("returns the blob after setEmbedding", async () => {
-    const { getEmbedding, setEmbedding } = await import("@rohirik/ltm-core");
+    const { getEmbedding, setEmbedding } = await import("@rohirik/openltm-core");
     const blob = Buffer.from(new Float32Array([0.1, 0.2, 0.3]).buffer);
     await setEmbedding(db, mem1Id, blob, "test-model", 3);
     const result = getEmbedding(db, mem1Id);
@@ -73,7 +73,7 @@ describe("getEmbedding", () => {
 
 describe("setEmbedding", () => {
   it("upserts — second call updates the blob", async () => {
-    const { getEmbedding, setEmbedding } = await import("@rohirik/ltm-core");
+    const { getEmbedding, setEmbedding } = await import("@rohirik/openltm-core");
     const blob1 = Buffer.from(new Float32Array([1, 0, 0]).buffer);
     const blob2 = Buffer.from(new Float32Array([0, 1, 0]).buffer);
     await setEmbedding(db, mem2Id, blob1, "m1", 3);
@@ -83,7 +83,7 @@ describe("setEmbedding", () => {
   });
 
   it("stores model and dim correctly", async () => {
-    const { setEmbedding } = await import("@rohirik/ltm-core");
+    const { setEmbedding } = await import("@rohirik/openltm-core");
     const blob = Buffer.from(new Float32Array([0.5]).buffer);
     await setEmbedding(db, mem3Id, blob, "gemini-embedding-004", 768);
     const row = db.query<{ model: string; dim: number }, [number]>(
@@ -96,7 +96,7 @@ describe("setEmbedding", () => {
 
 describe("deleteEmbedding", () => {
   it("removes the embedding row", async () => {
-    const { getEmbedding, setEmbedding, deleteEmbedding } = await import("@rohirik/ltm-core");
+    const { getEmbedding, setEmbedding, deleteEmbedding } = await import("@rohirik/openltm-core");
     const blob = Buffer.from(new Float32Array([9, 9, 9]).buffer);
     await setEmbedding(db, mem1Id, blob, "test", 3);
     await deleteEmbedding(db, mem1Id);
@@ -104,14 +104,14 @@ describe("deleteEmbedding", () => {
   });
 
   it("is idempotent — deleting a non-existent row does not throw", async () => {
-    const { deleteEmbedding } = await import("@rohirik/ltm-core");
+    const { deleteEmbedding } = await import("@rohirik/openltm-core");
     await expect(deleteEmbedding(db, 9999)).resolves.toBeUndefined();
   });
 });
 
 describe("listMemoryIdsMissingEmbedding", () => {
   it("returns only IDs without embeddings", async () => {
-    const { listMemoryIdsMissingEmbedding, setEmbedding } = await import("@rohirik/ltm-core");
+    const { listMemoryIdsMissingEmbedding, setEmbedding } = await import("@rohirik/openltm-core");
     // mem1 has no embedding (deleted above), mem2 has one, mem3 has one
     const blob = Buffer.from(new Float32Array([0.1]).buffer);
     await setEmbedding(db, mem2Id, blob, "m", 1);
@@ -124,7 +124,7 @@ describe("listMemoryIdsMissingEmbedding", () => {
   });
 
   it("respects the limit parameter", async () => {
-    const { listMemoryIdsMissingEmbedding } = await import("@rohirik/ltm-core");
+    const { listMemoryIdsMissingEmbedding } = await import("@rohirik/openltm-core");
     const missing = listMemoryIdsMissingEmbedding(db, 1);
     expect(missing.length).toBeLessThanOrEqual(1);
   });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { categorise, type MemoryCategory } from "@rohirik/ltm-core";
+import { categorise, type MemoryCategory } from "@rohirik/openltm-core";
 const CASES: Array<[MemoryCategory, string]> = [
   ["gotcha",       "⚠ Never use npm in this project, it breaks bun lockfile"],
   ["architecture", "The system uses a layered architecture with a shared-db module as the single database interface."],

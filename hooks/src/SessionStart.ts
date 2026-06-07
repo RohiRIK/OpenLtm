@@ -8,7 +8,7 @@ import { EVENTS } from "../lib/eventNames.js";
 import { spawnSync } from "child_process";
 import { getContextMerge, getSimilarMemories, getContextMergeWithGraph, computeDecayScore,
          embedText, getDb, listMemoryIdsMissingEmbedding, exportContextMarkdown,
-         runPendingMigrations, getRecentConflicts, emitEvent } from "@rohirik/ltm-core";
+         runPendingMigrations, getRecentConflicts, emitEvent } from "@rohirik/openltm-core";
 import { readConfigSync } from "../../src/config.js";
 
 const TMP_DIR      = join(CLAUDE_DIR, "tmp");
@@ -18,8 +18,8 @@ const MAX_INJECT_LINES = 60;
 const MAX_LTM_LINES    = 30;
 const MAX_CONFLICT_LINES = 5;
 const MAX_AGE_MS       = 30 * 24 * 60 * 60 * 1000;
-const LTM_REMINDER     = "⚡ LTM MCP live — use mcp__plugin_ltm_memory__recall before tasks, mcp__plugin_ltm_memory__learn after discoveries.\n";
-const LTM_REPO_SLUG    = "RohiRIK/claude-ltm-plugin";
+const LTM_REMINDER     = "⚡ LTM MCP live — use mcp__plugin_openltm_memory__recall before tasks, mcp__plugin_openltm_memory__learn after discoveries.\n";
+const LTM_REPO_SLUG    = "RohiRIK/OpenLtm";
 const LTM_DIRECTIVE   = "⚡ LTM Active — Before starting work: call `recall` with task keywords. Check `context` for project state. After decisions: call `learn` to store them.\n\n";
 
 function defaultName(cwd: string): string {
@@ -108,7 +108,7 @@ function buildBackfillHint(): string {
     if (missing.length === 0) return "";
 
     writeFileSync(BACKFILL_HINT_FILE, today);
-    return `\n💡 Embedding backfill: ${cfg.embeddings.provider} provider is configured but some memories lack embeddings. Run \`/ltm:admin backfill\` to enable semantic recall.\n`;
+    return `\n💡 Embedding backfill: ${cfg.embeddings.provider} provider is configured but some memories lack embeddings. Run \`/openltm:admin backfill\` to enable semantic recall.\n`;
   } catch {
     return "";
   }
@@ -154,7 +154,7 @@ async function main(): Promise<void> {
   const { name, projectDir, isNew, registeredPath } = resolveProject(cwd);
 
   // P5-0.5: auto-onboard on first SessionStart (global flag, fire-once)
-  const pluginData = process.env.CLAUDE_PLUGIN_DATA ?? join(CLAUDE_DIR, "plugins", "data", "ltm-ltm");
+  const pluginData = process.env.CLAUDE_PLUGIN_DATA ?? join(CLAUDE_DIR, "plugins", "data", "OpenLtm-openltm");
   const onboardedFlagPath = join(pluginData, "onboarded.flag");
   if (!existsSync(onboardedFlagPath)) {
     const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
@@ -163,7 +163,7 @@ async function main(): Promise<void> {
         { stdio: "pipe", timeout: 30_000 });
     }
     const displayName = isNew ? defaultName(cwd) : name;
-    process.stdout.write(`LTM: auto-onboarded "${displayName}" — run /ltm:onboard to customize\n`);
+    process.stdout.write(`LTM: auto-onboarded "${displayName}" — run /openltm:onboard to customize\n`);
   }
 
   if (isNew) {
@@ -242,6 +242,6 @@ async function main(): Promise<void> {
 
 safeRun("SessionStart", main).then(result => {
   if (!result.ok) {
-    process.stdout.write("**Context not restored:** hook_error (check /ltm:health)\n");
+    process.stdout.write("**Context not restored:** hook_error (check /openltm:health)\n");
   }
 });

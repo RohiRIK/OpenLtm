@@ -4,10 +4,10 @@ import { join } from "path";
 import { Database } from "bun:sqlite";
 
 const dbPath = `/tmp/test-opencode-ltm-${process.pid}-${Date.now()}.db`;
-const SCHEMA_PATH = join(import.meta.dir, "..", "..", "..", "ltm-core", "src", "schema.sql");
+const SCHEMA_PATH = join(import.meta.dir, "..", "..", "..", "openltm-core", "src", "schema.sql");
 
 beforeAll(async () => {
-  const { runPendingMigrations, _setDbForTesting } = await import("@rohirik/ltm-core");
+  const { runPendingMigrations, _setDbForTesting } = await import("@rohirik/openltm-core");
   const db = new Database(dbPath, { create: true });
   db.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
   db.exec(readFileSync(SCHEMA_PATH, "utf-8"));
@@ -59,7 +59,7 @@ describe("OpenCode LTM plugin — server()", () => {
 
 describe("system.transform — injects Prior Knowledge block", () => {
   it("appends Prior Knowledge block when memories exist", async () => {
-    const { learn } = await import("@rohirik/ltm-core");
+    const { learn } = await import("@rohirik/openltm-core");
     learn({ content: "Use bun not npm", category: "preference", importance: 3, project_scope: "test-opencode-proj", skipExport: true });
 
     const { plugin } = await import("../index.js");

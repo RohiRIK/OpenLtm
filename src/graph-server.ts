@@ -23,7 +23,7 @@ import {
   startEmbeddingWorker, startJanitorScheduler,
   startLtmListener,
   getCapabilities,
-} from "@rohirik/ltm-core";
+} from "@rohirik/openltm-core";
 import { detectCommunities, generateClusterLabel, assignClusterColors } from "./cluster.js";
 import { getDbPath, getSchemaPath } from "./paths.js";
 import type { Cluster } from "./graph-app/lib/types.js";
@@ -799,7 +799,7 @@ const ltmListener = startLtmListener(event => broadcast(event));
 if (ltmListener.running) {
   console.log("   Liveness: honker pub/sub (push)");
 } else {
-  // WAL writes go to ltm.db-wal, not ltm.db — watch the WAL file (or dir as
+  // WAL writes go to openltm.db-wal, not openltm.db — watch the WAL file (or dir as
   // fallback). Debounce at 3s so that rapid hook writes (EvaluateSession,
   // PreCompact, etc.) coalesce into a single refresh instead of one per write.
   let watchDebounce: ReturnType<typeof setTimeout> | null = null;

@@ -26,7 +26,7 @@ package = "@rohirik/pi-ltm"
 All three tools read from and write to the same database:
 
 ```
-~/.claude/plugins/data/ltm-ltm/ltm.db
+~/.claude/plugins/data/OpenLtm-openltm/openltm.db
 ```
 
 A memory learned in Pi appears in the next Claude Code session, and vice versa.
@@ -34,5 +34,5 @@ A memory learned in Pi appears in the next Claude Code session, and vice versa.
 ## Custom DB path
 
 ```bash
-export LTM_DB_PATH="/custom/path/ltm.db"
+export LTM_DB_PATH="/custom/path/openltm.db"
 ```

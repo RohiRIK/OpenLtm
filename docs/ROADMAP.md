@@ -83,13 +83,13 @@ Each phase aligns with `ARCHITECTURE.md §9`. Versions are guidance; ship cadenc
 
 | Source | Item |
 |---|---|
-| Arch | W5 Structured logs (JSONL) + log-rotation; `/ltm:health` reads from it |
+| Arch | W5 Structured logs (JSONL) + log-rotation; `/openltm:health` reads from it |
 | Arch | W7 DAO returns slim recall rows (drop embeddings unless requested) |
 | Arch | W8 Hooks call DAO, never raw SQL; schema changes don't ripple to hooks |
-| UX | §3 hook map — every hook publishes a structured event consumable by `/ltm:health` |
-| UX | §2.4 `/ltm:health` becomes the single source of truth (consumes Phase 1 events) |
+| UX | §3 hook map — every hook publishes a structured event consumable by `/openltm:health` |
+| UX | §2.4 `/openltm:health` becomes the single source of truth (consumes Phase 1 events) |
 
-**Exit criteria:** schema can change without touching hooks · `/ltm:health` shows real activity counts from logs · MCP recall response < 50ms p95 at 10k memories.
+**Exit criteria:** schema can change without touching hooks · `/openltm:health` shows real activity counts from logs · MCP recall response < 50ms p95 at 10k memories.
 
 ---
 
@@ -105,7 +105,7 @@ Each phase aligns with `ARCHITECTURE.md §9`. Versions are guidance; ship cadenc
 | UX | §8.4 S3 Memory Review UI — show provenance per memory |
 | DB | `memory_audit` schema (pending DB-SPEC §7) |
 
-**Exit criteria:** every memory has `source` + `created_by` populated · audit table is query-able from `/ltm:admin audit` · UX-SPEC §8.4 S3 can render provenance.
+**Exit criteria:** every memory has `source` + `created_by` populated · audit table is query-able from `/openltm:admin audit` · UX-SPEC §8.4 S3 can render provenance.
 
 ---
 
@@ -138,7 +138,7 @@ Each phase aligns with `ARCHITECTURE.md §9`. Versions are guidance; ship cadenc
 | UX | §8.8 magnificent defaults — janitor enabled by default |
 | DB | `decay_score` column + janitor job spec (pending DB-SPEC §4, §8) |
 
-**Exit criteria:** recall scoring is O(top-k log N) not O(N) · DB size growth flattens at scale · janitor logs visible in `/ltm:health`.
+**Exit criteria:** recall scoring is O(top-k log N) not O(N) · DB size growth flattens at scale · janitor logs visible in `/openltm:health`.
 
 ---
 
@@ -193,7 +193,7 @@ Each phase aligns with `ARCHITECTURE.md §9`. Versions are guidance; ship cadenc
 | UX | §8.4 S3 Memory Review UI surfaces diff/replay |
 | DB | versioning tables (pending DB-SPEC §9) |
 
-**Exit criteria:** `/ltm:memory replay --at 2026-04-01` reconstructs the memory set as it was · diff between two memory snapshots renders.
+**Exit criteria:** `/openltm:memory replay --at 2026-04-01` reconstructs the memory set as it was · diff between two memory snapshots renders.
 
 ---
 

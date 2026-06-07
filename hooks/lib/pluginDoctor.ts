@@ -144,16 +144,16 @@ function checkDatabase(): void {
   const dbPath = getDbPath();
 
   if (!existsSync(dbPath)) {
-    fail(`ltm.db not found at ${dbPath}`, "Run /ltm:migrate to create the database");
+    fail(`openltm.db not found at ${dbPath}`, "Run /openltm:migrate to create the database");
     return;
   }
-  ok(`ltm.db exists at ${dbPath}`);
+  ok(`openltm.db exists at ${dbPath}`);
 
   let db: InstanceType<typeof Database> | undefined;
   try {
     db = new Database(dbPath, { readonly: true });
   } catch (e) {
-    fail("ltm.db is valid SQLite", `Database may be corrupted: ${e}`);
+    fail("openltm.db is valid SQLite", `Database may be corrupted: ${e}`);
     return;
   }
 
@@ -161,7 +161,7 @@ function checkDatabase(): void {
     const row = db.query("SELECT count(*) as n FROM memories").get() as { n: number };
     ok(`memories table valid (${row.n} rows)`);
   } catch {
-    fail("memories table exists", "Run /ltm:migrate to apply schema");
+    fail("memories table exists", "Run /openltm:migrate to apply schema");
   }
 
   try {
@@ -173,12 +173,12 @@ function checkDatabase(): void {
       ? readdirSync(migrationsDir).filter(f => f.endsWith(".sql")).length
       : 0;
     if (applied < total) {
-      fail(`Migrations: ${applied}/${total} applied`, "Run /ltm:migrate to apply pending migrations");
+      fail(`Migrations: ${applied}/${total} applied`, "Run /openltm:migrate to apply pending migrations");
     } else {
       ok(`Migrations: ${applied}/${total} applied`);
     }
   } catch {
-    warn("Could not read _schema_version table", "Run /ltm:migrate to ensure schema is up to date");
+    warn("Could not read _schema_version table", "Run /openltm:migrate to ensure schema is up to date");
   } finally {
     db?.close();
   }

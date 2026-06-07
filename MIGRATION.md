@@ -2,7 +2,7 @@
 
 ## Why v2.0.0?
 
-v2.0.0 extracts the storage engine into a standalone `@rohirik/ltm-core` npm package and introduces two new adapter packages (`@rohirik/opencode-ltm`, `@rohirik/pi-ltm`). This is a **semver-major** change because the internal module structure changed, but existing Claude Code users see **no breaking changes** — the plugin.json manifest, hooks, MCP tools, and database schema are all unchanged.
+v2.0.0 extracts the storage engine into a standalone `@rohirik/openltm-core` npm package and introduces two new adapter packages (`@rohirik/opencode-ltm`, `@rohirik/pi-ltm`). This is a **semver-major** change because the internal module structure changed, but existing Claude Code users see **no breaking changes** — the plugin.json manifest, hooks, MCP tools, and database schema are all unchanged.
 
 ---
 
@@ -21,7 +21,7 @@ v2.0.0 extracts the storage engine into a standalone `@rohirik/ltm-core` npm pac
 
 Update the plugin normally:
 
-1. Open Claude Code settings (or `/ltm:doctor` to check health)
+1. Open Claude Code settings (or `/openltm:doctor` to check health)
 2. The plugin marketplace shows "Update now" when v2.0.0 is available
 3. Click update — done
 
@@ -42,7 +42,7 @@ Add one line to `~/.config/opencode/opencode.json`:
 OpenCode auto-installs the plugin on next startup. Your memories will be shared with Claude Code automatically — they both read from the same database:
 
 ```
-~/.claude/plugins/data/ltm-ltm/ltm.db
+~/.claude/plugins/data/OpenLtm-openltm/openltm.db
 ```
 
 **Custom DB path:** Set `LTM_DB_PATH` in your environment or in the config `env` block.
@@ -71,7 +71,7 @@ Pi will inject `## Prior Knowledge` into every session automatically, and save s
 All three tools read from and write to the same SQLite database. No sync daemon, no API calls — just a file:
 
 ```
-~/.claude/plugins/data/ltm-ltm/ltm.db
+~/.claude/plugins/data/OpenLtm-openltm/openltm.db
 ```
 
 - Memory learned in Claude Code → visible in next OpenCode/Pi session
@@ -86,8 +86,8 @@ Override the path with `LTM_DB_PATH` environment variable if you use a non-defau
 
 If you were importing directly from the internal modules of this repo (not via the plugin marketplace), note:
 
-- `src/db.ts`, `src/shared-db.ts`, `src/dao/*`, `src/janitor/*`, etc. have been **moved** to `packages/ltm-core/`
-- The public npm package is now `@rohirik/ltm-core` — use that instead of path imports
+- `src/db.ts`, `src/shared-db.ts`, `src/dao/*`, `src/janitor/*`, etc. have been **moved** to `packages/openltm-core/`
+- The public npm package is now `@rohirik/openltm-core` — use that instead of path imports
 - The public API surface is identical; only the import path changed
 
 ```typescript
@@ -95,7 +95,7 @@ If you were importing directly from the internal modules of this repo (not via t
 import { learn, recall } from "./src/db.js";
 
 // After (stable public API)
-import { learn, recall } from "@rohirik/ltm-core";
+import { learn, recall } from "@rohirik/openltm-core";
 ```
 
 ---
@@ -105,6 +105,6 @@ import { learn, recall } from "@rohirik/ltm-core";
 | Package | npm name | Version |
 |---------|----------|---------|
 | Claude Code plugin | marketplace only | 2.0.0 |
-| Storage engine | `@rohirik/ltm-core` | 2.0.0 |
+| Storage engine | `@rohirik/openltm-core` | 2.0.0 |
 | OpenCode adapter | `@rohirik/opencode-ltm` | 2.0.0 |
 | Pi extension | `@rohirik/pi-ltm` | 2.0.0 |

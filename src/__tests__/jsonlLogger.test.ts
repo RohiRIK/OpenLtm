@@ -9,7 +9,7 @@ const TEST_DIR = join(tmpdir(), `ltm-jsonl-test-${process.pid}`);
 process.env.CLAUDE_PLUGIN_DATA = TEST_DIR;
 
 const { emitEvent, readRecentEvents, getLogPath, _resetForTesting } =
-  await import("@rohirik/ltm-core");
+  await import("@rohirik/openltm-core");
 
 function logPath() {
   _resetForTesting();

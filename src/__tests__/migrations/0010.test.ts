@@ -34,11 +34,11 @@ beforeAll(async () => {
      VALUES ('Memory without embedding', 'pattern', 2, 1.0, 'dedup-no-blob')`,
   );
 
-  const { _setDbForTesting, waitForInit } = await import("@rohirik/ltm-core");
+  const { _setDbForTesting, waitForInit } = await import("@rohirik/openltm-core");
   _setDbForTesting(db);
   await waitForInit();
 
-  const { runPendingMigrations } = await import("@rohirik/ltm-core");
+  const { runPendingMigrations } = await import("@rohirik/openltm-core");
   await runPendingMigrations(db);
 }, 30_000);
 

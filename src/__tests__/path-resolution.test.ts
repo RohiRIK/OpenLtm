@@ -24,10 +24,10 @@ describe("getDbPath priority chain", () => {
     expect(getDbPath()).toBe("/tmp/test-override.db");
   });
 
-  it("falls back to CLAUDE_PLUGIN_DATA/ltm.db when set", () => {
+  it("falls back to CLAUDE_PLUGIN_DATA/openltm.db when set", () => {
     delete process.env.LTM_DB_PATH;
     process.env.CLAUDE_PLUGIN_DATA = "/tmp/fake-plugin-data";
-    expect(getDbPath({ skipAutoMigrate: true })).toBe("/tmp/fake-plugin-data/ltm.db");
+    expect(getDbPath({ skipAutoMigrate: true })).toBe("/tmp/fake-plugin-data/openltm.db");
   });
 
   it("uses configOverride.dbPath when no env vars set", () => {

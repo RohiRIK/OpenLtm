@@ -17,7 +17,7 @@ export interface LogEntry {
   msg: string;
   detail?: string;
   durationMs?: number;
-  /** Structured event name — present when level === "event". Consumed by /ltm:health. */
+  /** Structured event name — present when level === "event". Consumed by /openltm:health. */
   event?: string;
   /** Optional count for aggregation (e.g. memories recalled, items written). */
   count?: number;
@@ -82,7 +82,7 @@ export function logHook(
 
 /**
  * Emit a structured activity event to hooks.log.
- * Events are aggregated by /ltm:health to show real activity counts.
+ * Events are aggregated by /openltm:health to show real activity counts.
  */
 export function logEvent(
   hook: string,

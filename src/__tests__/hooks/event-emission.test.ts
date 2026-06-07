@@ -37,9 +37,9 @@ describe("structured event emission", () => {
     expect(src).toContain("EVENTS.CONTEXT_UPDATED");
   });
 
-  it("UpdateContext imports from ltm-core not direct context.js for writes", () => {
+  it("UpdateContext imports from openltm-core not direct context.js for writes", () => {
     const src = hookSrc("UpdateContext.ts");
-    expect(src).toContain("ltm-core");
+    expect(src).toContain("openltm-core");
     expect(src).not.toContain('from "../../src/context.js"');
   });
 
@@ -68,7 +68,7 @@ describe("structured event emission", () => {
   });
 
   it("logEvent entries have event field matching the EVENTS constant value", () => {
-    // Verify the EVENTS constants are the canonical strings used by /ltm:health aggregation
+    // Verify the EVENTS constants are the canonical strings used by /openltm:health aggregation
     const eventNamesSrc = readFileSync(
       join(HOOKS_SRC, "..", "lib", "eventNames.ts"),
       "utf-8"

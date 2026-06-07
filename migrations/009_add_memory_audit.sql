@@ -1,7 +1,7 @@
 -- Migration 009: memory_audit table — append-only write audit log (W11, C5, C9)
 -- memory_id is intentionally NOT a foreign key: audit rows must survive memory deletion.
 -- No backfill — audit is forward-only from this migration onward.
--- Powers Phase 7 time-travel (C9) and /ltm:admin audit queries.
+-- Powers Phase 7 time-travel (C9) and /openltm:admin audit queries.
 -- UP
 CREATE TABLE IF NOT EXISTS memory_audit (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,

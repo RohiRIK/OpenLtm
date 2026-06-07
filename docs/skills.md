@@ -11,9 +11,9 @@ Five ship with OpenLTM. They cover the full lifecycle: capture, recall, learn, r
 | Skill | What it does | When it activates |
 |-------|-------------|-------------------|
 | `ContinuousLearning` | Extracts patterns and insights from session transcripts | After session ends (via `EvaluateSession` hook) |
-| `LtmServer` | Manages the graph visualization server lifecycle | `/ltm:admin server start\|stop\|status` |
+| `LtmServer` | Manages the graph visualization server lifecycle | `/openltm:admin server start\|stop\|status` |
 | `GitLearn` | Extracts learnings from git commit diffs | After each commit (opt-in via `gitLearnEnabled`) |
-| `Learned` | Surfaces and organises patterns learned across sessions | Session start, `/ltm:memory recall` |
+| `Learned` | Surfaces and organises patterns learned across sessions | Session start, `/openltm:memory recall` |
 | `session-context` | Manages per-project context injection and summarisation | Session start, pre-compaction |
 
 ---

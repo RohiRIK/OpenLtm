@@ -12,7 +12,7 @@ body:
     attributes:
       label: What happened?
       description: Clear description of the bug
-      placeholder: "When I run /ltm:recall, it returns..."
+      placeholder: "When I run /openltm:recall, it returns..."
     validations:
       required: true
 
@@ -27,7 +27,7 @@ body:
     attributes:
       label: Steps to reproduce
       placeholder: |
-        1. Run `/ltm:recall "some query"`
+        1. Run `/openltm:recall "some query"`
         2. See error...
 
   - type: dropdown
@@ -58,5 +58,5 @@ body:
     id: logs
     attributes:
       label: Relevant logs
-      description: "Run `/ltm:hook-doctor` and paste output, or any error messages"
+      description: "Run `/openltm:hook-doctor` and paste output, or any error messages"
       render: shell

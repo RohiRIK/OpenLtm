@@ -22,13 +22,13 @@ If you ever need to call them yourself (e.g. from a custom hook or script), this
 
 ## When each tool runs
 
-- **`recall`** — fired by the `Learned` skill at session start, and by `/ltm:memory recall`
-- **`learn`** — fired by the `ContinuousLearning` skill on session end, and by `/ltm:memory learn`
-- **`forget`** — fired by `/ltm:memory forget <id>`
-- **`relate`** — fired by `/ltm:memory relate <src> <tgt> <type>`, and by `autoRelate: true` in config
+- **`recall`** — fired by the `Learned` skill at session start, and by `/openltm:memory recall`
+- **`learn`** — fired by the `ContinuousLearning` skill on session end, and by `/openltm:memory learn`
+- **`forget`** — fired by `/openltm:memory forget <id>`
+- **`relate`** — fired by `/openltm:memory relate <src> <tgt> <type>`, and by `autoRelate: true` in config
 - **`graph`** — fired by graph-server HTTP API; available to custom tools
 - **`context`** — fired by the `SessionStart` hook to inject project context
-- **`context_items`** — fired by `/ltm:project analyze` to render the context panel
+- **`context_items`** — fired by `/openltm:project analyze` to render the context panel
 
 ---
 

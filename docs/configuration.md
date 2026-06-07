@@ -7,7 +7,7 @@ Configure via `~/.claude/config.json`.
 ```json
 {
   "ltm": {
-    "dbPath": "$CLAUDE_PLUGIN_DATA/ltm.db",
+    "dbPath": "$CLAUDE_PLUGIN_DATA/openltm.db",
     "decayEnabled": true,
     "injectTopN": 15,
     "autoRelate": true,
@@ -34,11 +34,11 @@ Three ways to set it (priority order):
 
 1. **`LTM_DB_PATH` env var** — set in your shell profile for a permanent override
 2. **`CLAUDE_PLUGIN_DATA`** — set automatically by the plugin system on marketplace installs
-3. **Default fallback** — `$CLAUDE_PLUGIN_DATA/ltm.db`
+3. **Default fallback** — `$CLAUDE_PLUGIN_DATA/openltm.db`
 
 ```bash
 # Shell override example
-export LTM_DB_PATH=/custom/path/ltm.db
+export LTM_DB_PATH=/custom/path/openltm.db
 ```
 
 ## Server options

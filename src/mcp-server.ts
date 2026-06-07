@@ -7,7 +7,7 @@ import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mc
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { getDb, learn, recall, relate, forget, getContextMerge, type Memory,
-         queryAudit, getItems, traverseGraph, buildReasoningContext } from "@rohirik/ltm-core";
+         queryAudit, getItems, traverseGraph, buildReasoningContext } from "@rohirik/openltm-core";
 
 // ─── Config check ────────────────────────────────────────────────────────────
 
@@ -47,7 +47,7 @@ function compact(memories: unknown[]): unknown[] {
 // ─── Server ──────────────────────────────────────────────────────────────────
 
 const server = new McpServer(
-  { name: "ltm", version: "1.0.0" },
+  { name: "openltm", version: "1.0.0" },
   {},
 );
 
@@ -97,7 +97,7 @@ server.tool(
       try {
         const [{ readConfigSync }, { categorise }] = await Promise.all([
           import("./config.js"),
-          import("@rohirik/ltm-core"),
+          import("@rohirik/openltm-core"),
         ]);
         const cfg = readConfigSync();
         const threshold = cfg.embeddings?.confidenceThreshold ?? 0.6;

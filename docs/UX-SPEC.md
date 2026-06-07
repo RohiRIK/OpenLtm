@@ -35,12 +35,12 @@ different visibility and interaction semantics:
 │  L1 — INVISIBLE          L2 — INVOKED              L3 — EXPLORATORY │
 │  (hooks + injection)     (slash + skills)          (graph app)      │
 ├─────────────────────────────────────────────────────────────────────┤
-│  SessionStart            /ltm:memory recall        localhost:7331   │
-│  PreCompact              /ltm:memory learn         (browser, opt-in)│
-│  Stop → UpdateContext    /ltm:project init                          │
-│  Stop → EvaluateSession  /ltm:health                                │
-│                          /ltm:doctor                                │
-│  (auto-redaction)        /ltm:admin <sub>                           │
+│  SessionStart            /openltm:memory recall        localhost:7331   │
+│  PreCompact              /openltm:memory learn         (browser, opt-in)│
+│  Stop → UpdateContext    /openltm:project init                          │
+│  Stop → EvaluateSession  /openltm:health                                │
+│                          /openltm:doctor                                │
+│  (auto-redaction)        /openltm:admin <sub>                           │
 │                                                                     │
 │  Visibility: ZERO        Visibility: USER-DRIVEN   Visibility: PULL │
 │  Frequency:  every msg   Frequency:  on demand    Frequency: rare   │
@@ -81,7 +81,7 @@ The plugin is reachable from these entry points, in order of frequency:
    "use" by volume goes through here.
 2. **MCP tool calls from Claude itself** — when CLAUDE.md instructions
    tell Claude to `recall` before non-trivial work.
-3. **User slash command** — `/ltm:*` typed by the developer.
+3. **User slash command** — `/openltm:*` typed by the developer.
 4. **Skill auto-trigger** — `ContinuousLearning`, `GitLearn`, `Learned`,
    `session-context` skills load when their trigger phrases appear.
 5. **Browser** — graph-app at `localhost:7331`, only when manually started.
@@ -93,8 +93,8 @@ The contract: **invisible by default, visible on action or failure.**
 | Event                                     | Should user see? |
 |-------------------------------------------|------------------|
 | Context injected at SessionStart          | YES — one block, top of session |
-| Memory captured by EvaluateSession        | NO  — silent, surface in /ltm:health |
-| Secret scrubbed on write                  | NO  — log only; surface in /ltm:health |
+| Memory captured by EvaluateSession        | NO  — silent, surface in /openltm:health |
+| Secret scrubbed on write                  | NO  — log only; surface in /openltm:health |
 | Hook crashes                              | YES — plain-English message |
 | Recall returns 0 results                  | YES — with "did you mean" suggestion |
 | Auto-redaction on user-typed input        | YES — show `[REDACTED:type]` inline so user knows |
@@ -110,16 +110,16 @@ Violations of this contract are UX bugs.
 This section documents every active slash command and skill group that ships
 in v1.4.20. Deprecated aliases are inventoried in §7.
 
-### 2.1 `/ltm:memory` — The Core Loop
+### 2.1 `/openltm:memory` — The Core Loop
 
 The single most-used command. Groups four subcommands.
 
-#### 2.1.1 `/ltm:memory recall`
+#### 2.1.1 `/openltm:memory recall`
 
 | | |
 |---|---|
 | **Purpose** | Search past memories before deciding. Primary read path. |
-| **Trigger** | Manual (user types) OR Claude calls `mcp__plugin_ltm_memory__recall` per CLAUDE.md instructions. |
+| **Trigger** | Manual (user types) OR Claude calls `mcp__plugin_openltm_memory__recall` per CLAUDE.md instructions. |
 | **Inputs** | Positional `<query>` · `--category X` · `--project X` · `--limit N` (default 10) |
 | **Output** | Per-result line: `[id] content · category · ★importance · ✓confirmed · #tags · →relations` |
 | **Latency target** | < 200 ms p50 (PRD G2, Q1) |
@@ -127,7 +127,7 @@ The single most-used command. Groups four subcommands.
 **Happy path transcript:**
 
 ```
-> /ltm:memory recall "javascript package manager"
+> /openltm:memory recall "javascript package manager"
 
 Found 3 memories (FTS5 + 1 semantic):
 
@@ -141,7 +141,7 @@ Found 3 memories (FTS5 + 1 semantic):
 **Empty-result transcript (current — bad):**
 
 ```
-> /ltm:memory recall "xyz framework"
+> /openltm:memory recall "xyz framework"
 
 No memories found.
 ```
@@ -149,28 +149,28 @@ No memories found.
 **Empty-result transcript (target):**
 
 ```
-> /ltm:memory recall "xyz framework"
+> /openltm:memory recall "xyz framework"
 
 No memories found for "xyz framework".
 
   Did you mean:
-    • /ltm:memory recall "frontend framework"   (3 results)
-    • /ltm:memory recall --category architecture  (12 results)
+    • /openltm:memory recall "frontend framework"   (3 results)
+    • /openltm:memory recall --category architecture  (12 results)
 
   Or capture this gap:
-    • /ltm:memory learn "<insight about xyz>" --category architecture
+    • /openltm:memory learn "<insight about xyz>" --category architecture
 ```
 
 **Error states:**
 
 | Cause                  | Current message            | Ideal message |
 |------------------------|----------------------------|---------------|
-| MCP server unreachable | "tool call failed"         | `LTM MCP not running. Run /ltm:doctor.` |
-| Empty DB               | "No memories found."       | `Empty LTM. Seed with /ltm:project init.` |
+| MCP server unreachable | "tool call failed"         | `LTM MCP not running. Run /openltm:doctor.` |
+| Empty DB               | "No memories found."       | `Empty LTM. Seed with /openltm:project init.` |
 | FTS5 syntax error      | bubbled SQL error          | `Invalid FTS query. Wrap phrases in quotes.` |
 | Project filter, no rows| "No memories found."       | `No memories tagged "{project}". Globals shown? [y/N]` |
 
-#### 2.1.2 `/ltm:memory learn`
+#### 2.1.2 `/openltm:memory learn`
 
 | | |
 |---|---|
@@ -183,21 +183,21 @@ No memories found for "xyz framework".
 **Transcript:**
 
 ```
-> /ltm:memory learn "RLS must be enabled before prod" --category gotcha --importance 5
+> /openltm:memory learn "RLS must be enabled before prod" --category gotcha --importance 5
 
 Stored [m_318] in 67ms.
   Category: gotcha   Importance: ★5 (global — injects into every session)
-  Project: claude-ltm-plugin
+  Project: OpenLtm
   Tags: (none — consider adding #supabase #security)
 
 ⚠ Importance 5 means this surfaces in EVERY future session, in EVERY project.
-  If that's not intended, lower with: /ltm:memory learn ... --importance 3
+  If that's not intended, lower with: /openltm:memory learn ... --importance 3
 ```
 
 **Smart-defaults transcript (G-C — auto-categorization, target):**
 
 ```
-> /ltm:memory learn "RLS must be enabled before prod"
+> /openltm:memory learn "RLS must be enabled before prod"
 
 Stored [m_318] in 71ms.
   Suggested: category=gotcha (87% confidence) · importance=5 (matches "must" + "prod")
@@ -213,7 +213,7 @@ Stored [m_318] in 71ms.
 | Identical content already stored            | dedup silently | `Reinforced [m_142] (now ✓5).` |
 | Conflicts with existing memory (G-F target) | none | `⚠ Conflicts with [m_142]: "<text>". Supersede? Coexist? Cancel?` |
 
-#### 2.1.3 `/ltm:memory forget <id>`
+#### 2.1.3 `/openltm:memory forget <id>`
 
 | | |
 |---|---|
@@ -227,11 +227,11 @@ Stored [m_318] in 71ms.
 
 | Cause                  | Current | Ideal |
 |------------------------|---------|-------|
-| Missing ID arg         | usage   | `Forget what? Try: /ltm:memory recall <topic> first.` |
+| Missing ID arg         | usage   | `Forget what? Try: /openltm:memory recall <topic> first.` |
 | ID doesn't exist       | error   | `[m_xyz] not found. Already forgotten?` |
 | User typo `m_138` for `m_318` | wrong delete | confirmation step prevents this |
 
-#### 2.1.4 `/ltm:memory relate <src> <tgt> <type>`
+#### 2.1.4 `/openltm:memory relate <src> <tgt> <type>`
 
 | | |
 |---|---|
@@ -244,7 +244,7 @@ Stored [m_318] in 71ms.
 not surfaced if user types an invalid type. Ideal:
 
 ```
-> /ltm:memory relate m_142 m_318 caused
+> /openltm:memory relate m_142 m_318 caused
 
 Unknown relationship type "caused". Valid types:
   supports     contradicts    refines
@@ -253,9 +253,9 @@ Unknown relationship type "caused". Valid types:
 Did you mean: depends_on?
 ```
 
-### 2.2 `/ltm:project` — Project Lifecycle
+### 2.2 `/openltm:project` — Project Lifecycle
 
-#### 2.2.1 `/ltm:project init`
+#### 2.2.1 `/openltm:project init`
 
 | | |
 |---|---|
@@ -272,7 +272,7 @@ START
   ▼
 [1] cat registry.json — is this cwd registered?
   │
-  ├─ NO  ──→ "Run /ltm:project register first." → END
+  ├─ NO  ──→ "Run /openltm:project register first." → END
   │
   └─ YES ─→ [2] check existing goal in DB
               │
@@ -296,7 +296,7 @@ START
                            END
 ```
 
-#### 2.2.2 `/ltm:project analyze [topic]`
+#### 2.2.2 `/openltm:project analyze [topic]`
 
 | | |
 |---|---|
@@ -308,7 +308,7 @@ START
 friction of typing it is the reason it's underused. **§8 proposes ambient
 analyze on-keypress** (smart recall surfacing).
 
-#### 2.2.3 `/ltm:project register [name] [path]`
+#### 2.2.3 `/openltm:project register [name] [path]`
 
 | | |
 |---|---|
@@ -320,11 +320,11 @@ analyze on-keypress** (smart recall surfacing).
 - Conflict: name used by different path → warn, ask user to disambiguate.
 - Migration: legacy slug folder exists → offer to copy.
 
-### 2.3 `/ltm:admin` — Power-User Ops
+### 2.3 `/openltm:admin` — Power-User Ops
 
 Three subcommands: `migrate`, `scan`, `server`. Detailed in commands/admin.md.
 
-#### 2.3.1 `/ltm:admin migrate [status|up|down|reset|--legacy]`
+#### 2.3.1 `/openltm:admin migrate [status|up|down|reset|--legacy]`
 
 | Arg       | Risk    | Confirmation |
 |-----------|---------|--------------|
@@ -342,19 +342,19 @@ Schema migrations
 ✓ 001_initial_schema       (applied 2025-12-01)
 ✓ 002_add_relations        (applied 2026-01-15)
 ✓ 003_add_decay_fields     (applied 2026-02-22)
-○ 004_add_provenance       (pending — run /ltm:admin migrate up)
+○ 004_add_provenance       (pending — run /openltm:admin migrate up)
 
 Legacy DB: ✓ none detected
 ```
 
-#### 2.3.2 `/ltm:admin scan [--project X] [--dry-run]`
+#### 2.3.2 `/openltm:admin scan [--project X] [--dry-run]`
 
 Scans existing memories for secrets. Auto-redacts unless `--dry-run`.
 
 **Output:**
 
 ```
-> /ltm:admin scan --dry-run
+> /openltm:admin scan --dry-run
 
 Scanned 318 memories.
   Found 2 candidates for redaction:
@@ -364,23 +364,23 @@ Scanned 318 memories.
 Run without --dry-run to apply redactions.
 ```
 
-#### 2.3.3 `/ltm:admin server [start|stop|status]`
+#### 2.3.3 `/openltm:admin server [start|stop|status]`
 
 Manages the localhost graph-app server (port 7331).
 
 **Output:**
 
 ```
-> /ltm:admin server start
+> /openltm:admin server start
 
 Graph server starting on http://localhost:7331 (PID 47218)
   ▸ Open in browser: http://localhost:7331
-  ▸ Stop: /ltm:admin server stop
+  ▸ Stop: /openltm:admin server stop
 ```
 
-### 2.4 `/ltm:health` — Single Source of Truth
+### 2.4 `/openltm:health` — Single Source of Truth
 
-Replaces the deprecated `/ltm:doctor` and `/ltm:decay-report`.
+Replaces the deprecated `/openltm:doctor` and `/openltm:decay-report`.
 
 **Output spec (current — already good, kept for reference):**
 
@@ -399,13 +399,13 @@ At-risk (score < 0.25): 7 memories
 **Improvement (§8):** add a `--fix` flag that suggests one action per row:
 
 ```
-old-project: 31 🔴 → run `/ltm:memory forget` on top-3 stale ids: m_009, m_023, m_041
+old-project: 31 🔴 → run `/openltm:memory forget` on top-3 stale ids: m_009, m_023, m_041
 ```
 
-### 2.5 `/ltm:doctor` (deprecated) — Diagnostics
+### 2.5 `/openltm:doctor` (deprecated) — Diagnostics
 
-Currently aliased to `/ltm:health` per §7. The diagnostic surface (hook
-checks, MCP reachability, schema version) lives in `/ltm:health`.
+Currently aliased to `/openltm:health` per §7. The diagnostic surface (hook
+checks, MCP reachability, schema version) lives in `/openltm:health`.
 
 ### 2.6 Skill Reference
 
@@ -439,7 +439,7 @@ entirely on how loud each one is and how it fails.
 - Block has a one-line "freshness" indicator: `Last session: 2h ago, +3 progress entries`.
 - A subtle separator before/after so the user can mentally bracket "what
   Claude already knows" vs. "what I'm about to type".
-- Footer cue: `+12 more memories — /ltm:memory recall to explore`.
+- Footer cue: `+12 more memories — /openltm:memory recall to explore`.
 
 **Annoying version (avoid):**
 - 60-line wall of text every session, no scannable hierarchy.
@@ -448,11 +448,11 @@ entirely on how loud each one is and how it fails.
 
 **Current pain points:**
 1. **Silent failure** — if context wasn't injected, user doesn't know.
-   FIX: print a subtle `(LTM context unavailable — /ltm:doctor for details)` line.
+   FIX: print a subtle `(LTM context unavailable — /openltm:doctor for details)` line.
 2. **No "what changed since last session"** — every session looks the same
    even when nothing was learned. FIX: surface the diff.
 3. **No quick way to disable per-session** — sometimes you just want a
-   clean slate. FIX: `/ltm:project pause` (see §8).
+   clean slate. FIX: `/openltm:project pause` (see §8).
 
 ### 3.2 PreCompact
 
@@ -503,9 +503,9 @@ EvaluateSession scans session for insight candidates
     │  [2] "useDebounce hook pattern with cleanup" · pattern · ★3 │
     │                                                             │
     │  Run on next session start:                                 │
-    │    /ltm:memory learn 1   — accept [1]                       │
-    │    /ltm:memory learn 1,2 — accept both                      │
-    │    /ltm:memory learn 0   — discard all                      │
+    │    /openltm:memory learn 1   — accept [1]                       │
+    │    /openltm:memory learn 1,2 — accept both                      │
+    │    /openltm:memory learn 0   — discard all                      │
     └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -554,7 +554,7 @@ user's experience at each step.
                                                                  ▼
   [7] PURGE           [6] REDACTION     [5] FORGET / SUPERSEDE
   ───────────         ────────────       ──────────────────────
-  decay cron          /ltm:admin scan    user runs /memory forget
+  decay cron          /openltm:admin scan    user runs /memory forget
   hard-deletes        finds secret       OR new memory supersedes
   if score=0          → redacts inline   → soft-delete + audit
   for 365d            ◌ silent for       ✓ explicit confirm
@@ -571,7 +571,7 @@ user's experience at each step.
 | Birth         | Must pick category + importance manually                | Skips |
 | Injection     | No "what's new since last session" diff                 | Doesn't know |
 | Confirmation  | Implicit — no UI to thumbs-up/down a recall result     | Decay scorer flies blind |
-| Aging         | No proactive nudge until /ltm:health is run             | Stale stays stale |
+| Aging         | No proactive nudge until /openltm:health is run             | Stale stays stale |
 | Forget        | Requires ID; user must recall first                     | Two-step |
 | Redaction     | Auto on write, but user doesn't see what was redacted  | Trust gap |
 | Purge         | Not implemented — soft-deleted rows stay forever        | DB bloat |
@@ -581,11 +581,11 @@ user's experience at each step.
 - **Birth:** auto-categorization + importance suggestion (G-C).
 - **Injection:** diff against last session ("3 new globals since you were here").
 - **Confirmation:** thumbs-up/down on recall results feeds decay scorer (G-K).
-- **Aging:** weekly digest in `/ltm:health` with one-click prune.
-- **Forget:** `/ltm:memory forget --interactive` opens a tui picker.
+- **Aging:** weekly digest in `/openltm:health` with one-click prune.
+- **Forget:** `/openltm:memory forget --interactive` opens a tui picker.
 - **Redaction:** show inline `[REDACTED:aws-key]` in the user's input echo so
   they know it happened.
-- **Purge:** `/ltm:admin vacuum` to hard-delete old soft-deletes.
+- **Purge:** `/openltm:admin vacuum` to hard-delete old soft-deletes.
 
 ---
 
@@ -635,24 +635,24 @@ How a user discovers each feature today:
 
 | Feature | Discovery path | Score |
 |---------|----------------|-------|
-| `/ltm:memory recall` | README · CLAUDE.md · Claude tells them | 🟢 |
-| `/ltm:memory learn`  | README · CLAUDE.md                    | 🟢 |
-| `/ltm:project init`  | README only                            | 🟡 |
-| `/ltm:project analyze`| Buried in README                      | 🔴 |
-| `/ltm:health`        | Mentioned but not promoted             | 🟡 |
-| `/ltm:doctor`        | Only when something breaks             | 🟡 |
-| `/ltm:admin scan`    | Audit-driven (Ezra persona)            | 🔴 |
-| `/ltm:admin server`  | "did you know there's a graph?"        | 🔴 |
+| `/openltm:memory recall` | README · CLAUDE.md · Claude tells them | 🟢 |
+| `/openltm:memory learn`  | README · CLAUDE.md                    | 🟢 |
+| `/openltm:project init`  | README only                            | 🟡 |
+| `/openltm:project analyze`| Buried in README                      | 🔴 |
+| `/openltm:health`        | Mentioned but not promoted             | 🟡 |
+| `/openltm:doctor`        | Only when something breaks             | 🟡 |
+| `/openltm:admin scan`    | Audit-driven (Ezra persona)            | 🔴 |
+| `/openltm:admin server`  | "did you know there's a graph?"        | 🔴 |
 | GitLearn skill       | Trigger phrases only — invisible       | 🔴 |
 | importance=5 globals | Inferred — never explained             | 🔴 |
-| Decay scoring        | Only via /ltm:health                   | 🔴 |
+| Decay scoring        | Only via /openltm:health                   | 🔴 |
 | Edge types (relate)  | Listed in command help only            | 🔴 |
 
 ### 5.4 Where Users Get Lost
 
 - **"I learned something but it didn't show up next session."** — They used
   `--project foo` but cwd registered as `bar`. Project filter excludes it.
-- **"I ran /ltm:doctor and got a deprecation warning."** — They followed
+- **"I ran /openltm:doctor and got a deprecation warning."** — They followed
   README that points to deprecated alias.
 - **"Recall returned 0 results for an obvious query."** — FTS5 syntax
   swallowed their query (e.g., they typed `c++`).
@@ -671,18 +671,18 @@ Comprehensive list of failure modes with ideal UX.
 
 | Code | Scenario | Current msg | Ideal msg |
 |------|----------|-------------|-----------|
-| H1 | SessionStart hook missing | nothing — silent | session opens with: `(LTM context unavailable. Run /ltm:doctor.)` |
-| H2 | DB file missing on first run | nothing | `LTM database not initialized. Run /ltm:project init to seed.` |
-| H3 | DB file corrupt | crash | `LTM DB unreadable. Backup at <path>; restore or /ltm:admin migrate reset.` |
-| H4 | MCP server failed to start | tools unavailable | session top: `LTM MCP failed to start. /ltm:doctor.` |
-| H5 | PreCompact silently failed | post-compact ctx empty | post-compact session: `(Last compact snapshot incomplete — see /ltm:doctor.)` |
+| H1 | SessionStart hook missing | nothing — silent | session opens with: `(LTM context unavailable. Run /openltm:doctor.)` |
+| H2 | DB file missing on first run | nothing | `LTM database not initialized. Run /openltm:project init to seed.` |
+| H3 | DB file corrupt | crash | `LTM DB unreadable. Backup at <path>; restore or /openltm:admin migrate reset.` |
+| H4 | MCP server failed to start | tools unavailable | session top: `LTM MCP failed to start. /openltm:doctor.` |
+| H5 | PreCompact silently failed | post-compact ctx empty | post-compact session: `(Last compact snapshot incomplete — see /openltm:doctor.)` |
 | H6 | UpdateContext crash | progress lost | session-end goodbye: `Progress not saved (UpdateContext failed).` |
 
 ### 6.2 MCP Tool Errors
 
 | Code | Scenario | Current | Ideal |
 |------|----------|---------|-------|
-| M1 | `recall` with no DB | "no results" | `Empty LTM. /ltm:project init to start.` |
+| M1 | `recall` with no DB | "no results" | `Empty LTM. /openltm:project init to start.` |
 | M2 | `learn` with empty content | review fallback | OK as-is. |
 | M3 | `forget` with bad ID | error | `Memory [m_xyz] not found.` |
 | M4 | `relate` with bad type | error | List 6 valid types. |
@@ -692,16 +692,16 @@ Comprehensive list of failure modes with ideal UX.
 
 | Code | Scenario | Current | Ideal |
 |------|----------|---------|-------|
-| S1 | Schema version mismatch | recall returns junk | session top: `Schema vN+1 expected, found vN. /ltm:admin migrate.` |
+| S1 | Schema version mismatch | recall returns junk | session top: `Schema vN+1 expected, found vN. /openltm:admin migrate.` |
 | S2 | Migration partial failure | rollback message | OK — but link to backup file path. |
-| S3 | Legacy DB at old path | missed silently | `Legacy DB found. /ltm:admin migrate --legacy.` (already done) |
+| S3 | Legacy DB at old path | missed silently | `Legacy DB found. /openltm:admin migrate --legacy.` (already done) |
 
 ### 6.4 Plugin Lifecycle Errors
 
 | Code | Scenario | Current | Ideal |
 |------|----------|---------|-------|
 | P1 | Plugin updated, cache stale | new commands missing | `LTM updated to v1.X — restart Claude Code to load.` |
-| P2 | settings.json missing hook | hook never fires | `/ltm:doctor` lists missing hook + command to add it. |
+| P2 | settings.json missing hook | hook never fires | `/openltm:doctor` lists missing hook + command to add it. |
 | P3 | CLAUDE_PLUGIN_ROOT unset | hook crashes | `CLAUDE_PLUGIN_ROOT not set. Reinstall plugin.` |
 
 ### 6.5 Silent-Failure Audit (the biggest debt)
@@ -723,16 +723,16 @@ Every silent failure is a candidate for the §8 "memory health surface".
 
 The plugin carries 11+ deprecated aliases per PRD §4.2:
 
-`/ltm:analyze-context` · `/ltm:learn` · `/ltm:decay-report` · `/ltm:capture` ·
-`/ltm:doctor` (legacy) · `/ltm:migrate` · `/ltm:hook-doctor` · `/ltm:migrate-db` ·
-`/ltm:secrets-scan` · `/ltm:recall` · `/ltm:ltm-server`
+`/openltm:analyze-context` · `/openltm:learn` · `/openltm:decay-report` · `/openltm:capture` ·
+`/openltm:doctor` (legacy) · `/openltm:migrate` · `/openltm:hook-doctor` · `/openltm:migrate-db` ·
+`/openltm:secrets-scan` · `/openltm:recall` · `/openltm:ltm-server`
 
 ### 7.1 Current Deprecation UX
 
 Each deprecated command file starts with one line:
 
 ```
-> ⚠ **Deprecated:** use `/ltm:memory recall` instead. This alias will be removed in v1.6.0.
+> ⚠ **Deprecated:** use `/openltm:memory recall` instead. This alias will be removed in v1.6.0.
 ```
 
 **Strengths:**
@@ -748,11 +748,11 @@ Each deprecated command file starts with one line:
 ### 7.2 Better Deprecation UX
 
 ```
-> /ltm:recall "supabase rls"
+> /openltm:recall "supabase rls"
 
-⚠ /ltm:recall is deprecated (sunset: v1.6.0, ~6 weeks).
-  Auto-rewriting to: /ltm:memory recall "supabase rls"
-  Suppress this warning: /ltm:admin config set quietDeprecations true
+⚠ /openltm:recall is deprecated (sunset: v1.6.0, ~6 weeks).
+  Auto-rewriting to: /openltm:memory recall "supabase rls"
+  Suppress this warning: /openltm:admin config set quietDeprecations true
 
 [results follow normally]
 ```
@@ -773,17 +773,17 @@ prints once                          14 days")
 
 | Old | New | Migration | Sunset |
 |-----|-----|-----------|--------|
-| `/ltm:analyze-context` | `/ltm:project analyze` | mechanical | v1.6.0 |
-| `/ltm:learn`           | `/ltm:memory learn`    | mechanical | v1.6.0 |
-| `/ltm:decay-report`    | `/ltm:health`          | output format slightly different — note in warn | v1.6.0 |
-| `/ltm:capture`         | `/ltm:memory learn --save-context` | flag added | v1.6.0 |
-| `/ltm:doctor` (legacy) | `/ltm:health`          | `health` covers diagnostic | v1.6.0 |
-| `/ltm:migrate`         | `/ltm:admin migrate`   | mechanical | v1.6.0 |
-| `/ltm:hook-doctor`     | `/ltm:doctor`          | folded into doctor | v1.6.0 |
-| `/ltm:migrate-db`      | `/ltm:admin migrate --legacy` | flag now | v1.6.0 |
-| `/ltm:secrets-scan`    | `/ltm:admin scan`      | mechanical | v1.6.0 |
-| `/ltm:recall`          | `/ltm:memory recall`   | mechanical | v1.6.0 |
-| `/ltm:ltm-server`      | `/ltm:admin server`    | mechanical | v1.6.0 |
+| `/openltm:analyze-context` | `/openltm:project analyze` | mechanical | v1.6.0 |
+| `/openltm:learn`           | `/openltm:memory learn`    | mechanical | v1.6.0 |
+| `/openltm:decay-report`    | `/openltm:health`          | output format slightly different — note in warn | v1.6.0 |
+| `/openltm:capture`         | `/openltm:memory learn --save-context` | flag added | v1.6.0 |
+| `/openltm:doctor` (legacy) | `/openltm:health`          | `health` covers diagnostic | v1.6.0 |
+| `/openltm:migrate`         | `/openltm:admin migrate`   | mechanical | v1.6.0 |
+| `/openltm:hook-doctor`     | `/openltm:doctor`          | folded into doctor | v1.6.0 |
+| `/openltm:migrate-db`      | `/openltm:admin migrate --legacy` | flag now | v1.6.0 |
+| `/openltm:secrets-scan`    | `/openltm:admin scan`      | mechanical | v1.6.0 |
+| `/openltm:recall`          | `/openltm:memory recall`   | mechanical | v1.6.0 |
+| `/openltm:ltm-server`      | `/openltm:admin server`    | mechanical | v1.6.0 |
 
 ### 7.5 Action Items For This Section
 
@@ -791,7 +791,7 @@ prints once                          14 days")
 2. Add a one-time "you can suppress this" hint on first deprecation hit.
 3. README sweep — replace every deprecated command reference.
 4. CHANGELOG entry for v1.6.0 listing the removals (already partial).
-5. `/ltm:doctor` should report deprecated commands the user has run in the
+5. `/openltm:doctor` should report deprecated commands the user has run in the
    last 7 days (sourced from a small usage log).
 
 ---
@@ -872,7 +872,7 @@ The conflict-block UX (G-F):
 
 ### 8.4 S3 — Memory Review UI
 
-**Weekly digest** that ships in `/ltm:health --review`:
+**Weekly digest** that ships in `/openltm:health --review`:
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
@@ -901,7 +901,7 @@ The conflict-block UX (G-F):
 ### 8.5 S5 — Onboarding Wizard (G-O)
 
 The single highest-leverage UX investment. Auto-fires on first SessionStart
-after install when `ltm.db` is empty.
+after install when `openltm.db` is empty.
 
 **Full ASCII flow:**
 
@@ -915,7 +915,7 @@ after install when `ltm.db` is empty.
        I scanned ~/projects and ~/work. Found 7 git repos.
        Pick the ones you actively work in (space to toggle, enter to confirm):
 
-       [x] ~/projects/claude-ltm-plugin
+       [x] ~/projects/OpenLtm
        [x] ~/projects/dev-team
        [ ] ~/projects/old-side-thing
        [x] ~/work/main-app
@@ -923,12 +923,12 @@ after install when `ltm.db` is empty.
        …
 
 [2/5] Registering 3 projects in registry…
-       ✓ claude-ltm-plugin
+       ✓ OpenLtm
        ✓ dev-team
        ✓ main-app
 
 [3/5] Seed a goal for each? (skip with N)
-       claude-ltm-plugin > "Ship magnificent LTM by Q3"
+       OpenLtm > "Ship magnificent LTM by Q3"
        dev-team           > "10-agent orchestration MVP"
        main-app           > [skip for now]
 
@@ -938,7 +938,7 @@ after install when `ltm.db` is empty.
 
        Run now? [Y/n] Y
 
-       claude-ltm-plugin: scanning 247 commits…
+       OpenLtm: scanning 247 commits…
        Proposed 18 candidate memories:
 
          [1] ★5 gotcha — "MCP server reads from cache, not source"
@@ -965,13 +965,13 @@ after install when `ltm.db` is empty.
   Setup complete. Your LTM is seeded with 14 project memories +
   3 globals, ready to recall.
 
-  Try: /ltm:memory recall "your topic"
+  Try: /openltm:memory recall "your topic"
   Or just start working — context auto-injects on every session.
 
   Next steps when you have a moment:
-    • /ltm:health         — see project health scores
-    • /ltm:admin server   — open the graph view in browser
-    • /ltm:project pause  — temporarily disable injection
+    • /openltm:health         — see project health scores
+    • /openltm:admin server   — open the graph view in browser
+    • /openltm:project pause  — temporarily disable injection
 ═══════════════════════════════════════════════════════════════════
 ```
 
@@ -981,7 +981,7 @@ Lower priority but designed-in for a future release.
 
 **Export:**
 ```
-> /ltm:team export --project main-app --include "decision,gotcha"
+> /openltm:team export --project main-app --include "decision,gotcha"
 
 Exporting 47 memories to main-app-memories-2026-04-28.ltm.json
 Signed with: ed25519:rohi-rikman-laptop-2026
@@ -990,7 +990,7 @@ File: ./main-app-memories-2026-04-28.ltm.json (12 KB)
 
 **Import (teammate):**
 ```
-> /ltm:team import ./main-app-memories-2026-04-28.ltm.json
+> /openltm:team import ./main-app-memories-2026-04-28.ltm.json
 
 Bundle from: rohi-rikman (verified ed25519 signature)
 Project: main-app (registered locally as: main-app-fork)
@@ -1017,10 +1017,10 @@ For frontend-developer to implement progressively:
 | Context block    | SessionStart inject  | Top of every session   | Built |
 | Recall card      | inline `recall` result | In conversation        | Built |
 | Conflict modal   | G-F        | Pre-write block         | P1 |
-| Weekly digest    | S3         | `/ltm:health --review`  | P1 |
+| Weekly digest    | S3         | `/openltm:health --review`  | P1 |
 | Onboarding wizard| G-O / S5   | First-run flow          | P0 |
 | Graph app v2     | G-N        | Browser localhost:7331  | P2 |
-| Team handoff UI  | G-A / S4   | New `/ltm:team` cmd     | P3 |
+| Team handoff UI  | G-A / S4   | New `/openltm:team` cmd     | P3 |
 | Pending-learnings tray | EvaluateSession proposal queue | SessionStart top  | P1 |
 
 ### 8.8 Magnificent Defaults
@@ -1042,8 +1042,8 @@ Things that should "just work" without ever being typed:
 
 A user must internalize this much to be fluent:
 
-- **5 grouped commands**: `/ltm:memory`, `/ltm:project`, `/ltm:admin`,
-  `/ltm:health`, `/ltm:doctor`
+- **5 grouped commands**: `/openltm:memory`, `/openltm:project`, `/openltm:admin`,
+  `/openltm:health`, `/openltm:doctor`
 - **11 deprecated aliases** still functional (creates "which one?" doubt)
 - **4 memory categories** (preference / architecture / gotcha / pattern /
   workflow / constraint — actually 6, mistake-prone)
@@ -1079,7 +1079,7 @@ A user must internalize this much to be fluent:
 /ltm learn <insight>           ← drop the :memory:
 /ltm health                    ← already short
 /ltm forget <id>               ← promote from sub-command
-/ltm init                      ← promote from /ltm:project init
+/ltm init                      ← promote from /openltm:project init
 ```
 
 **Tier 2 — Power-user surface (under `/ltm` parent menu):**
@@ -1100,7 +1100,7 @@ A user must internalize this much to be fluent:
 ```
 context injection  ← hooks
 auto-redaction     ← on write
-decay scoring      ← cron in /ltm:health
+decay scoring      ← cron in /openltm:health
 EvaluateSession    ← proposes via tray, never auto-writes
 PreCompact         ← invisible
 UpdateContext      ← invisible
@@ -1110,8 +1110,8 @@ UpdateContext      ← invisible
 
 | Old | New | Why |
 |-----|-----|-----|
-| `/ltm:memory recall` | `/ltm recall` | Drop redundant `memory:` namespace — everything is memory |
-| `/ltm:admin scan` | `/ltm scan` | One-word, matches mental model |
+| `/openltm:memory recall` | `/ltm recall` | Drop redundant `memory:` namespace — everything is memory |
+| `/openltm:admin scan` | `/ltm scan` | One-word, matches mental model |
 | `--save-context` flag | `--pin` | Shorter, conveys "this matters now" |
 | `category=preference` vs `pattern` | merge | Today's distinction is unclear; collapse to 4 categories: gotcha · decision · pattern · note |
 | `relationship_type` | `link` | "link" is what users say |
@@ -1140,7 +1140,7 @@ The plugin's UI is text-only, which is mostly accessible. Specific guidance:
   reader compatibility.
 - **Truncation indicators** (`+12 more — recall to explore`) are explicit
   rather than `...`.
-- **Long output is paginated** (`/ltm:memory recall --limit 10` default; user
+- **Long output is paginated** (`/openltm:memory recall --limit 10` default; user
   can ask for more) rather than dumped.
 - **No emoji-only signals.** Always pair with text label (e.g., `★5` not just
   star count). Screen-reader friendly.

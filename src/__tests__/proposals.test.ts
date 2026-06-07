@@ -9,7 +9,7 @@ const TEST_DIR = join(tmpdir(), `ltm-proposals-test-${process.pid}`);
 process.env.CLAUDE_PLUGIN_DATA = TEST_DIR;
 
 // Import after setting env so getProposalsDir() picks up TEST_DIR
-const { listPendingProposals, acceptProposal, rejectProposal } = await import("@rohirik/ltm-core");
+const { listPendingProposals, acceptProposal, rejectProposal } = await import("@rohirik/openltm-core");
 
 function proposalsDir() {
   return join(TEST_DIR, "proposals");

@@ -30,7 +30,7 @@ body:
       options:
         - MCP Server (recall, learn, etc.)
         - Hooks (SessionStart, EvaluateSession, etc.)
-        - Commands (/ltm:recall, /ltm:learn, etc.)
+        - Commands (/openltm:recall, /openltm:learn, etc.)
         - Graph Visualizer
         - Configuration
         - Other

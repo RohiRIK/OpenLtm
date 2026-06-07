@@ -8,9 +8,9 @@ graph-app/test-results/
 graph-app/tsconfig.tsbuildinfo
 
 # User data — never commit
-data/ltm.db
-data/ltm.db-shm
-data/ltm.db-wal
+data/openltm.db
+data/openltm.db-shm
+data/openltm.db-wal
 data/*.bak*
 
 # Env

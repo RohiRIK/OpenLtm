@@ -16,7 +16,7 @@ import * as p from "@clack/prompts";
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from "fs";
 import { join, basename, dirname } from "path";
 import { homedir } from "os";
-import { getDb, upsertGoal, learn } from "@rohirik/ltm-core";
+import { getDb, upsertGoal, learn } from "@rohirik/openltm-core";
 
 const CLAUDE_DIR = join(homedir(), ".claude");
 const PROJECTS_DIR = join(CLAUDE_DIR, "projects");
@@ -78,7 +78,7 @@ export function runDiagnostics(): DiagnosticResult[] {
 }
 
 export function getOnboardedFlagPath(pluginDataDir?: string): string {
-  const base = pluginDataDir ?? process.env.CLAUDE_PLUGIN_DATA ?? join(CLAUDE_DIR, "plugins", "data", "ltm-ltm");
+  const base = pluginDataDir ?? process.env.CLAUDE_PLUGIN_DATA ?? join(CLAUDE_DIR, "plugins", "data", "OpenLtm-openltm");
   return join(base, "onboarded.flag");
 }
 
@@ -203,13 +203,13 @@ export async function runOnboard(opts: OnboardOptions = {}): Promise<{ success: 
     p.log.info([
       "",
       "  Key commands:",
-      "    /ltm:memory recall <query>     — surface past decisions",
-      "    /ltm:memory learn <insight>    — store a new insight",
-      "    /ltm:health                    — check memory health",
-      "    /ltm:memory propose            — review pending proposals",
+      "    /openltm:memory recall <query>     — surface past decisions",
+      "    /openltm:memory learn <insight>    — store a new insight",
+      "    /openltm:health                    — check memory health",
+      "    /openltm:memory propose            — review pending proposals",
       "",
       "  Context is restored automatically at each session start.",
-      "  Run /ltm:doctor if context isn't injected.",
+      "  Run /openltm:doctor if context isn't injected.",
       "",
     ].join("\n"));
   }

@@ -9,7 +9,7 @@ Single source of truth for talking to long-term memory. Load it whenever you tou
 
 ## Tools
 
-Plugin `ltm`, server key `memory`. In Claude Code each is called as `mcp__plugin_ltm_memory__<name>`.
+Plugin `ltm`, server key `memory`. In Claude Code each is called as `mcp__plugin_openltm_memory__<name>`.
 
 | Tool | Call when |
 |------|-----------|

@@ -10,10 +10,10 @@ Run these three checks. Record the results as YES/NO.
 # Check A: Plugin DB exists?
 # Note: CLAUDE_PLUGIN_DATA is only set inside plugin hooks/MCP, not in user shells.
 # Scan the conventional plugin data directory instead.
-ls ~/.claude/plugins/data/ltm-*/ltm.db 2>/dev/null && echo "PLUGIN_DB=YES" || echo "PLUGIN_DB=NO"
+ls ~/.claude/plugins/data/ltm-*/openltm.db 2>/dev/null && echo "PLUGIN_DB=YES" || echo "PLUGIN_DB=NO"
 
 # Check B: Legacy DB exists?
-ls ~/.claude/memory/ltm.db 2>/dev/null && echo "LEGACY_DB=YES" || echo "LEGACY_DB=NO"
+ls ~/.claude/memory/openltm.db 2>/dev/null && echo "LEGACY_DB=YES" || echo "LEGACY_DB=NO"
 
 # Check C: Legacy JS modules present?
 ls ~/.claude/memory/db.js 2>/dev/null && echo "LEGACY_JS=YES" || echo "LEGACY_JS=NO"
@@ -33,11 +33,11 @@ ls ~/.claude/memory/db.js 2>/dev/null && echo "LEGACY_JS=YES" || echo "LEGACY_JS
 Run these two commands:
 
 ```bash
-claude plugin marketplace add https://github.com/RohiRIK/claude-ltm-plugin
+claude plugin marketplace add https://github.com/RohiRIK/OpenLtm
 claude plugin install ltm
 ```
 
-The installer tries to auto-copy `~/.claude/memory/ltm.db` to the plugin data directory. If `CLAUDE_PLUGIN_DATA` is not set during install (common on first install), it scans `~/.claude/plugins/data/ltm-*` as a fallback.
+The installer tries to auto-copy `~/.claude/memory/openltm.db` to the plugin data directory. If `CLAUDE_PLUGIN_DATA` is not set during install (common on first install), it scans `~/.claude/plugins/data/ltm-*` as a fallback.
 
 If the auto-copy did not run (check Step 1's PLUGIN_DB after install), copy manually:
 
@@ -45,10 +45,10 @@ If the auto-copy did not run (check Step 1's PLUGIN_DB after install), copy manu
 # Find the plugin data directory
 PLUGIN_DATA=$(ls -d ~/.claude/plugins/data/ltm-* 2>/dev/null | head -1)
 
-# Copy legacy DB if plugin data dir exists but has no ltm.db
-if [ -n "$PLUGIN_DATA" ] && [ ! -f "$PLUGIN_DATA/ltm.db" ] && [ -f ~/.claude/memory/ltm.db ]; then
-  cp ~/.claude/memory/ltm.db "$PLUGIN_DATA/ltm.db"
-  echo "Copied ltm.db to $PLUGIN_DATA/"
+# Copy legacy DB if plugin data dir exists but has no openltm.db
+if [ -n "$PLUGIN_DATA" ] && [ ! -f "$PLUGIN_DATA/openltm.db" ] && [ -f ~/.claude/memory/openltm.db ]; then
+  cp ~/.claude/memory/openltm.db "$PLUGIN_DATA/openltm.db"
+  echo "Copied openltm.db to $PLUGIN_DATA/"
 fi
 ```
 
@@ -63,13 +63,13 @@ claude plugin info ltm
 Confirm:
 1. Plugin is listed and version is shown
 2. Restart the session
-3. Run `/ltm:recall test` — it should return results (or "no results" on fresh install, which is expected)
-4. Run `/ltm:hook-doctor` — all hooks should show green
+3. Run `/openltm:recall test` — it should return results (or "no results" on fresh install, which is expected)
+4. Run `/openltm:hook-doctor` — all hooks should show green
 
-If recall returns empty but `~/.claude/memory/ltm.db` has data, the DB copy failed. Run:
+If recall returns empty but `~/.claude/memory/openltm.db` has data, the DB copy failed. Run:
 
 ```bash
-/ltm:migrate-db
+/openltm:migrate-db
 ```
 
 This diagnoses the path and copies the DB if needed.
@@ -93,7 +93,7 @@ rm -f ~/.claude/memory/mcp-server.ts
 
 ### 4b. Remove legacy slash commands
 
-These are replaced by `/ltm:` prefixed versions:
+These are replaced by `/openltm:` prefixed versions:
 
 ```bash
 rm -f ~/.claude/commands/recall.md
@@ -142,7 +142,7 @@ Any hook referencing `~/.claude/memory/` is stale and should be removed.
 ### 4e. Keep legacy DB as backup (recommend)
 
 ```
-~/.claude/memory/ltm.db  — keep until user confirms plugin is working across multiple sessions
+~/.claude/memory/openltm.db  — keep until user confirms plugin is working across multiple sessions
 ```
 
 Suggest deletion only after the user has used the plugin for at least one full session.
@@ -153,7 +153,7 @@ Run this final checklist:
 
 ```bash
 # Plugin DB exists and has data
-ls -la ~/.claude/plugins/data/ltm-*/ltm.db
+ls -la ~/.claude/plugins/data/ltm-*/openltm.db
 
 # No legacy JS modules remain
 ls ~/.claude/memory/*.js 2>/dev/null && echo "WARN: legacy JS files remain" || echo "OK: clean"
@@ -171,9 +171,9 @@ Report results to the user. All four should show OK/clean.
 
 | Aspect | Legacy | Plugin |
 |--------|--------|--------|
-| DB path | `~/.claude/memory/ltm.db` | `$CLAUDE_PLUGIN_DATA/ltm.db` |
-| Commands | `/recall`, `/learn` | `/ltm:recall`, `/ltm:learn` |
+| DB path | `~/.claude/memory/openltm.db` | `$CLAUDE_PLUGIN_DATA/openltm.db` |
+| Commands | `/recall`, `/learn` | `/openltm:recall`, `/openltm:learn` |
 | MCP | Manual in `~/.claude.json` | Automatic via `plugin.json` |
 | Hooks | Hardcoded `~/.claude/memory/` | `CLAUDE_PLUGIN_ROOT` variable |
 | Updates | `git pull` in `~/.claude/memory/` | `claude plugin update ltm` |
-| Migrations | `bun run migrate.ts` | `/ltm:migrate` |
+| Migrations | `bun run migrate.ts` | `/openltm:migrate` |

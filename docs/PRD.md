@@ -41,7 +41,7 @@ A **magnificent** LTM is one where:
 | G3 | Keep the developer in flow | Zero mandatory prompts; all LTM ops are background or 1-keystroke |
 | G4 | Survive plugin updates and machine moves | DB at known path, JSON export, schema migrations versioned and idempotent |
 | G5 | Be safe by default | No secret ever lands in the DB; redaction on write; scan command for retroactive cleanup |
-| G6 | Be debuggable in 60 seconds | `/ltm:doctor` and `/ltm:health` give a complete plain-English status |
+| G6 | Be debuggable in 60 seconds | `/openltm:doctor` and `/openltm:health` give a complete plain-English status |
 
 ### 1.3 Non-vision (explicit)
 - This is **not** a team-shared knowledge base (yet). Memory is per-developer-per-machine.
@@ -57,7 +57,7 @@ A **magnificent** LTM is one where:
 Builds side projects and contract work alone across 3-10 active repos. Switches projects
 multiple times a day. Pain: re-explains tooling, conventions, and "why we built it this
 way" every time they cd into a different directory. Wins by: project-aware context
-injection at session start, low-friction `/ltm:memory learn` after a decision.
+injection at session start, low-friction `/openltm:memory learn` after a decision.
 
 ### P2 — Power User / Tooling Hacker ("Pat")
 Curates their own Claude Code config (hooks, skills, plugins). Wants memory to
@@ -123,23 +123,23 @@ The cross-session JTBDs the LTM plugin solves:
 **Active grouped commands:**
 | Command | Purpose |
 |---------|---------|
-| `/ltm:memory recall` | Search past decisions and memories. |
-| `/ltm:memory learn [--save-context]` | Store insight; optional one-shot save-context. |
-| `/ltm:memory forget <id>` | Remove a wrong/stale memory. |
-| `/ltm:memory relate <src> <tgt> <type>` | Link two memories. |
-| `/ltm:project init` | Seed a project goal. |
-| `/ltm:project analyze` | Analyze project context before starting work. |
-| `/ltm:project register` | Register a project in the LTM registry. |
-| `/ltm:admin migrate [--legacy]` | Run schema migrations. |
-| `/ltm:admin scan` | Scan all memories for secrets, redact in place. |
-| `/ltm:admin server` | Start/stop/check the LTM Graph visualization server. |
-| `/ltm:health` | Health scores + decay summary (single source of truth for status). |
-| `/ltm:doctor` | Full diagnostic: hooks, MCP, DB, registry, schema. |
+| `/openltm:memory recall` | Search past decisions and memories. |
+| `/openltm:memory learn [--save-context]` | Store insight; optional one-shot save-context. |
+| `/openltm:memory forget <id>` | Remove a wrong/stale memory. |
+| `/openltm:memory relate <src> <tgt> <type>` | Link two memories. |
+| `/openltm:project init` | Seed a project goal. |
+| `/openltm:project analyze` | Analyze project context before starting work. |
+| `/openltm:project register` | Register a project in the LTM registry. |
+| `/openltm:admin migrate [--legacy]` | Run schema migrations. |
+| `/openltm:admin scan` | Scan all memories for secrets, redact in place. |
+| `/openltm:admin server` | Start/stop/check the LTM Graph visualization server. |
+| `/openltm:health` | Health scores + decay summary (single source of truth for status). |
+| `/openltm:doctor` | Full diagnostic: hooks, MCP, DB, registry, schema. |
 
 **Deprecated aliases (still functional, route to grouped equivalents):**
-`/ltm:analyze-context`, `/ltm:learn`, `/ltm:decay-report`, `/ltm:capture`, `/ltm:doctor`
-(legacy form), `/ltm:migrate`, `/ltm:hook-doctor`, `/ltm:migrate-db`, `/ltm:secrets-scan`,
-`/ltm:recall`, `/ltm:ltm-server`.
+`/openltm:analyze-context`, `/openltm:learn`, `/openltm:decay-report`, `/openltm:capture`, `/openltm:doctor`
+(legacy form), `/openltm:migrate`, `/openltm:hook-doctor`, `/openltm:migrate-db`, `/openltm:secrets-scan`,
+`/openltm:recall`, `/openltm:ltm-server`.
 
 ### 4.3 Hooks
 
@@ -161,7 +161,7 @@ The cross-session JTBDs the LTM plugin solves:
 
 ### 4.5 Storage & Registry
 
-- **Database:** SQLite at `${CLAUDE_PLUGIN_DATA}/ltm.db` (resolved by Claude Code).
+- **Database:** SQLite at `${CLAUDE_PLUGIN_DATA}/openltm.db` (resolved by Claude Code).
 - **Schema:** `src/schema.sql`. Two main tables: `memories` (long-term, permanent) and
   `context_items` (short-term, project-scoped, auto-trimmed).
 - **Registry:** `~/.claude/projects/registry.json` — maps cwd → project name. Auto-populated by `SessionStart`.
@@ -172,7 +172,7 @@ The cross-session JTBDs the LTM plugin solves:
 
 - **MCP server** (`src/mcp-server.ts`) — primary tool surface, started by Claude Code per `mcpServers` in `plugin.json`.
 - **Graph visualization server** (`src/graph-server.ts`) — opt-in localhost web UI for
-  exploring memory graphs. Managed via `/ltm:admin server`.
+  exploring memory graphs. Managed via `/openltm:admin server`.
 - **Graph app** (`graph-app/`) — front-end for the visualization, has its own Playwright
   E2E test harness (`bun run test:e2e`).
 
@@ -198,7 +198,7 @@ and for **system-architect** to design against.
   **when** Claude Code session starts in that project's cwd,
   **then** a `## Restored Project Context` block appears in the session, containing the goal, up to N decisions, up to N gotchas, and last 5 progress entries.
 - **Given** the same project, **when** session starts, **then** importance-5 global memories are also injected.
-- **Given** total restored context exceeds 60 lines, **when** injected, **then** it is truncated to ~60 lines with a "+N more — run /ltm:memory recall" footer.
+- **Given** total restored context exceeds 60 lines, **when** injected, **then** it is truncated to ~60 lines with a "+N more — run /openltm:memory recall" footer.
 
 ### US-2 — Recall before deciding
 **As** Pat, **I want** `recall` to surface prior decisions on a topic, **so that** I don't contradict past work.
@@ -213,7 +213,7 @@ and for **system-architect** to design against.
 **As** Sam, **I want** to capture a decision without leaving flow, **so that** I actually do it.
 
 **Acceptance criteria:**
-- **Given** I have just made a decision, **when** I run `/ltm:memory learn "X because Y" --category architecture`, **then** the memory is persisted and an id is returned in under 200 ms.
+- **Given** I have just made a decision, **when** I run `/openltm:memory learn "X because Y" --category architecture`, **then** the memory is persisted and an id is returned in under 200 ms.
 - **Given** the text contains a string matching a known secret pattern (API key, JWT, AWS key), **when** stored, **then** the secret is redacted to `[REDACTED:type]` before write.
 - **Given** I omit `--project`, **when** stored, **then** the current project (from registry) is auto-attached.
 
@@ -221,7 +221,7 @@ and for **system-architect** to design against.
 **As** Sam at end of a productive segment, **I want** to capture both progress and a learning together.
 
 **Acceptance criteria:**
-- **Given** I run `/ltm:memory learn "<insight>" --save-context`, **when** it executes, **then** (a) the global memory is written, (b) a `progress` context item is appended for the current project, (c) `context-summary.md` is regenerated.
+- **Given** I run `/openltm:memory learn "<insight>" --save-context`, **when** it executes, **then** (a) the global memory is written, (b) a `progress` context item is appended for the current project, (c) `context-summary.md` is regenerated.
 
 ### US-5 — Decay stale memories gracefully
 **As** Tara, **I want** old, never-recalled memories to fade, **so that** my recall results stay fresh.
@@ -229,49 +229,49 @@ and for **system-architect** to design against.
 **Acceptance criteria:**
 - **Given** a memory has not been recalled in 90 days and has importance < 3, **when** decay scoring runs, **then** its rank score is multiplied by a decay factor < 1.
 - **Given** importance == 5, **when** decay scoring runs, **then** the score is **not** decayed.
-- **Given** I run `/ltm:health`, **when** it executes, **then** it reports: total memories, count by category, count by decay bucket (fresh / aging / stale), and top-5 staleness candidates with ids.
+- **Given** I run `/openltm:health`, **when** it executes, **then** it reports: total memories, count by category, count by decay bucket (fresh / aging / stale), and top-5 staleness candidates with ids.
 
 ### US-6 — Forget a wrong memory
 **As** Pat after a refactor, **I want** to delete a memory that's now wrong.
 
 **Acceptance criteria:**
-- **Given** memory id `m_123` exists, **when** I run `/ltm:memory forget m_123`, **then** it is soft-deleted (not returned by recall) and audit row is recorded.
-- **Given** a soft-deleted memory, **when** I run `/ltm:memory recall` for its text, **then** it does not appear in results.
+- **Given** memory id `m_123` exists, **when** I run `/openltm:memory forget m_123`, **then** it is soft-deleted (not returned by recall) and audit row is recorded.
+- **Given** a soft-deleted memory, **when** I run `/openltm:memory recall` for its text, **then** it does not appear in results.
 
 ### US-7 — Relate two memories
 **As** Pat tracing a chain of cause-and-effect, **I want** to link a decision to a gotcha that resulted from it.
 
 **Acceptance criteria:**
-- **Given** memories `m_dec` and `m_got` exist, **when** I run `/ltm:memory relate m_dec m_got "caused"`, **then** an edge `(m_dec, m_got, "caused")` is stored.
+- **Given** memories `m_dec` and `m_got` exist, **when** I run `/openltm:memory relate m_dec m_got "caused"`, **then** an edge `(m_dec, m_got, "caused")` is stored.
 - **Given** that edge exists, **when** I view the graph UI, **then** the two nodes appear connected with the edge label.
 
 ### US-8 — Health check at a glance
 **As** Tara at start of week, **I want** one command that tells me memory health.
 
 **Acceptance criteria:**
-- **Given** any state, **when** I run `/ltm:health`, **then** I see: per-project health score (0-100), DB size, total memories, decay summary, last-write timestamp, MCP reachability.
+- **Given** any state, **when** I run `/openltm:health`, **then** I see: per-project health score (0-100), DB size, total memories, decay summary, last-write timestamp, MCP reachability.
 - **Given** any of these signals is unhealthy, **when** displayed, **then** the line is marked with a clear status indicator and a one-line remedy.
 
 ### US-9 — Diagnose the plugin in 60s
 **As** Pat after a Claude Code update, **I want** to confirm hooks and MCP still work.
 
 **Acceptance criteria:**
-- **Given** I run `/ltm:doctor`, **when** it executes, **then** it checks: MCP server reachable, all 4 hooks registered in `settings.json`, DB exists and is writable, schema version current, registry parseable.
+- **Given** I run `/openltm:doctor`, **when** it executes, **then** it checks: MCP server reachable, all 4 hooks registered in `settings.json`, DB exists and is writable, schema version current, registry parseable.
 - **Given** any check fails, **when** displayed, **then** the failure includes an exact suggested fix command.
 
 ### US-10 — Migrate the schema safely
 **As** Pat after pulling a new plugin version, **I want** a safe schema upgrade path.
 
 **Acceptance criteria:**
-- **Given** the DB schema is at version N and the plugin expects N+1, **when** I run `/ltm:admin migrate`, **then** all pending migrations apply in a single transaction and the schema_version row updates.
-- **Given** a migration fails, **when** detected, **then** the transaction rolls back and a backup file is written next to `ltm.db`.
-- **Given** `--legacy` flag, **when** run, **then** the migrator detects and moves a legacy ltm.db from the pre-1.4 path into `${CLAUDE_PLUGIN_DATA}/`.
+- **Given** the DB schema is at version N and the plugin expects N+1, **when** I run `/openltm:admin migrate`, **then** all pending migrations apply in a single transaction and the schema_version row updates.
+- **Given** a migration fails, **when** detected, **then** the transaction rolls back and a backup file is written next to `openltm.db`.
+- **Given** `--legacy` flag, **when** run, **then** the migrator detects and moves a legacy openltm.db from the pre-1.4 path into `${CLAUDE_PLUGIN_DATA}/`.
 
 ### US-11 — Scan and redact secrets
 **As** Ezra before an audit, **I want** to scan all memories for secrets.
 
 **Acceptance criteria:**
-- **Given** memories exist with embedded secrets, **when** I run `/ltm:admin scan`, **then** each match is reported with memory id, secret type, and offset.
+- **Given** memories exist with embedded secrets, **when** I run `/openltm:admin scan`, **then** each match is reported with memory id, secret type, and offset.
 - **Given** I confirm redaction, **when** applied, **then** the secret substring is replaced with `[REDACTED:type]` in place and an audit row recorded.
 - **Given** dry-run mode (default), **when** run, **then** no writes occur.
 
@@ -281,13 +281,13 @@ and for **system-architect** to design against.
 **Acceptance criteria:**
 - **Given** project A and B are both registered, **when** I open a session in B's cwd, **then** the injected context contains only B's `context_items` plus globals.
 - **Given** an `recall` call without a `project` filter from inside B, **when** ranking, **then** B's memories are boosted vs. A's.
-- **Given** I move a project to a new path, **when** I run `/ltm:project register`, **then** registry updates and existing memories remain associated.
+- **Given** I move a project to a new path, **when** I run `/openltm:project register`, **then** registry updates and existing memories remain associated.
 
 ### US-13 — Initialize a project goal
 **As** Sam starting a new repo, **I want** to seed the goal Claude sees on every session start.
 
 **Acceptance criteria:**
-- **Given** I run `/ltm:project init`, **when** it executes, **then** it prompts (or accepts arg) for a 1-3 line goal and stores it as the current `goal` context item.
+- **Given** I run `/openltm:project init`, **when** it executes, **then** it prompts (or accepts arg) for a 1-3 line goal and stores it as the current `goal` context item.
 - **Given** a `goal` already exists, **when** init runs, **then** the prior goal is preserved as a decision (audit trail) and replaced.
 
 ### US-14 — Backfill memories from git history
@@ -302,22 +302,22 @@ and for **system-architect** to design against.
 **As** Pat after the same gotcha bites in two projects, **I want** to promote it to global with importance 5.
 
 **Acceptance criteria:**
-- **Given** a project-scoped `gotcha` context item, **when** I run `/ltm:memory learn "<text>" --category gotcha --importance 5`, **then** it lands in the global `memories` table.
+- **Given** a project-scoped `gotcha` context item, **when** I run `/openltm:memory learn "<text>" --category gotcha --importance 5`, **then** it lands in the global `memories` table.
 - **Given** importance 5, **when** any future SessionStart fires, **then** this memory is in the global injection regardless of project.
 
 ### US-16 — Visualize the memory graph
 **As** Pat exploring decision chains, **I want** a browser-based graph view.
 
 **Acceptance criteria:**
-- **Given** I run `/ltm:admin server start`, **when** it executes, **then** a localhost server boots on a known port and I can open it in a browser.
+- **Given** I run `/openltm:admin server start`, **when** it executes, **then** a localhost server boots on a known port and I can open it in a browser.
 - **Given** memories with relations exist, **when** I open the UI, **then** I see nodes (memories) and edges (relations) with category-based coloring.
-- **Given** I stop the server with `/ltm:admin server stop`, **when** done, **then** the port is released.
+- **Given** I stop the server with `/openltm:admin server stop`, **when** done, **then** the port is released.
 
 ### US-17 — Survive plugin upgrade
 **As** Sam clicking "Update now" in the plugin marketplace, **I want** my memories preserved.
 
 **Acceptance criteria:**
-- **Given** `ltm.db` exists and is at schema vN, **when** the plugin updates to a version expecting vN+1, **then** the next session auto-runs the migration (or prompts) without data loss.
+- **Given** `openltm.db` exists and is at schema vN, **when** the plugin updates to a version expecting vN+1, **then** the next session auto-runs the migration (or prompts) without data loss.
 - **Given** the cache path moves between versions, **when** the new version starts, **then** `LTM_DB_PATH` resolves to the same on-disk file (via `${CLAUDE_PLUGIN_DATA}`).
 
 ---
@@ -432,7 +432,7 @@ value) follow.
 
 ### 8.1 Activation
 - **A1.** % of installed users who have ≥ 1 memory after 7 days. Target: > 70%.
-- **A2.** % of installed users who run `/ltm:project init` within 7 days. Target: > 50%.
+- **A2.** % of installed users who run `/openltm:project init` within 7 days. Target: > 50%.
 - **A3.** Median time from install to first `learn` call. Target: < 24h.
 
 ### 8.2 Engagement
@@ -449,13 +449,13 @@ value) follow.
 - **Q4.** Secret-leak rate: 0. (Any non-zero is a P0 incident.)
 
 ### 8.4 Reliability
-- **R1.** `/ltm:doctor` clean-pass rate across user installs. Target: > 95%.
+- **R1.** `/openltm:doctor` clean-pass rate across user installs. Target: > 95%.
 - **R2.** Schema migration success rate (no rollback, no data loss). Target: 100%.
 - **R3.** Mean DB write latency. Target: < 50 ms p95.
 
 ### 8.5 Durable value (lagging)
 - **D1.** Self-reported "saved me from re-deciding" count per developer per month.
-  Captured via opt-in survey or `/ltm:health` self-rating prompt. Target: ≥ 4.
+  Captured via opt-in survey or `/openltm:health` self-rating prompt. Target: ≥ 4.
 - **D2.** Ratio of `recall` calls that surface a memory ≥ 30 days old. Target: > 30%.
   (Indicates LTM is doing long-memory work, not just session caching.)
 - **D3.** Cross-project memory reuse rate: % of importance-5 globals injected into
@@ -470,7 +470,7 @@ These need resolution before architecture is finalized — flagged for buddy / u
 - **OQ1.** Embedding strategy: deterministic local hashing, Claude tool call, or a
   small bundled model? Affects portability and latency.
 - **OQ2.** Concurrency model: how do we serialize writes when multiple Claude Code
-  instances run against the same `ltm.db`? SQLite WAL is likely sufficient but
+  instances run against the same `openltm.db`? SQLite WAL is likely sufficient but
   needs explicit decision.
 - **OQ3.** Decay function: linear, exponential, or recall-driven? Needs a small
   experiment with real recall logs.
@@ -488,8 +488,8 @@ This PRD unblocks two parallel agents:
 - **system-architect** — design the storage schema evolution, MCP contract surface,
   hook lifecycle, and migration path required by US-1 through US-17 and the open
   questions in §9.
-- **ui-ux-designer** — design the surfaces users actually touch: `/ltm:health` and
-  `/ltm:doctor` output formatting, the graph-app v2 (G-N), and the onboarding
+- **ui-ux-designer** — design the surfaces users actually touch: `/openltm:health` and
+  `/openltm:doctor` output formatting, the graph-app v2 (G-N), and the onboarding
   wizard (G-O).
 
 Both agents should treat §4 (Feature Inventory) as the as-built ground truth and §5

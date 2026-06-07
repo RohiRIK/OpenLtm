@@ -6,7 +6,7 @@ import { Database } from "bun:sqlite";
 
 const TEST_DIR = join(tmpdir(), `ltm-onboard-test-${process.pid}`);
 const PLUGIN_DATA = join(TEST_DIR, "plugin-data");
-const DB_PATH = join(TEST_DIR, "test-ltm.db");
+const DB_PATH = join(TEST_DIR, "test-openltm.db");
 const SCHEMA_PATH = join(import.meta.dir, "..", "..", "src", "schema.sql");
 
 // Set env BEFORE any imports that read it
@@ -22,7 +22,7 @@ let getOnboardedFlagPath: typeof import("../onboard.js").getOnboardedFlagPath;
 beforeAll(async () => {
   mkdirSync(PLUGIN_DATA, { recursive: true });
 
-  const { runPendingMigrations, _setDbForTesting } = await import("@rohirik/ltm-core");
+  const { runPendingMigrations, _setDbForTesting } = await import("@rohirik/openltm-core");
 
   const db = new Database(DB_PATH, { create: true });
   db.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;");

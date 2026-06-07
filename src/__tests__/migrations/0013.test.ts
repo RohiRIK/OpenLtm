@@ -20,11 +20,11 @@ beforeAll(async () => {
   db.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
   db.exec(readFileSync(schemaPath, "utf-8"));
 
-  const { _setDbForTesting } = await import("@rohirik/ltm-core");
+  const { _setDbForTesting } = await import("@rohirik/openltm-core");
   _setDbForTesting(db);
 
   // Run all migrations (008 creates memory_provenance, 013 adds created_by)
-  const { runPendingMigrations } = await import("@rohirik/ltm-core");
+  const { runPendingMigrations } = await import("@rohirik/openltm-core");
   await runPendingMigrations(db);
 
   // Seed memories AFTER migrations (memory_provenance now exists)

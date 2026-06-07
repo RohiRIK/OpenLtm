@@ -42,8 +42,8 @@ jobs:
             sed -i "s|\"workspace:\*\"|\"^${VERSION}\"|g" "$f"
           done
 
-      - name: Publish ltm-core
-        working-directory: packages/ltm-core
+      - name: Publish openltm-core
+        working-directory: packages/openltm-core
         run: npm publish --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

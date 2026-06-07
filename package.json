@@ -1,6 +1,6 @@
 {
   "name": "openltm",
-  "version": "2.7.5",
+  "version": "2.8.0",
   "description": "OpenLTM — Long-Term Memory for AI coding agents (Claude Code, OpenCode, Pi)",
   "private": true,
   "workspaces": [
@@ -14,8 +14,8 @@
     "cleanup:bak": "bun run scripts/cleanup-bak.ts",
     "typecheck": "bunx tsc --noEmit",
     "dev:mcp": "bun run src/mcp-server.ts",
-    "dev:server": "LTM_DB_PATH=./data/ltm.db bun run src/graph-server.ts",
-    "migrate": "LTM_DB_PATH=./data/ltm.db bun run src/migrate.ts",
+    "dev:server": "LTM_DB_PATH=./data/openltm.db bun run src/graph-server.ts",
+    "migrate": "LTM_DB_PATH=./data/openltm.db bun run src/migrate.ts",
     "test": "bun test --path-ignore-patterns='graph-app/**' --pass-with-no-tests",
     "test:e2e": "cd graph-app && bunx playwright test",
     "postinstall": "bun run scripts/update-wiring.ts"
@@ -23,7 +23,7 @@
   "dependencies": {
     "@clack/prompts": "^1.3.0",
     "@modelcontextprotocol/sdk": "^1.27.1",
-    "@rohirik/ltm-core": "workspace:*",
+    "@rohirik/openltm-core": "workspace:*",
     "sqlite-vec": "0.1.9",
     "zod": "^4.3.6"
   },

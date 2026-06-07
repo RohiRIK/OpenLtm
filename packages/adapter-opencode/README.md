@@ -25,7 +25,7 @@ OpenCode automatically installs and updates the plugin on startup.
 All three tools read from and write to the same database:
 
 ```
-~/.claude/plugins/data/ltm-ltm/ltm.db
+~/.claude/plugins/data/OpenLtm-openltm/openltm.db
 ```
 
 A memory learned in OpenCode appears in the next Claude Code session, and vice versa.
@@ -33,7 +33,7 @@ A memory learned in OpenCode appears in the next Claude Code session, and vice v
 ## Custom DB path
 
 ```json
-{ "env": { "LTM_DB_PATH": "/custom/path/ltm.db" } }
+{ "env": { "LTM_DB_PATH": "/custom/path/openltm.db" } }
 ```
 
 Or set `LTM_DB_PATH` in your shell environment.

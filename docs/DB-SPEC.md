@@ -33,7 +33,7 @@ in §9 below.
 
 ## 1. Current Schema — Annotated
 
-The entire data store is one SQLite file: `${CLAUDE_PLUGIN_DATA}/ltm-ltm/ltm.db`.
+The entire data store is one SQLite file: `${CLAUDE_PLUGIN_DATA}/OpenLtm-openltm/openltm.db`.
 Accessed exclusively through `src/shared-db.ts:getDb()`. WAL mode, foreign keys on,
 busy_timeout 5 000 ms set on every connection.
 
@@ -373,7 +373,7 @@ Returns OK if the shadow tables are consistent. A Phase 0 `ltm:admin` sub-comman
 
 ### 3.5 Planned improvements
 
-- **Phase 0:** Add a `PRAGMA integrity_check` wrapper and an FTS integrity check to `/ltm:admin`.
+- **Phase 0:** Add a `PRAGMA integrity_check` wrapper and an FTS integrity check to `/openltm:admin`.
 - **Phase 3:** Add a `category` column to `memories_fts` so category filtering can be pushed into the FTS query rather than applied as a post-filter join:
   ```sql
   CREATE VIRTUAL TABLE memories_fts USING fts5(
@@ -476,7 +476,7 @@ The decay multiply moves into SQL, uses the pre-materialised `decay_score`, and 
 
 **Trade-off:** Write amplification. Every `learn` does not update `decay_score` — the janitor does. There is a staleness window of up to 24 hours. This is acceptable: decay is a rank modifier, not a hard filter. A freshly-learned memory has `decay_score = 1.0` (default) which is correct.
 
-**Janitor run record:** stored in `settings` as `janitor.last_run_at`. The `/ltm:health` command surfaces it.
+**Janitor run record:** stored in `settings` as `janitor.last_run_at`. The `/openltm:health` command surfaces it.
 
 ---
 
@@ -696,7 +696,7 @@ CREATE INDEX IF NOT EXISTS idx_hook_events_project ON hook_events(project_name, 
 CREATE INDEX IF NOT EXISTS idx_hook_events_status ON hook_events(status, created_at DESC);
 ```
 
-Retention: rows older than 90 days are pruned by the janitor. `/ltm:health` aggregates from this table for latency p50/p95, error rates, and recall hit rates.
+Retention: rows older than 90 days are pruned by the janitor. `/openltm:health` aggregates from this table for latency p50/p95, error rates, and recall hit rates.
 
 ### 7.5 `memory_provenance` (Phase 2 — C5)
 
@@ -723,7 +723,7 @@ Backfill: all existing memories get a single `legacy` provenance row at migratio
 
 ### 7.6 `memory_audit` (Phase 2 — W11, C5, C9)
 
-Append-only audit log. Every write to the `memories` table (insert, update, forget/deprecate, redact) produces an audit row. Powers time-travel (Phase 7) and `/ltm:admin audit`.
+Append-only audit log. Every write to the `memories` table (insert, update, forget/deprecate, redact) produces an audit row. Powers time-travel (Phase 7) and `/openltm:admin audit`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS memory_audit (
@@ -855,7 +855,7 @@ The `memory_audit` table (§7.6) is the primary source for time-travel. Phase 7 
 snapshot mechanism for efficient point-in-time reconstruction.
 
 ```sql
--- Named snapshots (created by /ltm:memory snapshot or by janitor nightly)
+-- Named snapshots (created by /openltm:memory snapshot or by janitor nightly)
 CREATE TABLE IF NOT EXISTS memory_snapshots (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   label         TEXT,                           -- human-readable, e.g. "before Phase 4 migration"
@@ -938,7 +938,7 @@ The semantic fallback triggers at < 3 FTS5 results. At 100k memories, queries th
 SQLite auto-analyzes when a table changes significantly (controlled by `PRAGMA analysis_limit`). Manual schedule:
 
 - `PRAGMA ANALYZE;` — run by janitor weekly; updates query planner statistics.
-- `PRAGMA VACUUM;` — **not** scheduled automatically; recommended after large deletions (e.g., after a bulk `forget` or deprecated memory archival). Document in `/ltm:admin` as a manual command.
+- `PRAGMA VACUUM;` — **not** scheduled automatically; recommended after large deletions (e.g., after a bulk `forget` or deprecated memory archival). Document in `/openltm:admin` as a manual command.
 - `PRAGMA wal_checkpoint(TRUNCATE);` — run by janitor after each pass to truncate the WAL file and reclaim disk space.
 
 ---
@@ -1042,7 +1042,7 @@ Goal: snapshot mechanism for efficient replay and diff.
 | File | DDL summary |
 |------|-------------|
 | `0018_add_snapshots.sql` | `CREATE TABLE memory_snapshots (...)` as §7.12; `CREATE TABLE snapshot_memories (...)` |
-| `0019_seed_initial_snapshot.sql` | Insert a snapshot row for the current DB state at migration time so that `/ltm:memory replay` has a baseline |
+| `0019_seed_initial_snapshot.sql` | Insert a snapshot row for the current DB state at migration time so that `/openltm:memory replay` has a baseline |
 
 Breaking: none.
 

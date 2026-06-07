@@ -2,7 +2,7 @@
  * G0 — Schema-sync test harness for Phase 7 (migrations 015-021).
  * Verifies:
  *   1. Fresh DB + runPendingMigrations() produces all Phase 7 columns/tables.
- *   2. src/schema.sql and packages/ltm-core/src/schema.sql are byte-identical.
+ *   2. src/schema.sql and packages/openltm-core/src/schema.sql are byte-identical.
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { Database } from "bun:sqlite";
@@ -11,7 +11,7 @@ import { join } from "path";
 
 const ROOT = join(import.meta.dir, "..", "..", "..");
 const SRC_SCHEMA = join(ROOT, "src", "schema.sql");
-const CORE_SCHEMA = join(ROOT, "packages", "ltm-core", "src", "schema.sql");
+const CORE_SCHEMA = join(ROOT, "packages", "openltm-core", "src", "schema.sql");
 const dbPath = `/tmp/test-schema-sync-${process.pid}-${Date.now()}.db`;
 
 let db: Database;
@@ -46,10 +46,10 @@ beforeAll(async () => {
   db.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
   db.exec(readFileSync(SRC_SCHEMA, "utf-8"));
 
-  const { _setDbForTesting } = await import("@rohirik/ltm-core");
+  const { _setDbForTesting } = await import("@rohirik/openltm-core");
   _setDbForTesting(db);
 
-  const { runPendingMigrations } = await import("@rohirik/ltm-core");
+  const { runPendingMigrations } = await import("@rohirik/openltm-core");
   await runPendingMigrations(db);
 }, 30_000);
 
@@ -61,7 +61,7 @@ afterAll(() => {
 });
 
 describe("schema-sync — dual schema.sql files are identical", () => {
-  it("src/schema.sql matches packages/ltm-core/src/schema.sql byte-for-byte", () => {
+  it("src/schema.sql matches packages/openltm-core/src/schema.sql byte-for-byte", () => {
     const src = readFileSync(SRC_SCHEMA, "utf-8");
     const core = readFileSync(CORE_SCHEMA, "utf-8");
     expect(src).toBe(core);

@@ -1,7 +1,7 @@
 ---
 name: git-learner
 description: Mines durable engineering memories from git commit diffs and stores them in LTM. Use to onboard a repo, backfill history after enabling gitLearn, or harvest patterns after a sprint. Reads diffs in its own context so raw git output never reaches the main thread.
-tools: Bash, Read, Grep, mcp__plugin_ltm_memory__learn, mcp__plugin_ltm_memory__recall
+tools: Bash, Read, Grep, mcp__plugin_openltm_memory__learn, mcp__plugin_openltm_memory__recall
 model: haiku
 color: "#f59e0b"
 ---
@@ -34,7 +34,7 @@ For each commit hash:
 
 1. Read the diff: `git -C <REPO_ROOT> show --unified=3 --no-color <hash>`.
 2. Decide what — if anything — is worth keeping. Apply the rubric below.
-3. For each kept learning, call `mcp__plugin_ltm_memory__learn` (see Storage).
+3. For each kept learning, call `mcp__plugin_openltm_memory__learn` (see Storage).
 
 Process the whole batch yourself in this one context; do not spawn sub-agents. Run
 only read-only git commands and the two LTM MCP tools. NEVER write files or mutate
@@ -63,7 +63,7 @@ When unsure, skip. Quality over coverage. A batch of 10 commits commonly yields
 
 ## Storage
 
-Call `mcp__plugin_ltm_memory__learn` once per learning with:
+Call `mcp__plugin_openltm_memory__learn` once per learning with:
 - `content` — the learning, concise, < 120 chars.
 - `category` — `architecture` | `gotcha` | `pattern`.
 - `importance` — `4` for gotchas, `3` for patterns and decisions.

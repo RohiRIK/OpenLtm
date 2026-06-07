@@ -10,11 +10,11 @@ import { join } from "path";
 const dbPath = `/tmp/test-ltm-prov-dao-${process.pid}-${Date.now()}.db`;
 const schemaPath = join(import.meta.dir, "..", "..", "..", "src", "schema.sql");
 
-let insertProvenance: typeof import("@rohirik/ltm-core").insertProvenance;
-let insertAudit: typeof import("@rohirik/ltm-core").insertAudit;
-let listProvenance: typeof import("@rohirik/ltm-core").listProvenance;
-let queryAudit: typeof import("@rohirik/ltm-core").queryAudit;
-let snapshotMemory: typeof import("@rohirik/ltm-core").snapshotMemory;
+let insertProvenance: typeof import("@rohirik/openltm-core").insertProvenance;
+let insertAudit: typeof import("@rohirik/openltm-core").insertAudit;
+let listProvenance: typeof import("@rohirik/openltm-core").listProvenance;
+let queryAudit: typeof import("@rohirik/openltm-core").queryAudit;
+let snapshotMemory: typeof import("@rohirik/openltm-core").snapshotMemory;
 let db: Database;
 
 beforeAll(async () => {
@@ -22,13 +22,13 @@ beforeAll(async () => {
   db.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
   db.exec(readFileSync(schemaPath, "utf-8"));
 
-  const { _setDbForTesting } = await import("@rohirik/ltm-core");
+  const { _setDbForTesting } = await import("@rohirik/openltm-core");
   _setDbForTesting(db);
 
-  const { runPendingMigrations } = await import("@rohirik/ltm-core");
+  const { runPendingMigrations } = await import("@rohirik/openltm-core");
   await runPendingMigrations(db);
 
-  const dao = await import("@rohirik/ltm-core");
+  const dao = await import("@rohirik/openltm-core");
   insertProvenance = dao.insertProvenance;
   insertAudit = dao.insertAudit;
   listProvenance = dao.listProvenance;

@@ -12,10 +12,10 @@ The one-page tour. The [Architecture](architecture.md) doc is the 1000-line deep
 |                                                               |
 |  +-------------------+  +-----------+  +------------------+   |
 |  | 4 Commands        |  | 5 Skills  |  | 4 Claude Code    |   |
-|  | /ltm:memory       |  | Continu-  |  |    hooks         |   |
-|  | /ltm:project      |  | ousLearn  |  | SessionStart     |   |
-|  | /ltm:health       |  | LtmServer |  | UpdateContext    |   |
-|  | /ltm:admin        |  | GitLearn  |  | EvaluateSession  |   |
+|  | /openltm:memory       |  | Continu-  |  |    hooks         |   |
+|  | /openltm:project      |  | ousLearn  |  | SessionStart     |   |
+|  | /openltm:health       |  | LtmServer |  | UpdateContext    |   |
+|  | /openltm:admin        |  | GitLearn  |  | EvaluateSession  |   |
 |  |                   |  | Learned   |  | PreCompact       |   |
 |  +--------+----------+  +-----+-----+  +------------------+   |
 |           +-------------------+---------+                     |   |
@@ -27,7 +27,7 @@ The one-page tour. The [Architecture](architecture.md) doc is the 1000-line deep
 +-------------------------------|------------------------------+
                                 |
                      +----------v-----------+
-                     |       ltm.db         |
+                     |       openltm.db         |
                      |  +-----------------+ |
                      |  | memories        | |
                      |  | context_items   | |
@@ -47,7 +47,7 @@ Three surfaces — **commands** (you talk), **skills** (Claude's prompt workflow
 | Phase | What Happens |
 |-------|-------------|
 | **Session Start** | `SessionStart` hook injects top memories (importance ≥ 3) + project context (goals, decisions, gotchas) |
-| **During Work** | Use `/ltm:memory recall` before tasks, `/ltm:memory learn` after discoveries. MCP tools called automatically. |
+| **During Work** | Use `/openltm:memory recall` before tasks, `/openltm:memory learn` after discoveries. MCP tools called automatically. |
 | **Session Stop** | `UpdateContext` saves progress. `EvaluateSession` extracts patterns from the transcript. |
 | **Pre-Compact** | `PreCompact` snapshots context to `context-summary.md` so it survives compaction. |
 

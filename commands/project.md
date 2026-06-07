@@ -8,16 +8,16 @@ Parse the first word of the arguments as `<subcommand>`. Pass remaining words as
 If no subcommand given, show:
 
 ```
-Usage: /ltm:project <subcommand>
+Usage: /openltm:project <subcommand>
 
   init      — seed a new project goal into the LTM context system
-               /ltm:project init
+               /openltm:project init
 
   analyze   — analyze project context before starting work
-               /ltm:project analyze [topic or task description]
+               /openltm:project analyze [topic or task description]
 
   register  — register or rename a project in the LTM registry
-               /ltm:project register [name] [path]
+               /openltm:project register [name] [path]
 ```
 
 ---
@@ -28,7 +28,7 @@ Usage: /ltm:project <subcommand>
 ```bash
 cat ~/.claude/projects/registry.json
 ```
-Match `cwd`. If missing, run `/ltm:project register` first.
+Match `cwd`. If missing, run `/openltm:project register` first.
 
 **2 — Check for existing goal:**
 ```bash
@@ -72,12 +72,12 @@ Do NOT create context-goals.md or similar files. DB is the source of truth.
 This command orchestrates context retrieval in the right order.
 
 **1 — Get project context:**
-Call `mcp__plugin_ltm_memory__context(project="<project>")`.
+Call `mcp__plugin_openltm_memory__context(project="<project>")`.
 
 Returns: `globals` (importance ≥ 4) + `scoped` (importance ≥ 3).
 
 **2 — Search relevant memories:**
-Call `mcp__plugin_ltm_memory__recall(query="<topic>")`.
+Call `mcp__plugin_openltm_memory__recall(query="<topic>")`.
 
 **3 — Synthesize:**
 Note any decisions, gotchas, or patterns relevant to the user's request.
@@ -108,9 +108,9 @@ Maps the current directory (or any path) to a friendly name in the context regis
 
 **Usage:**
 ```
-/ltm:project register                              # register cwd, ask for name
-/ltm:project register my-project-name             # register cwd as given name
-/ltm:project register /abs/path my-project-name   # register specific path
+/openltm:project register                              # register cwd, ask for name
+/openltm:project register my-project-name             # register cwd as given name
+/openltm:project register /abs/path my-project-name   # register specific path
 ```
 
 **Step 1 — Determine path and name:**
@@ -131,4 +131,4 @@ Maps the current directory (or any path) to a friendly name in the context regis
 
 **Step 8 — Confirm:**
 > Registered `<path>` as **<name>**.
-> Run `/ltm:project analyze` to verify.
+> Run `/openltm:project analyze` to verify.

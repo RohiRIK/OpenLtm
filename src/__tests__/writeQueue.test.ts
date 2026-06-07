@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "bun:test";
 
-import { WriteQueue } from "@rohirik/ltm-core";
+import { WriteQueue } from "@rohirik/openltm-core";
 function makeDb() {
   const calls: string[] = [];
   return {

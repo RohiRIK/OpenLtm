@@ -4,7 +4,7 @@
  */
 import type { MemoryProposal } from "./proposalQueue.js";
 
-import { learn, getLlmConfig, callLlm, type MemoryCategory } from "@rohirik/ltm-core";
+import { learn, getLlmConfig, callLlm, type MemoryCategory } from "@rohirik/openltm-core";
 const SYSTEM_PROMPT = `Extract learnings from the provided text. Return ONLY valid JSON:
 {"decisions":["..."],"gotchas":["..."],"patterns":["..."],"progress":"..."}
 - decisions: architectural choices made (max 5, <120 chars each)

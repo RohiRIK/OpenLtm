@@ -1,13 +1,13 @@
 ---
 description: "USE WHEN you want to analyze project context before starting work on a task. Calls context + recall, then synthesizes goals, decisions, gotchas, and relevant memories into a pre-task brief."
-allowed-tools: ["mcp__plugin_ltm_memory__context", "mcp__plugin_ltm_memory__recall"]
+allowed-tools: ["mcp__plugin_openltm_memory__context", "mcp__plugin_openltm_memory__recall"]
 ---
 
 Pre-task context analysis. Orchestrates context retrieval in the correct order and synthesizes a brief.
 
 **Usage:**
 ```
-/ltm:analyze-context [topic]
+/openltm:analyze-context [topic]
 ```
 
 ---
@@ -20,14 +20,14 @@ Use the current working directory to identify the project (check `~/.claude/proj
 
 **2 — Load project context:**
 
-Call `mcp__plugin_ltm_memory__context(project="<project>")`.
+Call `mcp__plugin_openltm_memory__context(project="<project>")`.
 
 Returns: `globals` (importance ≥ 4, all projects) + `scoped` (importance ≥ 3, this project only).
 
 **3 — Search relevant memories:**
 
-If a `[topic]` was given, call `mcp__plugin_ltm_memory__recall(query="<topic>", project="<project>")`.
-If no topic, call `mcp__plugin_ltm_memory__recall(project="<project>", limit=5)` to surface the top recent memories.
+If a `[topic]` was given, call `mcp__plugin_openltm_memory__recall(query="<topic>", project="<project>")`.
+If no topic, call `mcp__plugin_openltm_memory__recall(project="<project>", limit=5)` to surface the top recent memories.
 
 **4 — Synthesize and present:**
 
@@ -51,4 +51,4 @@ If no memories found: `No prior context found — this looks like new territory.
 
 ---
 
-> This command is an alias for `/ltm:project analyze`. For full project management (init, register), use `/ltm:project`.
+> This command is an alias for `/openltm:project analyze`. For full project management (init, register), use `/openltm:project`.

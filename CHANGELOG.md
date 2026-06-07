@@ -12,7 +12,7 @@
 - **⌘K search history** — SpotlightModal now shows the last 10 queries from `localStorage` (`ltm.searchHistory`, deduped) when the query is empty. Submitting a search pushes to history.
 - **`--accent-blue` and `--accent-lime-foreground` tokens** — added to all 6 themes. Mercury blue is rationed to one primary CTA per Settings section; acid lime stays rationed to the 2 use-sites from v2.5.0.
 - **Animated Status Badge** (isaiahbjork, 21st.dev) — used in `Settings → Health` for the Janitor running state.
-- **Auto-allow the LTM MCP server on install** — `scripts/install-wiring.ts` adds `mcp__plugin_ltm_memory` to `permissions.allow` in `~/.claude/settings.json` idempotently (dev and marketplace installs). The plugin's MCP tools (`recall`, `learn`, `forget`, `relate`, `context`, `context_items`, `graph`) no longer prompt on every call; the action is logged, not silent.
+- **Auto-allow the LTM MCP server on install** — `scripts/install-wiring.ts` adds `mcp__plugin_openltm_memory` to `permissions.allow` in `~/.claude/settings.json` idempotently (dev and marketplace installs). The plugin's MCP tools (`recall`, `learn`, `forget`, `relate`, `context`, `context_items`, `graph`) no longer prompt on every call; the action is logged, not silent.
 
 ### Changed
 - **Component refactors** — `ProjectTableView`, `ProjectBoardView`, `ProjectTimeline`, `ProjectConnections`, `ProjectRelevance`, `StaleMemoryAlert` rewritten to the redesign spec:
@@ -32,8 +32,8 @@
 - **Per-session `Learned/patterns/*.md` archives** — relic snapshots no longer written by any code path; their content was already imported into the LTM database. Removed from the repo and the plugin cache.
 
 ### Fixed
-- **Version sync across sub-packages** — `packages/ltm-core`, `packages/adapter-pi`, and `packages/adapter-opencode` were stranded at `2.2.0` while the plugin advanced. All workspace packages, the plugin manifest, the README badge, and `docs/ARCHITECTURE.md` are now aligned to the source-of-truth version.
-- **Stale MCP tool name in learned-pattern records** — references to the renamed `mcp__plugin_ltm_ltm__ltm_learn` eliminated (canonical is `mcp__plugin_ltm_memory__learn`).
+- **Version sync across sub-packages** — `packages/openltm-core`, `packages/adapter-pi`, and `packages/adapter-opencode` were stranded at `2.2.0` while the plugin advanced. All workspace packages, the plugin manifest, the README badge, and `docs/ARCHITECTURE.md` are now aligned to the source-of-truth version.
+- **Stale MCP tool name in learned-pattern records** — references to the renamed `mcp__plugin_ltm_ltm__ltm_learn` eliminated (canonical is `mcp__plugin_openltm_memory__learn`).
 
 ### Notes
 - Phases 2 + 3 of the frontend redesign — Restructure + Refine. See `docs/FRONTEND-REDESIGN-2026-06.md` for the full plan.
@@ -78,11 +78,11 @@
 ## [1.9.1] — 2026-05-09
 
 ### Removed
-- **15 deprecated command aliases** — `recall`, `learn`, `forget`, `relate`, `capture`, `init-context`, `analyze-context`, `register-project`, `doctor`, `hook-doctor`, `decay-report`, `migrate`, `migrate-db`, `secrets-scan`, `ltm-server`. Use the 4 grouped commands: `/ltm:memory`, `/ltm:project`, `/ltm:health`, `/ltm:admin`.
+- **15 deprecated command aliases** — `recall`, `learn`, `forget`, `relate`, `capture`, `init-context`, `analyze-context`, `register-project`, `doctor`, `hook-doctor`, `decay-report`, `migrate`, `migrate-db`, `secrets-scan`, `ltm-server`. Use the 4 grouped commands: `/openltm:memory`, `/openltm:project`, `/openltm:health`, `/openltm:admin`.
 
 ### Fixed
 - **README version badge** — Updated from stale `1.4.20` to current version.
-- **SessionStart error message** — Referenced deprecated `/ltm:doctor`; now points to `/ltm:health`.
+- **SessionStart error message** — Referenced deprecated `/openltm:doctor`; now points to `/openltm:health`.
 - **docs version headers** — `ARCHITECTURE.md`, `UX-SPEC.md`, `PRD.md` updated from `v1.4.20`.
 - **Install diagram** — Removed "(+ 11 aliases)" from command count.
 
@@ -100,7 +100,7 @@
 - **`src/janitor/archive.ts`** — New `runArchive()`: evicts `deprecated + importance≤2 + recall_count≤1 + decay_score<0.10` memories into `memory_archive`. Batch of 100 per run; single-transaction DELETE cascades `memory_embeddings`, `memory_tags`, and `memory_relations`.
 - **Janitor run tracking** — `runJanitor()` writes stats to settings after each pass (`lastRunAt`, `lastDecayRefreshed`, `lastDeprecated`, `lastArchived`).
 - **WAL hygiene** — `runJanitor()` runs `PRAGMA wal_checkpoint(TRUNCATE)` + `PRAGMA analysis_limit=400; ANALYZE` after every pass.
-- **`/ltm:health` Janitor Status section** — Shows last run timestamp, refreshed/deprecated/archived counts, next run estimate, at-risk memory count (`decay_score < 0.25`). Replaces the old inline JS decay formula with a SQL-backed summary.
+- **`/openltm:health` Janitor Status section** — Shows last run timestamp, refreshed/deprecated/archived counts, next run estimate, at-risk memory count (`decay_score < 0.25`). Replaces the old inline JS decay formula with a SQL-backed summary.
 
 ### Changed
 - **`runDecay()` rewritten** — Replaced O(N) JS loop + N individual UPDATEs with two batch SQL statements in one transaction: (1) `UPDATE SET decay_score = CASE …` using `power()` for all active memories, (2) `UPDATE SET status='deprecated' WHERE decay_score < 0.25`. Orders-of-magnitude faster at scale.
@@ -128,7 +128,7 @@
 - **Recall explainer** — `recall()` attaches `explainer` to every result: `{ ftsRank, semanticScore, importanceBoost, recencyBoost, totalScore, temperature }`.
 - **Memory temperature labels** — `hot` (recall≥10 or within 7d), `warm` (≥3 or 30d), `cool` (≥1 or 90d), `cold` (never recalled).
 - **Auto-categoriser** (`src/recall/categorise.ts`) — `ltm_learn` detects category when omitted. Heuristic keyword scoring first; falls back to Anthropic API (claude-haiku) if confidence < threshold. Configurable via `embeddings.confidenceThreshold` (default 0.6).
-- **SessionStart backfill hint** — One-per-day suggestion to run `/ltm:admin backfill` when a provider is configured but memories lack embeddings.
+- **SessionStart backfill hint** — One-per-day suggestion to run `/openltm:admin backfill` when a provider is configured but memories lack embeddings.
 - **`ltm_recall` MCP response** — `compact()` formatter now surfaces `temperature` + `score` on every result.
 
 ### Changed
@@ -142,32 +142,32 @@
 ## [1.4.17] — 2026-04-15
 
 ### Added
-- **`/ltm:memory` command** — Grouped routing for `recall | learn | forget | relate`. Replaces the 4 flat commands with a single entry point; flat commands kept as unchanged aliases.
-- **`/ltm:project` command** — Grouped routing for `init | analyze | register`. Embeds full logic from `init-context`, `analyze-context`, `register-project`.
-- **`/ltm:admin` command** — Grouped routing for `migrate | scan | server`. Includes all migrate flags, secrets scan, and server management.
-- **`--save-context` flag on `/ltm:learn`** — Stores memory AND writes to `context_items` table in one shot. Replaces the need for separate `/ltm:capture` calls.
-- **Legacy DB detection in `/ltm:migrate`** — Automatically checks for `~/.claude/memory/ltm.db` on `status` runs; `--legacy` flag triggers migration.
+- **`/openltm:memory` command** — Grouped routing for `recall | learn | forget | relate`. Replaces the 4 flat commands with a single entry point; flat commands kept as unchanged aliases.
+- **`/openltm:project` command** — Grouped routing for `init | analyze | register`. Embeds full logic from `init-context`, `analyze-context`, `register-project`.
+- **`/openltm:admin` command** — Grouped routing for `migrate | scan | server`. Includes all migrate flags, secrets scan, and server management.
+- **`--save-context` flag on `/openltm:learn`** — Stores memory AND writes to `context_items` table in one shot. Replaces the need for separate `/openltm:capture` calls.
+- **Legacy DB detection in `/openltm:migrate`** — Automatically checks for `~/.claude/memory/openltm.db` on `status` runs; `--legacy` flag triggers migration.
 
 ### Changed
-- **`/ltm:health`** — Now shows graph server project scores (if running) AND inline memory decay summary from local DB. Graph server is optional — decay section always renders.
-- **`/ltm:doctor`** — Now runs both `pluginDoctor.ts` (plugin health) and `hookDoctor.ts` (hook health) in a single command. Replaces the need for `/ltm:hook-doctor`.
+- **`/openltm:health`** — Now shows graph server project scores (if running) AND inline memory decay summary from local DB. Graph server is optional — decay section always renders.
+- **`/openltm:doctor`** — Now runs both `pluginDoctor.ts` (plugin health) and `hookDoctor.ts` (hook health) in a single command. Replaces the need for `/openltm:hook-doctor`.
 
 ### Fixed
-- **`/ltm:secrets-scan`** — Fixed `secretsScrubber.js` import → `secretsScrubber.ts`. Previous `.js` extension caused a runtime error since Bun runs `.ts` directly.
+- **`/openltm:secrets-scan`** — Fixed `secretsScrubber.js` import → `secretsScrubber.ts`. Previous `.js` extension caused a runtime error since Bun runs `.ts` directly.
 - **Added auto-scrub note** to `secrets-scan` and `admin scan` — clarifies that new memories are already scrubbed on write via `db.ts:263`; this command patches existing memories only.
 
 ### Deprecated (removing in v1.6.0)
-- `/ltm:hook-doctor` → use `/ltm:doctor`
-- `/ltm:migrate-db` → use `/ltm:migrate --legacy` or `/ltm:admin migrate --legacy`
-- `/ltm:capture` → use `/ltm:learn --save-context` or `/ltm:memory learn --save-context`
-- `/ltm:decay-report` → use `/ltm:health`
+- `/openltm:hook-doctor` → use `/openltm:doctor`
+- `/openltm:migrate-db` → use `/openltm:migrate --legacy` or `/openltm:admin migrate --legacy`
+- `/openltm:capture` → use `/openltm:learn --save-context` or `/openltm:memory learn --save-context`
+- `/openltm:decay-report` → use `/openltm:health`
 
 ---
 
 ## [1.4.15] — 2026-04-14
 
 ### Added
-- **`/ltm:doctor` command** — Unified plugin health check covering 9 areas: version consistency, bun runtime, database integrity + migrations, MCP registration, hooks.json source files + log error counts, settings.json hooks, stale executables (exit 127 source), marketplace source, and plugin.json forbidden fields. Output: ✅/❌/🟡/🔴 per check with `→` remediation and final N passed/M failed summary.
+- **`/openltm:doctor` command** — Unified plugin health check covering 9 areas: version consistency, bun runtime, database integrity + migrations, MCP registration, hooks.json source files + log error counts, settings.json hooks, stale executables (exit 127 source), marketplace source, and plugin.json forbidden fields. Output: ✅/❌/🟡/🔴 per check with `→` remediation and final N passed/M failed summary.
 - **`hooks/bin/run-hook.sh`** — POSIX shell wrapper that locates bun across all install methods (Homebrew, Volta, asdf, curl installer) before falling back to shell profile sourcing. Eliminates the hardcoded `/opt/homebrew/bin/bun` dependency that broke non-Homebrew installs.
 
 ### Fixed
@@ -219,7 +219,7 @@
 - **install-wiring.ts** — scan `~/.claude/plugins/data/ltm-*` as fallback when `CLAUDE_PLUGIN_DATA` is not set, so DB auto-copy works on first install without a session restart.
 - **CI** — use `bun run test` instead of bare `bun test` to exclude Playwright e2e tests via `--path-ignore-patterns`.
 - **bunfig.toml** — remove `preload = []` (rejected by Bun as invalid).
-- **LLM migration guide** — use `~/.claude/plugins/data/ltm-*/ltm.db` instead of `$CLAUDE_PLUGIN_DATA` (env var is only set inside plugin runtime, not in user shells).
+- **LLM migration guide** — use `~/.claude/plugins/data/ltm-*/openltm.db` instead of `$CLAUDE_PLUGIN_DATA` (env var is only set inside plugin runtime, not in user shells).
 
 ---
 
@@ -249,12 +249,12 @@
 ## [1.3.0–1.3.6] — 2026-03-25
 
 ### Added
-- **`/migrate-db` command** — check and migrate `ltm.db` from legacy `~/.claude/memory/` to marketplace plugin data directory.
+- **`/migrate-db` command** — check and migrate `openltm.db` from legacy `~/.claude/memory/` to marketplace plugin data directory.
 - **Auto git-fetch** on SessionStart — marketplace clone stays current without manual pulls.
 - **Self-healing GitHub source** — `install-wiring.ts` patches `known_marketplaces.json` to `"source":"github"` on every postinstall, preventing the plugin system from reverting to `"git"` source.
 
 ### Fixed
-- DB path migration fix — ensures `ltm.db` is always found at the correct marketplace data path.
+- DB path migration fix — ensures `openltm.db` is always found at the correct marketplace data path.
 - Duplicate MCP registration removed from `install-wiring.ts`.
 - `patchMarketplaceSource` refactored — no mutation, no TOCTOU race, uses named constant.
 - Version sync — both `package.json` and `.claude-plugin/plugin.json` are kept in lockstep.
@@ -289,7 +289,7 @@
 - 12 LTM slash commands added to plugin (`skills/`).
 - `CLAUDE_PLUGIN_DATA` support for db path isolation per marketplace install.
 - `scripts/install-wiring.ts` — replaces Python subprocess in `install.sh`.
-- Migration: copies existing `ltm.db` from legacy path on marketplace install.
+- Migration: copies existing `openltm.db` from legacy path on marketplace install.
 
 ---
 
@@ -301,4 +301,4 @@
 - MCP server (`src/mcp-server.ts`) with 7 tools: `ltm_recall`, `ltm_learn`, `ltm_forget`, `ltm_relate`, `ltm_context`, `ltm_context_items`, `ltm_graph`.
 - Claude Code hooks: `SessionStart`, `Stop` (UpdateContext + EvaluateSession), `PreCompact`.
 - Memory graph visualization server (`src/graph-server.ts`).
-- `install.sh` — safe idempotent installer (never overwrites `ltm.db`).
+- `install.sh` — safe idempotent installer (never overwrites `openltm.db`).

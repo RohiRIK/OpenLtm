@@ -1,7 +1,7 @@
 import type { Plugin, PluginModule } from "@opencode-ai/plugin";
 import { buildTools } from "./tools.js";
 import { buildSessionHooks } from "./sessionHooks.js";
-import { DB_PATH } from "@rohirik/ltm-core";
+import { DB_PATH } from "@rohirik/openltm-core";
 
 const server: Plugin = async ({ project }) => {
   const dbPath = process.env["LTM_DB_PATH"] ?? DB_PATH;

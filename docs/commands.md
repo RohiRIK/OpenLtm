@@ -1,12 +1,12 @@
 # Commands Reference
 
-All commands are available as `/ltm:<command>` after installing the plugin. Four commands cover everything — memory, project context, health, and admin.
+All commands are available as `/openltm:<command>` after installing the plugin. Four commands cover everything — memory, project context, health, and admin.
 
 If no subcommand is given, the command prints its own usage.
 
 ---
 
-## `/ltm:memory` — store and search memories
+## `/openltm:memory` — store and search memories
 
 | Subcommand | What it does |
 |------------|-------------|
@@ -25,19 +25,19 @@ If no subcommand is given, the command prints its own usage.
 ### Examples
 
 ```
-/ltm:memory recall "how we handle async errors"
-/ltm:memory learn "always use bun, never npm" --category preference --importance 5
-/ltm:memory learn "we chose SQLite over Postgres for zero-dependency deploys" --category architecture --save-context
-/ltm:memory forget 42
-/ltm:memory relate 42 91 supports
-/ltm:memory propose list
+/openltm:memory recall "how we handle async errors"
+/openltm:memory learn "always use bun, never npm" --category preference --importance 5
+/openltm:memory learn "we chose SQLite over Postgres for zero-dependency deploys" --category architecture --save-context
+/openltm:memory forget 42
+/openltm:memory relate 42 91 supports
+/openltm:memory propose list
 ```
 
 `recall` returns memories ranked by relevance → importance → recency. `learn` is safe to call twice — the second call reinforces (`confirm_count++`), no duplicates.
 
 ---
 
-## `/ltm:project` — manage project context
+## `/openltm:project` — manage project context
 
 | Subcommand | What it does |
 |------------|-------------|
@@ -48,16 +48,16 @@ If no subcommand is given, the command prints its own usage.
 ### Examples
 
 ```
-/ltm:project init
-/ltm:project analyze "refactoring the auth layer"
-/ltm:project register my-app
+/openltm:project init
+/openltm:project analyze "refactoring the auth layer"
+/openltm:project register my-app
 ```
 
 `init` asks for the current goal, stores it in the DB, and injects it at every session start. `analyze` is what you run before a non-trivial task to load context.
 
 ---
 
-## `/ltm:health` — diagnostics
+## `/openltm:health` — diagnostics
 
 No subcommand. Runs the full health suite:
 
@@ -69,7 +69,7 @@ No subcommand. Runs the full health suite:
 - Live memory decay summary (active vs at-risk memories)
 
 ```
-/ltm:health
+/openltm:health
 ```
 
 Score breakdown when the graph server is running:
@@ -83,7 +83,7 @@ Score breakdown when the graph server is running:
 
 ---
 
-## `/ltm:admin` — maintenance
+## `/openltm:admin` — maintenance
 
 | Subcommand | What it does |
 |------------|-------------|
@@ -95,10 +95,10 @@ Score breakdown when the graph server is running:
 ### Examples
 
 ```
-/ltm:admin migrate status
-/ltm:admin scan --dry-run
-/ltm:admin server start
-/ltm:admin audit --since 2026-06-01T00:00:00Z
+/openltm:admin migrate status
+/openltm:admin scan --dry-run
+/openltm:admin server start
+/openltm:admin audit --since 2026-06-01T00:00:00Z
 ```
 
 `scan` redacts API keys, tokens, and passwords. Always run `--dry-run` first to preview. `migrate reset` drops and recreates the schema — destructive, requires explicit confirmation.

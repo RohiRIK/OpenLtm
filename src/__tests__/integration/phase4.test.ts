@@ -16,8 +16,8 @@ import { join } from "path";
 const dbPath = `/tmp/test-ltm-phase4-int-${process.pid}-${Date.now()}.db`;
 const schemaPath = join(import.meta.dir, "..", "..", "..", "src", "schema.sql");
 
-let learn: typeof import("@rohirik/ltm-core").learn;
-let recall: typeof import("@rohirik/ltm-core").recall;
+let learn: typeof import("@rohirik/openltm-core").learn;
+let recall: typeof import("@rohirik/openltm-core").recall;
 let db: Database;
 
 beforeAll(async () => {
@@ -25,13 +25,13 @@ beforeAll(async () => {
   db.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
   db.exec(readFileSync(schemaPath, "utf-8"));
 
-  const { _setDbForTesting } = await import("@rohirik/ltm-core");
+  const { _setDbForTesting } = await import("@rohirik/openltm-core");
   _setDbForTesting(db);
 
-  const { runPendingMigrations } = await import("@rohirik/ltm-core");
+  const { runPendingMigrations } = await import("@rohirik/openltm-core");
   await runPendingMigrations(db);
 
-  const dbMod = await import("@rohirik/ltm-core");
+  const dbMod = await import("@rohirik/openltm-core");
   learn = dbMod.learn;
   recall = dbMod.recall;
 }, 30_000);
@@ -102,7 +102,7 @@ describe("recall() default sort uses decay_score", () => {
     const low = learn({ content: "Phase4 low importance sort check", category: "pattern", importance: 1 });
 
     // Run decay to materialise scores
-    const { runDecay } = await import("@rohirik/ltm-core");
+    const { runDecay } = await import("@rohirik/openltm-core");
     runDecay();
 
     const results = await recall({ limit: 20 });
@@ -131,8 +131,8 @@ describe("runDecay() + runArchive() round-trip", () => {
       "SELECT id FROM memories WHERE dedup_key='phase4-ancient-evict'",
     ).get()!;
 
-    const { runDecay } = await import("@rohirik/ltm-core");
-    const { runArchive } = await import("@rohirik/ltm-core");
+    const { runDecay } = await import("@rohirik/openltm-core");
+    const { runArchive } = await import("@rohirik/openltm-core");
 
     runDecay();
 
