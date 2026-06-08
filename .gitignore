@@ -10,10 +10,10 @@ graph-app/tsconfig.tsbuildinfo
 # Rename scratch workspace — local only, contains DB backup (never commit)
 .rename/
 
-# User data — never commit
-data/openltm.db
-data/openltm.db-shm
-data/openltm.db-wal
+# User data — never commit any SQLite DB or WAL/SHM sidecar
+data/*.db
+data/*.db-shm
+data/*.db-wal
 data/*.bak*
 
 # Env
