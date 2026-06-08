@@ -1,11 +1,15 @@
 /**
  * cli/opencode.ts — Installer for OpenCode.
  *
- * Patches (or creates) the OpenCode config file to add the LTM plugin.
+ * Installs the complete LTM OpenCode customization:
+ *   - Plugin package (@rohirik/opencode-ltm)
+ *   - Agents (aegis.md)
+ *   - Skills (AgentTrustBoundaries, CommandPathSafety, SecretSafeHandling)
+ *   - Plugins (aegis.ts)
  * Resolves the config path using OpenCode's documented priority order.
  * Idempotent — safe to run multiple times.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, cpSync, readdirSync } from "fs";
 import { join, dirname } from "path";
 import os from "os";
 import type { InstallResult } from "./types.js";
@@ -15,6 +19,36 @@ import type { InstallResult } from "./types.js";
 const PLUGIN_PACKAGE = "@rohirik/opencode-ltm@latest";
 const PLUGIN_MATCH = "@rohirik/opencode-ltm";
 const SCHEMA = "https://opencode.ai/config.json";
+
+// Files that must never be copied into the user's config when deploying assets.
+const COPY_DENYLIST = new Set([
+  "node_modules",
+  "package.json",
+  "package-lock.json",
+  "bun.lock",
+  "bun.lockb",
+  ".gitignore",
+  ".DS_Store",
+]);
+
+/**
+ * Resolve the bundled OpenCode customization assets.
+ *
+ * The canonical, shipped location is `assets/opencode/` inside this package —
+ * it is committed and included in the published npm tarball, so it resolves
+ * identically in dev, in a built package, and in a `bunx`/installed package.
+ * The repo-root `.opencode/` is kept as a dev-only fallback.
+ */
+function getOpenCodeSourceDir(): string {
+  const candidates = [
+    join(import.meta.dir, "..", "..", "assets", "opencode"), // shipped: packages/openltm-core/assets/opencode
+    join(import.meta.dir, "..", "..", "..", ".opencode"),    // dev fallback: monorepo root
+  ];
+  for (const c of candidates) {
+    if (existsSync(c)) return c;
+  }
+  return candidates[0];
+}
 
 // ── Path resolution ───────────────────────────────────────────────────────────
 
@@ -55,7 +89,7 @@ function resolveConfigPath(homedir: string): { path: string; exists: boolean } {
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
- * installOpenCode — patch or create the OpenCode config file.
+ * installOpenCode — install complete LTM OpenCode customization.
  *
  * @param opts.homedir - Override home directory (useful for tests).
  * @param opts.dryRun  - Compute result without writing any files.
@@ -68,58 +102,97 @@ export async function installOpenCode(opts: {
   const homedir = opts.homedir ?? os.homedir();
   const dryRun = opts.dryRun ?? false;
 
-  const { path, exists } = resolveConfigPath(homedir);
+  const details: string[] = [];
 
-  if (!exists) {
-    // Create a new config file
-    const newConfig = {
-      $schema: SCHEMA,
-      plugin: [PLUGIN_PACKAGE],
-    };
+  // 1. Install plugin package in config
+  const { path: configPath, exists } = resolveConfigPath(homedir);
+  let config: Record<string, unknown> = {};
 
-    if (!dryRun) {
-      mkdirSync(dirname(path), { recursive: true });
-      writeFileSync(path, JSON.stringify(newConfig, null, 2) + "\n", "utf8");
+  if (exists) {
+    try {
+      config = JSON.parse(readFileSync(configPath, "utf8")) as Record<string, unknown>;
+    } catch {
+      config = {};
     }
-
-    return {
-      target: "opencode",
-      status: "installed",
-      detail: dryRun ? "dry-run — no files written" : path,
-    };
+  } else {
+    config = { $schema: SCHEMA };
   }
 
-  // Parse existing config
-  let config: Record<string, unknown>;
-  try {
-    config = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
-  } catch {
-    config = {};
-  }
-
-  // Check if plugin already present
   const plugins = Array.isArray(config["plugin"]) ? (config["plugin"] as unknown[]) : [];
-  const alreadyPresent = plugins.some(
+  const pluginAlreadyPresent = plugins.some(
     (p) => typeof p === "string" && p.includes(PLUGIN_MATCH),
   );
 
-  if (alreadyPresent) {
-    return { target: "opencode", status: "skipped", detail: "plugin already registered" };
+  if (!pluginAlreadyPresent) {
+    const updated = { ...config, plugin: [...plugins, PLUGIN_PACKAGE] };
+    if (!dryRun) {
+      mkdirSync(dirname(configPath), { recursive: true });
+      writeFileSync(configPath, JSON.stringify(updated, null, 2) + "\n", "utf8");
+    }
+    details.push(`plugin: ${dryRun ? "would add" : "added"} @rohirik/opencode-ltm`);
+  } else {
+    details.push("plugin: already present (skipped)");
   }
 
-  // Add the plugin
-  const updated = {
-    ...config,
-    plugin: [...plugins, PLUGIN_PACKAGE],
-  };
+  // 2. Deploy agents, skills, plugins alongside the resolved config so the
+  //    customization always lives in the same opencode directory as the plugin.
+  const sourceDir = getOpenCodeSourceDir();
+  const targetDir = dirname(configPath);
 
-  if (!dryRun) {
-    writeFileSync(path, JSON.stringify(updated, null, 2) + "\n", "utf8");
+  const components = [
+    { src: "agents", dst: "agents", label: "agents" },
+    { src: "skills", dst: "skills", label: "skills" },
+    { src: "plugins", dst: "plugins", label: "plugins" },
+  ];
+
+  let anyDeployed = !pluginAlreadyPresent;
+
+  for (const comp of components) {
+    const srcPath = join(sourceDir, comp.src);
+    const dstPath = join(targetDir, comp.dst);
+
+    if (!existsSync(srcPath)) {
+      details.push(`${comp.label}: source not found (skipped)`);
+      continue;
+    }
+
+    // Check if already deployed
+    const alreadyDeployed = existsSync(dstPath) && readdirSync(dstPath).length > 0;
+
+    if (!alreadyDeployed) {
+      if (!dryRun) {
+        mkdirSync(dstPath, { recursive: true });
+        copyRecursive(srcPath, dstPath);
+      }
+      details.push(`${comp.label}: ${dryRun ? "would deploy" : "deployed"}`);
+      anyDeployed = true;
+    } else {
+      details.push(`${comp.label}: already deployed (skipped)`);
+    }
   }
 
   return {
     target: "opencode",
-    status: "installed",
-    detail: dryRun ? "dry-run — no files written" : path,
+    status: anyDeployed ? "installed" : "skipped",
+    detail: details.join("; "),
   };
+}
+
+// Copy directory recursively, preserving structure. Skips node_modules,
+// lockfiles, and other denylisted entries at every level.
+function copyRecursive(src: string, dst: string): void {
+  const entries = readdirSync(src, { withFileTypes: true });
+  for (const entry of entries) {
+    if (COPY_DENYLIST.has(entry.name) || entry.name.endsWith(".lock")) continue;
+
+    const srcPath = join(src, entry.name);
+    const dstPath = join(dst, entry.name);
+
+    if (entry.isDirectory()) {
+      mkdirSync(dstPath, { recursive: true });
+      copyRecursive(srcPath, dstPath);
+    } else {
+      cpSync(srcPath, dstPath, { force: true });
+    }
+  }
 }

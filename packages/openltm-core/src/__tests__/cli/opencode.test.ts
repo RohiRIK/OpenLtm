@@ -96,15 +96,26 @@ describe("installOpenCode", () => {
     expect(plugins.some((p) => p.includes("@rohirik/opencode-ltm"))).toBe(true);
   });
 
-  it("skips if @rohirik/opencode-ltm is already in plugin array", async () => {
+  // Pre-deploy the customization components so the skip path can be exercised:
+  // status is only "skipped" when the plugin is registered AND every component
+  // is already present.
+  function preDeployComponents(configDir: string): void {
+    for (const comp of ["agents", "skills", "plugins"]) {
+      const dir = join(configDir, comp);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, ".installed"), "", "utf8");
+    }
+  }
+
+  it("skips when plugin is registered and components are already deployed", async () => {
     const configDir = join(tmpDir, ".config", "opencode");
     mkdirSync(configDir, { recursive: true });
-    const configPath = join(configDir, "opencode.json");
     writeFileSync(
-      configPath,
+      join(configDir, "opencode.json"),
       JSON.stringify({ plugin: ["@rohirik/opencode-ltm@latest"] }),
       "utf8",
     );
+    preDeployComponents(configDir);
 
     const { installOpenCode } = await import("../../cli/opencode.js");
     const result = await installOpenCode({ homedir: tmpDir });
@@ -114,16 +125,35 @@ describe("installOpenCode", () => {
   it("skips even if version differs (matches on substring @rohirik/opencode-ltm)", async () => {
     const configDir = join(tmpDir, ".config", "opencode");
     mkdirSync(configDir, { recursive: true });
-    const configPath = join(configDir, "opencode.json");
     writeFileSync(
-      configPath,
+      join(configDir, "opencode.json"),
       JSON.stringify({ plugin: ["@rohirik/opencode-ltm@2.0.0"] }),
       "utf8",
     );
+    preDeployComponents(configDir);
 
     const { installOpenCode } = await import("../../cli/opencode.js");
     const result = await installOpenCode({ homedir: tmpDir });
     expect(result.status).toBe("skipped");
+  });
+
+  it("deploys agents, skills, and plugins from the bundled assets", async () => {
+    const { installOpenCode } = await import("../../cli/opencode.js");
+    const result = await installOpenCode({ homedir: tmpDir });
+    expect(result.status).toBe("installed");
+
+    // Components co-locate with the resolved config (.config on linux,
+    // Library/Application Support on darwin).
+    const linuxDir = join(tmpDir, ".config", "opencode");
+    const darwinDir = join(tmpDir, "Library", "Application Support", "opencode");
+    const configDir = existsSync(join(linuxDir, "agents")) ? linuxDir : darwinDir;
+
+    // The bundled assets ship an aegis agent, three skills, and an aegis plugin.
+    expect(existsSync(join(configDir, "agents", "aegis.md"))).toBe(true);
+    expect(existsSync(join(configDir, "skills", "AgentTrustBoundaries", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(configDir, "plugins", "aegis.ts"))).toBe(true);
+    // Lockfiles and node_modules must never be copied into the user's config.
+    expect(existsSync(join(configDir, "skills", "node_modules"))).toBe(false);
   });
 
   it("dryRun=true does not write any files", async () => {
