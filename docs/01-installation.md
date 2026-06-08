@@ -13,6 +13,7 @@ OpenLTM installs in three ways. Pick one. All of them produce the same thing: a 
 | **Runtime** | [Bun](https://bun.sh) (the plugin detects it automatically; `npm`/`node` are not used at runtime) |
 | **Host** | Claude Code, OpenCode, or Pi |
 | **OS** | macOS, Linux, or WSL |
+| **System SQLite** (optional) | Homebrew-installed sqlite on macOS (`brew install sqlite`) or a system `libsqlite3.so` on Linux — required for sqlite-vec vector recall and Honker queue/cron/pub-sub. Without it, the plugin runs on Bun's built-in SQLite (FTS5, JS-cosine) with no feature loss, just software fallbacks. |
 
 The database lives **outside** the plugin directory — at `~/.claude/plugins/data/OpenLtm-openltm/openltm.db` — so it survives every plugin update.
 

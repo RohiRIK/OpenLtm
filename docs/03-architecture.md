@@ -1,6 +1,6 @@
 # ARCHITECTURE — OpenLTM Plugin
 
-* **Version:** 1.3 (against plugin v2.9.0)
+* **Version:** 1.4 (against plugin v2.9.0)
 * **Owner:** Rohi Rikman
 * **Status:** Baseline architecture spec; companion to `docs/internal/PRD.md`
 * **Last updated:** 2026-06-08
@@ -248,7 +248,7 @@ sequenceDiagram
   Claude->>MCP: recall({ query, project })
   MCP->>DB: FTS5(MATCH) → ranked rowids
   alt FTS5 returns < 3 results
-    MCP->>DB: semantic fallback (embedding similarity)
+    MCP->>DB: semantic fallback (vec0 KNN if extensions loaded, else JS-cosine)
     MCP->>MCP: merge + dedup by id
   end
   MCP->>MCP: apply decay scoring + importance boost
@@ -376,7 +376,34 @@ erDiagram
   memories ||--|| memories_fts : "FTS5 mirror"
 ```
 
-### 5.7 Registry (out-of-DB)
+### 5.7 SQLite Extension Capability Layer
+
+Bun's bundled SQLite is compiled **without** dynamic extension loading — `db.loadExtension()` throws. To support sqlite-vec (vec0 / KNN) and Honker (queue/cron/pub-sub), the plugin switches the process to a system extension-enabled libsqlite3 at startup:
+
+1. **`ensureCustomSqlite()`** — calls `Database.setCustomSQLite(libPath)` before the first `Database` is opened. This is a process-global static; it must run before any connection exists. Checks `LTM_SQLITE_LIB` first, then probes Homebrew (`/opt/homebrew/opt/sqlite/lib/libsqlite3.dylib`) and Linux system paths. Skipped entirely if both vec and honker are force-disabled.
+2. **`loadExtensions(db)`** — per-connection: calls `db.loadExtension(path)` for sqlite-vec and Honker. Returns a `Capabilities` struct (`{ customSqlite, vec, honker }`).
+3. **Degradation.** Every failure is caught and silently converted to a `false` entry in capabilities. Callers (recall engine, janitor, graph server) check `getCapabilities()` and pick the fallback path: JS-cosine for semantic similarity, file-watch poll for liveness, in-process timer for cron.
+
+```mermaid
+flowchart LR
+    Start[Plugin init] --> CQ{Capability\nprobe}
+    CQ --> Ext[ensureCustomSqlite →\nsetCustomSQLite]
+    CQ --> Vec{vec enabled?}
+    CQ --> Hon{honker binary\nfound?}
+    Ext -- success --> DB[open DB]
+    DB --> loadVec[loadExtension(sqlite-vec)]
+    DB --> loadHon[loadExtension(libhonker_ext)]
+    loadVec -- success --> V[vec0 / KNN recall]
+    loadVec -- fail --> V2[JS-cosine fallback]
+    loadHon -- success --> H[queue / cron / pub-sub]
+    loadHon -- fail --> H2[inline embed /\nfile-watch poll /\nin-process janitor]
+```
+
+**Env control.** `LTM_DISABLE_VEC` and `LTM_DISABLE_HONKER` skip the extension entirely (and skip `ensureCustomSqlite` if both are set). `LTM_SQLITE_LIB` and `LTM_HONKER_EXT` override the auto-resolved binary paths.
+
+The capability system is designed so that **no code path depends on an extension being loaded** — every consumer checks `getCapabilities()` and runs its software fallback.
+
+### 5.8 Registry (out-of-DB)
 
 `~/.claude/projects/registry.json` holds the cwd → project_name map. It is a JSON
 file (not a table) for cross-plugin readability and trivial inspection. Concurrent
@@ -487,7 +514,9 @@ boost, return top-N.
 - **Pure embeddings (vector search).** Rejected. (a) Requires an embedding provider
   (model call or bundled runtime) — violates PRD N4. (b) Higher latency per query.
   (c) FTS5 alone is sufficient for the bulk of "did I learn X?" lookups, which are
-  keyword-shaped.
+  keyword-shaped. Since v2.9.0 a subset of this gap is closed: when the SQLite
+  extension layer is active, the semantic fallback uses real vec0 KNN via
+  `sqlite-vec` — no external vector DB, no sidecar.
 - **External vector DB (Qdrant, Chroma, sqlite-vss).** Rejected. Adds a binary
   dependency or a sidecar process. Single-user scale doesn't justify it.
 - **Pure FTS5 (no semantic fallback).** Rejected. FTS5 is brittle for paraphrased
@@ -502,8 +531,13 @@ boost, return top-N.
 - (+) Determinism — same query, same DB, same ranking.
 - (–) Embedding column adds storage cost; the BLOB is stripped from MCP responses
   to avoid bloat.
-- (–) "Semantic fallback" today uses whatever embedding source is available
-  (deterministic local hash or a future tool call) — OQ1 in the PRD remains open.
+- (🔄 v2.9.0) Semantic fallback was upgraded: when the SQLite extension layer
+  activates, vector comparison switches from JS-cosine to real KNN via
+  `sqlite-vec` (vec0 virtual table). Without extensions the old JS-cosine path
+  remains. OQ1 in the PRD is partially resolved.
+- (–) "Semantic fallback" without extensions uses whatever embedding source is
+  available (deterministic local hash or a future tool call) — OQ1 in the PRD
+  remains open for the non-extension case.
 - (–) Recall ranking is not user-explainable today (G-K is the gap).
 
 ---

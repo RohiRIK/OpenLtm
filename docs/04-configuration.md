@@ -27,6 +27,20 @@ Configure via `~/.claude/config.json`.
 | `graphReasoning` | `false` | Enable graph-based reasoning during recall |
 | `evaluateSessionLlm` | `false` | Use LLM to evaluate sessions (costs tokens) |
 | `semanticFallback` | `true` | Fall back to embedding search when FTS returns no results |
+| `crossProcessSync` | `false` | Enable cross-agent memory notify via Honker pub-sub (opt-in; requires Honker extension loaded) |
+
+## SQLite extension env vars
+
+Control the optional SQLite extension capability layer without touching config files:
+
+| Env var | Default | Description |
+|---------|---------|-------------|
+| `LTM_DISABLE_VEC` | (unset) | Set to `1` or `true` to force-disable sqlite-vec vector recall |
+| `LTM_DISABLE_HONKER` | (unset) | Set to `1` or `true` to force-disable Honker (queue/cron/pub-sub) |
+| `LTM_HONKER_EXT` | (auto) | Absolute path to a `libhonker_ext.{dylib,so}` binary — overrides automatic per-platform resolution |
+| `LTM_SQLITE_LIB` | (auto) | Absolute path to a system extension-enabled `libsqlite3.{dylib,so}` — overrides automatic Homebrew/Linux detection |
+
+All four env vars are read at process start. The extension layer degrades gracefully — no binary or library means the capability stays `false` and the plugin runs on Bun's built-in SQLite (FTS5, JS-cosine).
 
 ## DB path
 

@@ -56,6 +56,8 @@ Four ideas. No exceptions.
 | ⏳ **Decay** | Stale memories fade while critical knowledge lives forever |
 | 🕸 **Graph** | Traverse relationships between memories for reasoning chains |
 | 🗺 **Visualize** | See your entire memory network in a browser-based explorer |
+| ⚡ **Vec Recall** | Semantic vector (KNN) recall via sqlite-vec; degrades to JS-cosine when unavailable |
+| 🔌 **Extensions** | sqlite-vec + Honker (queue/cron/pub-sub) loaded dynamically; graceful fallback without system libsqlite3 |
 
 ---
 
@@ -118,6 +120,8 @@ Claude Code
 ```
 
 Full deep-dive — schema, hook architecture, decay formula, ADRs — in [How It Works](docs/02-how-it-works.md) and [Architecture](docs/03-architecture.md).
+
+> **SQLite Extensions:** The plugin loads sqlite-vec (vec0 / KNN vector search) and Honker (async embedding queue, leader-elected cron, pub-sub) when a system extension-enabled libsqlite3 is available. Both degrade gracefully — missing binary or library leaves the capability off and falls back to JS-cosine, file-watch polling, or in-process cron. Controlled with `LTM_DISABLE_VEC`, `LTM_DISABLE_HONKER`, `LTM_SQLITE_LIB`, and `LTM_HONKER_EXT` env vars.
 
 ---
 

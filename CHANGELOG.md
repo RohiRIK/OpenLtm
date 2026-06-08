@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.9.0] — 2026-06-08
+
+### Added
+- **Honker durable queue / scheduler / pub-sub** — async embedding queue (claim/embed/ack, retry, dead-letter), leader-elected janitor cron (@every 6h), and pub-sub push liveness for the graph app via vendored \`libhonker_ext.dylib\` (darwin-arm64). Other platforms degrade to inline embed, file-watch poll, and in-process janitor.
+- **SQLite extension capability layer** — \`Database.setCustomSQLite()\` switches Bun's bundled SQLite to a system extension-enabled libsqlite3 before the first DB opens; then \`loadExtension()\` loads sqlite-vec and honker per-connection. Degrades gracefully — missing binary/lib leaves the capability \`false\` and falls back to pure-JS / FTS paths. Never throws.
+- **sqlite-vec (vec0 / KNN) semantic recall** — powers the semantic fallback in recall with real vector KNN search when available; falls back to JS-cosine when not.
+- **Env vars for extension control** — \`LTM_DISABLE_VEC\`, \`LTM_DISABLE_HONKER\` (force-disable), \`LTM_HONKER_EXT\` (override honker binary path), \`LTM_SQLITE_LIB\` (override system libsqlite3 path).
+- **\`ltm.crossProcessSync\` setting** — opt-in setting (default \`false\`) to enable cross-agent memory notify via honker pub-sub.
+
 ## [2.8.1] — 2026-06-08
 
 ### Fixed

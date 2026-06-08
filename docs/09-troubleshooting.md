@@ -70,6 +70,17 @@ The graph server runs on port **7332**.
 
 ---
 
+## sqlite-vec or Honker won't load
+
+The plugin degrades gracefully — the absence of either extension is not an error. But if you expected them to be active:
+
+1. **No system extension-enabled libsqlite3.** Run `bun -e "const { Database } = require('bun:sqlite'); new Database(':memory:').loadExtension('/nonexistent')" 2>&1 | grep -q 'does not support' && echo "Bun bundled sqlite — extensions need system lib"`. If this prints, install a Homebrew sqlite on macOS: `brew install sqlite`. The plugin searches `/opt/homebrew/opt/sqlite/lib/libsqlite3.dylib` (Apple Silicon) and `/usr/local/opt/sqlite/lib/libsqlite3.dylib` (Intel).
+2. **No Honker binary for this platform.** Honker is currently vendored for darwin-arm64 only. Other platforms fall back to inline embedding, file-watch polling, and in-process janitor — no action needed.
+3. **`LTM_DISABLE_VEC` or `LTM_DISABLE_HONKER` is set.** Unset the env var or remove `=1`/`=true` from your shell profile.
+4. **`LTM_SQLITE_LIB` points to the wrong path.** Set it to the absolute path of a system libsqlite3 that supports extension loading: `export LTM_SQLITE_LIB=/opt/homebrew/opt/sqlite/lib/libsqlite3.dylib`.
+
+Verification: capabilities are resolved once at process start. To check what is available, confirm the system library exists — `ls /opt/homebrew/opt/sqlite/lib/libsqlite3.dylib` (macOS) — and that a honker binary is vendored for your platform under `packages/openltm-core/vendor/honker/<platform>/`. There is no dedicated status command yet.
+
 ## Secrets may have been captured
 
 If you suspect a memory captured an API key or token:
