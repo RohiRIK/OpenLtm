@@ -46,16 +46,6 @@ jobs:
       - name: Upgrade npm for OIDC trusted publishing
         run: npm install -g npm@latest
 
-      - name: Debug OIDC publish context
-        run: |
-          echo "npm version: $(npm --version)"
-          echo "ID_TOKEN_REQUEST_URL set: ${ACTIONS_ID_TOKEN_REQUEST_URL:+yes}"
-          echo "ID_TOKEN_REQUEST_TOKEN set: ${ACTIONS_ID_TOKEN_REQUEST_TOKEN:+yes}"
-          echo "--- effective registry/auth/provenance config ---"
-          npm config ls -l 2>/dev/null | grep -iE 'registry|_authtoken|provenance|always-auth' || true
-          echo "--- npm config get registry ---"
-          npm config get registry
-
       # workspace:* → concrete version before publishing
       - name: Resolve workspace dependencies
         run: |
@@ -68,7 +58,7 @@ jobs:
       # package on npmjs.com). id-token: write above lets npm mint the OIDC token.
       - name: Publish openltm-core
         working-directory: packages/openltm-core
-        run: npm publish --provenance --loglevel silly
+        run: npm publish --provenance
 
       - name: Publish opencode adapter
         working-directory: packages/adapter-opencode
