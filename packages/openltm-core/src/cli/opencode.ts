@@ -139,24 +139,19 @@ export async function installOpenCode(opts: {
   const sourceDir = getOpenCodeSourceDir();
   const targetDir = dirname(configPath);
 
-  const components = [
-    { src: "agents", dst: "agents", label: "agents" },
-    { src: "skills", dst: "skills", label: "skills" },
-    { src: "plugins", dst: "plugins", label: "plugins" },
-  ];
+  const components = ["agents", "skills", "plugins"];
 
   let anyDeployed = !pluginAlreadyPresent;
 
   for (const comp of components) {
-    const srcPath = join(sourceDir, comp.src);
-    const dstPath = join(targetDir, comp.dst);
+    const srcPath = join(sourceDir, comp);
+    const dstPath = join(targetDir, comp);
 
     if (!existsSync(srcPath)) {
-      details.push(`${comp.label}: source not found (skipped)`);
+      details.push(`${comp}: source not found (skipped)`);
       continue;
     }
 
-    // Check if already deployed
     const alreadyDeployed = existsSync(dstPath) && readdirSync(dstPath).length > 0;
 
     if (!alreadyDeployed) {
@@ -164,10 +159,10 @@ export async function installOpenCode(opts: {
         mkdirSync(dstPath, { recursive: true });
         copyRecursive(srcPath, dstPath);
       }
-      details.push(`${comp.label}: ${dryRun ? "would deploy" : "deployed"}`);
+      details.push(`${comp}: ${dryRun ? "would deploy" : "deployed"}`);
       anyDeployed = true;
     } else {
-      details.push(`${comp.label}: already deployed (skipped)`);
+      details.push(`${comp}: already deployed (skipped)`);
     }
   }
 
