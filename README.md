@@ -146,7 +146,6 @@ Full documentation index: [`docs/`](docs/README.md).
 | Understand the schema and data model | [DB Spec](docs/internal/DB-SPEC.md) |
 | See all hooks, skills, and MCP tools | [Hooks](docs/06-hooks.md) · [Skills](docs/07-skills.md) · [MCP Tools](docs/08-mcp-tools.md) |
 | Fix a problem | [Troubleshooting](docs/09-troubleshooting.md) |
-| Upgrade from an earlier version | [Migration](MIGRATION.md) |
 | See the product vision and where it's going | [PRD](docs/internal/PRD.md) · [Roadmap](docs/internal/ROADMAP.md) |
 | Contribute a change | [Contributing](CONTRIBUTING.md) |
 | Check what changed | [Changelog](CHANGELOG.md) |

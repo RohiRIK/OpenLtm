@@ -18,7 +18,7 @@
 - **Documentation overhaul** — `docs/` reorganized into a numbered, user-facing set (`00-quickstart` … `09-troubleshooting`); product and design specs moved to `docs/internal/`. New guides: Quickstart, Installation, Troubleshooting, and a root `CONTRIBUTING.md`.
 
 ### Removed
-- Obsolete `docs/migration.md` (the deprecated git-clone migration), redundant with the root `MIGRATION.md`.
+- Obsolete migration docs (`docs/migration.md` and the root `MIGRATION.md`) covering the deprecated git-clone setup; the marketplace install path migrates existing databases automatically.
 
 ## [2.7.0] — 2026-06-05
 

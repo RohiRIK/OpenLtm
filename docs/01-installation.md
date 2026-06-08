@@ -93,4 +93,4 @@ Start a new session — context should be injected at the top. If it isn't, run 
 
 - [Quickstart](00-quickstart.md) — five-minute first run
 - [Configuration](04-configuration.md) — every setting and its default
-- [Migration](../MIGRATION.md) — upgrading from an earlier version
+- [Troubleshooting](09-troubleshooting.md) — fix common install issues

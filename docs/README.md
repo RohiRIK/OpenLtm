@@ -15,6 +15,6 @@ Read top to bottom for a guided path, or jump to what you need.
 | 08 | [MCP Tools](08-mcp-tools.md) | The `mcp__plugin_openltm_memory__*` tool API |
 | 09 | [Troubleshooting](09-troubleshooting.md) | Diagnose and fix common issues |
 
-**Top-level docs** live at the repository root: [README](../README.md) · [Migration](../MIGRATION.md) · [Changelog](../CHANGELOG.md) · [Contributing](../CONTRIBUTING.md).
+**Top-level docs** live at the repository root: [README](../README.md) · [Changelog](../CHANGELOG.md) · [Contributing](../CONTRIBUTING.md).
 
 **Internal specs** (product vision, roadmap, schema, UX) live in [`internal/`](internal/) — design references for maintainers, not user-facing guides.
