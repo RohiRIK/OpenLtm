@@ -1,9 +1,9 @@
 # ARCHITECTURE — OpenLTM Plugin
 
-* **Version:** 1.2 (against plugin v2.7.0)
+* **Version:** 1.3 (against plugin v2.8.0)
 * **Owner:** Rohi Rikman
-* **Status:** Baseline architecture spec; companion to `docs/PRD.md`
-* **Last updated:** 2026-04-28
+* **Status:** Baseline architecture spec; companion to `docs/internal/PRD.md`
+* **Last updated:** 2026-06-08
 
 This document describes the as-built architecture of the OpenLTM plugin, an honest
 assessment of its weaknesses, and a target "magnificent" architecture with a phased
@@ -11,7 +11,7 @@ migration path. It is the reference artifact for the `database-admin` agent (sch
 the `backend-developer` agent (server / hook work), and the `cloud-architect` agent (any
 future sync surfaces).
 
-The PRD (`docs/PRD.md`) is the contract: §4 (feature inventory) is the as-built ground
+The PRD (`docs/internal/PRD.md`) is the contract: §4 (feature inventory) is the as-built ground
 truth; §5 (user stories) the acceptance contract; §6 (gaps) the opportunity space this
 spec turns into a roadmap.
 

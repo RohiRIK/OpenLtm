@@ -53,5 +53,5 @@ git commit (if enabled) ─▶ GitCommit (extract from diffs)
 ## See also
 
 - [README](../README.md) — back to the top
-- [Architecture](architecture.md) — full hook architecture spec
-- [Configuration](configuration.md) — `gitLearnEnabled`, `gitLearnMinDiffChars`
+- [Architecture](03-architecture.md) — full hook architecture spec
+- [Configuration](04-configuration.md) — `gitLearnEnabled`, `gitLearnMinDiffChars`

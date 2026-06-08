@@ -43,5 +43,5 @@ The graph view in `localhost:7332` colors edges by type — `contradicts` shows 
 ## See also
 
 - [README](../README.md) — back to the top
-- [Architecture](architecture.md) — how the MCP server fits in the container diagram
-- [Commands](commands.md) — the slash-command surface that wraps these tools
+- [Architecture](03-architecture.md) — how the MCP server fits in the container diagram
+- [Commands](05-commands.md) — the slash-command surface that wraps these tools

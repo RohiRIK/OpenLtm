@@ -3,10 +3,10 @@
 > **Master integration spec.** Synthesises `PRD.md`, `ARCHITECTURE.md`, `UX-SPEC.md` into a single phased plan. `DB-SPEC.md` augments §6 (Schema) and per-phase DB work once written.
 >
 > Source documents — keep authoritative:
-> - `docs/PRD.md` — what & why (vision, personas, JTBDs, US-1..17, gaps G-A..G-O)
-> - `docs/ARCHITECTURE.md` — system shape (C4, ADR-001..006, weaknesses W1..W12, capabilities C1..C10)
-> - `docs/UX-SPEC.md` — user-facing surface (interaction model, hooks, surfaces S1..S5)
-> - `docs/DB-SPEC.md` — schema (pending; section 6 + per-phase DB rows updated when ready)
+> - `docs/internal/PRD.md` — what & why (vision, personas, JTBDs, US-1..17, gaps G-A..G-O)
+> - `docs/03-architecture.md` — system shape (C4, ADR-001..006, weaknesses W1..W12, capabilities C1..C10)
+> - `docs/internal/UX-SPEC.md` — user-facing surface (interaction model, hooks, surfaces S1..S5)
+> - `docs/internal/DB-SPEC.md` — schema (pending; section 6 + per-phase DB rows updated when ready)
 
 ---
 
@@ -238,7 +238,7 @@ From PRD §9 + Arch hand-off:
 
 ## 6. Schema Evolution (linked to DB-SPEC.md)
 
-`docs/DB-SPEC.md` is now authoritative for all schema work. Cross-references:
+`docs/internal/DB-SPEC.md` is now authoritative for all schema work. Cross-references:
 
 | ROADMAP phase | DB-SPEC section | DDL highlights |
 |---|---|---|

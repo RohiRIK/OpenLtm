@@ -1,10 +1,10 @@
 # UX Specification — OpenLTM Plugin
 
-**Version:** 1.0 (against plugin v1.9.0)
+**Version:** 1.1 (against plugin v2.8.0)
 **Owner:** ui-ux-designer (dev-team)
 **Status:** Vision document for system-architect + frontend-developer hand-off
-**Last updated:** 2026-04-28
-**Companion to:** `docs/PRD.md`
+**Last updated:** 2026-06-08
+**Companion to:** `docs/internal/PRD.md`
 
 ---
 

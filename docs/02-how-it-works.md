@@ -1,6 +1,6 @@
 # How It Works
 
-The one-page tour. The [Architecture](architecture.md) doc is the 1000-line deep-dive; this is the 30-second version that gets you oriented before you read it.
+The one-page tour. The [Architecture](03-architecture.md) doc is the 1000-line deep-dive; this is the 30-second version that gets you oriented before you read it.
 
 ---
 
@@ -51,7 +51,7 @@ Three surfaces — **commands** (you talk), **skills** (Claude's prompt workflow
 | **Session Stop** | `UpdateContext` saves progress. `EvaluateSession` extracts patterns from the transcript. |
 | **Pre-Compact** | `PreCompact` snapshots context to `context-summary.md` so it survives compaction. |
 
-You never have to remember any of this. The hooks are wired on install. If you want the playbook, see [Hooks](hooks.md).
+You never have to remember any of this. The hooks are wired on install. If you want the playbook, see [Hooks](06-hooks.md).
 
 ---
 
@@ -102,8 +102,8 @@ CHANGELOG.md          Version history
 
 ## Where to go from here
 
-- [Architecture](architecture.md) — C4 diagrams, ADRs, schema, migration path, the works
-- [DB Spec](DB-SPEC.md) — every table, every column, every index
-- [Configuration](configuration.md) — knobs that control decay, injection, and embedding
-- [Hooks](hooks.md) — what fires when
-- [PRD](PRD.md) — product vision and roadmap
+- [Architecture](03-architecture.md) — C4 diagrams, ADRs, schema, migration path, the works
+- [DB Spec](internal/DB-SPEC.md) — every table, every column, every index
+- [Configuration](04-configuration.md) — knobs that control decay, injection, and embedding
+- [Hooks](06-hooks.md) — what fires when
+- [PRD](internal/PRD.md) — product vision and roadmap

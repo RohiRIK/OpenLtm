@@ -110,14 +110,14 @@ That's it. The rest is hooks doing the work.
 Claude Code
    │
    ├── 4 Commands  ──┐
-   ├── 5 Skills    ──┼──▶  ltm MCP server  ──▶  openltm.db
+   ├── 5 Skills    ──┼──▶  openltm MCP server ──▶  openltm.db
    └── 5 Hooks     ──┘                        (memories, tags,
                                                 context_items,
                                                 memory_relations,
                                                 memories_fts)
 ```
 
-Full deep-dive — schema, hook architecture, decay formula, ADRs — in [How It Works](docs/how-it-works.md) and [Architecture](docs/architecture.md).
+Full deep-dive — schema, hook architecture, decay formula, ADRs — in [How It Works](docs/02-how-it-works.md) and [Architecture](docs/03-architecture.md).
 
 ---
 
@@ -134,24 +134,28 @@ Start a new session — you should see context injected at the top. If not, run 
 
 ## Go deeper
 
+Full documentation index: [`docs/`](docs/README.md).
+
 | I want to… | Read |
 |---|---|
-| Use every command and its flags | [Commands](docs/commands.md) |
-| Tune decay, injection, embedding behavior | [Configuration](docs/configuration.md) |
-| See how it works under the hood | [How It Works](docs/how-it-works.md) · [Architecture](docs/architecture.md) |
-| Understand the schema and data model | [DB Spec](docs/DB-SPEC.md) |
-| See all hooks, skills, and MCP tools | [Hooks](docs/hooks.md) · [Skills](docs/skills.md) · [MCP Tools](docs/mcp-tools.md) |
-| Migrate from the old git-clone setup | [Migration](docs/migration.md) |
-| See the product vision and where it's going | [PRD](docs/PRD.md) · [Roadmap](docs/ROADMAP.md) |
+| Get running in five minutes | [Quickstart](docs/00-quickstart.md) |
+| See every install option | [Installation](docs/01-installation.md) |
+| Use every command and its flags | [Commands](docs/05-commands.md) |
+| Tune decay, injection, embedding behavior | [Configuration](docs/04-configuration.md) |
+| See how it works under the hood | [How It Works](docs/02-how-it-works.md) · [Architecture](docs/03-architecture.md) |
+| Understand the schema and data model | [DB Spec](docs/internal/DB-SPEC.md) |
+| See all hooks, skills, and MCP tools | [Hooks](docs/06-hooks.md) · [Skills](docs/07-skills.md) · [MCP Tools](docs/08-mcp-tools.md) |
+| Fix a problem | [Troubleshooting](docs/09-troubleshooting.md) |
+| Upgrade from an earlier version | [Migration](MIGRATION.md) |
+| See the product vision and where it's going | [PRD](docs/internal/PRD.md) · [Roadmap](docs/internal/ROADMAP.md) |
+| Contribute a change | [Contributing](CONTRIBUTING.md) |
 | Check what changed | [Changelog](CHANGELOG.md) |
 
 ---
 
 ## Contributing
 
-Open an issue first to discuss the change. PRs welcome.
-
-Every change requires a version bump in both `package.json` and `.claude-plugin/plugin.json`. See [Changelog](CHANGELOG.md) for conventions.
+Open an issue first to discuss the change, then send a PR. The full workflow — setup, tests, the version-bump rule, and release steps — is in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 [Report a Bug](https://github.com/RohiRIK/OpenLtm/issues)
 

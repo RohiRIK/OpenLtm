@@ -2,9 +2,9 @@
 
 **Version:** 1.0
 **Owner:** database-admin (dev-team)
-**Status:** Baseline spec against plugin v1.4.20 schema; forward spec to v2.2.x
-**Last updated:** 2026-05-02
-**Companion documents:** `docs/ARCHITECTURE.md`, `docs/PRD.md`, `docs/ROADMAP.md`
+**Status:** Current schema spec against plugin v2.8.0
+**Last updated:** 2026-06-08
+**Companion documents:** `docs/03-architecture.md`, `docs/internal/PRD.md`, `docs/internal/ROADMAP.md`
 
 This document is the authoritative reference for the LTM plugin data tier. It covers
 the current schema (annotated), index strategy, FTS5 configuration, the decay model,

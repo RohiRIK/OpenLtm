@@ -1,9 +1,9 @@
 # PRD — OpenLTM Plugin (Long-Term Memory for AI coding agents)
 
-**Version:** 1.0 (PRD baseline against plugin v1.9.0)
+**Version:** 1.1 (against plugin v2.8.0)
 **Owner:** product-manager (dev-team)
 **Status:** Draft for system-architect + ui-ux-designer hand-off
-**Last updated:** 2026-04-28
+**Last updated:** 2026-06-08
 
 ---
 

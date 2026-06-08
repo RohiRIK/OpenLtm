@@ -108,6 +108,6 @@ Score breakdown when the graph server is running:
 ## See also
 
 - [README](../README.md) — back to the top
-- [Hooks](hooks.md) — the events that fire when commands are used
-- [MCP Tools](mcp-tools.md) — the underlying tool surface that the commands wrap
-- [Configuration](configuration.md) — `injectTopN`, `semanticFallback`, `autoRelate`
+- [Hooks](06-hooks.md) — the events that fire when commands are used
+- [MCP Tools](08-mcp-tools.md) — the underlying tool surface that the commands wrap
+- [Configuration](04-configuration.md) — `injectTopN`, `semanticFallback`, `autoRelate`

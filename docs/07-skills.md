@@ -31,5 +31,5 @@ Five ship with OpenLTM. They cover the full lifecycle: capture, recall, learn, r
 ## See also
 
 - [README](../README.md) — back to the top
-- [Hooks](hooks.md) — the events that trigger each skill
-- [Configuration](configuration.md) — `gitLearnEnabled`, `gitLearnMinDiffChars`, `evaluateSessionLlm`
+- [Hooks](06-hooks.md) — the events that trigger each skill
+- [Configuration](04-configuration.md) — `gitLearnEnabled`, `gitLearnMinDiffChars`, `evaluateSessionLlm`

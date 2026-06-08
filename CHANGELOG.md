@@ -1,5 +1,25 @@
 # Changelog
 
+## [2.8.0] — 2026-06-08
+
+### Changed
+- **Open source under MIT.** OpenLTM is now a public, MIT-licensed project. No cloud, no account, no telemetry — the memory database stays local and owned by the user.
+- **Renamed to OpenLTM.** The brand and identifiers moved from the private `claude-ltm-plugin` to the open `openltm`:
+  - Plugin name `claude-ltm-plugin` → `openltm`; marketplace → `OpenLtm` (`RohiRIK/OpenLtm`).
+  - MCP tool prefix `mcp__plugin_ltm_memory__*` → `mcp__plugin_openltm_memory__*`.
+  - Core npm package `@rohirik/ltm-core` → `@rohirik/openltm-core`.
+  - Plugin data directory `ltm-ltm/` → `OpenLtm-openltm/`; database file → `openltm.db`.
+  - Slash commands `/ltm:*` → `/openltm:*`.
+  - The concept word "LTM" is unchanged. Existing memory databases migrate automatically.
+
+### Added
+- **README open-source announcement + banner** — landing page rewritten for the public launch with a new OpenLTM hero banner.
+- **`Spec` skill and `planner` agent** — spec-driven definition and planning skills, wired to the LTM contract.
+- **Documentation overhaul** — `docs/` reorganized into a numbered, user-facing set (`00-quickstart` … `09-troubleshooting`); product and design specs moved to `docs/internal/`. New guides: Quickstart, Installation, Troubleshooting, and a root `CONTRIBUTING.md`.
+
+### Removed
+- Obsolete `docs/migration.md` (the deprecated git-clone migration), redundant with the root `MIGRATION.md`.
+
 ## [2.7.0] — 2026-06-05
 
 ### Added
