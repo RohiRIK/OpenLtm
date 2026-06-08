@@ -1,6 +1,6 @@
 {
   "name": "openltm",
-  "version": "2.8.0",
+  "version": "2.8.1",
   "description": "OpenLTM — Long-Term Memory for AI coding agents (Claude Code, OpenCode, Pi)",
   "private": true,
   "workspaces": [

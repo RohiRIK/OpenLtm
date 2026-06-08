@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.8.1] — 2026-06-08
+
+### Fixed
+- **OpenCode installer now ships its customization** — the agents/skills/plugins are bundled in `packages/openltm-core/assets/opencode/` so they actually deploy on published/`bunx` installs (previously read from the gitignored repo `.opencode/`, a silent no-op). Components co-locate with the resolved config dir.
+- **`openltm-core` npm `bin`** — dropped the leading `./` so npm 11 stops stripping it; `bunx @rohirik/openltm-core` is executable again.
+
+### Changed
+- **npm publishing moved to OIDC trusted publishing** — the Publish workflow authenticates to npm via GitHub OIDC instead of a long-lived `NPM_TOKEN`, and restores build provenance. No publish secret is stored.
+
 ## [2.8.0] — 2026-06-08
 
 ### Changed
