@@ -44,10 +44,17 @@ jobs:
 
       # OIDC trusted publishing needs npm >= 11.5 (the node-20 bundled npm is older)
       - name: Upgrade npm for OIDC trusted publishing
+        run: npm install -g npm@latest
+
+      - name: Debug OIDC publish context
         run: |
-          npm install -g npm@latest
           echo "npm version: $(npm --version)"
-          npm --version
+          echo "ID_TOKEN_REQUEST_URL set: ${ACTIONS_ID_TOKEN_REQUEST_URL:+yes}"
+          echo "ID_TOKEN_REQUEST_TOKEN set: ${ACTIONS_ID_TOKEN_REQUEST_TOKEN:+yes}"
+          echo "--- effective registry/auth/provenance config ---"
+          npm config ls -l 2>/dev/null | grep -iE 'registry|_authtoken|provenance|always-auth' || true
+          echo "--- npm config get registry ---"
+          npm config get registry
 
       # workspace:* → concrete version before publishing
       - name: Resolve workspace dependencies
