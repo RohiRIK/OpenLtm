@@ -34,6 +34,10 @@ jobs:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
 
+      # OIDC trusted publishing needs npm >= 11.5 (the node-20 bundled npm is older)
+      - name: Upgrade npm for OIDC trusted publishing
+        run: npm install -g npm@latest
+
       # workspace:* → concrete version before publishing
       - name: Resolve workspace dependencies
         run: |
@@ -42,17 +46,15 @@ jobs:
             sed -i "s|\"workspace:\*\"|\"^${VERSION}\"|g" "$f"
           done
 
+      # No NODE_AUTH_TOKEN: auth is via OIDC trusted publishing (configured per
+      # package on npmjs.com). id-token: write above lets npm mint the OIDC token.
       - name: Publish openltm-core
         working-directory: packages/openltm-core
         run: npm publish --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish opencode adapter
         working-directory: packages/adapter-opencode
         run: npm publish --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Build pi extension
         working-directory: packages/adapter-pi
@@ -61,5 +63,3 @@ jobs:
       - name: Publish pi extension
         working-directory: packages/adapter-pi
         run: npm publish --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
