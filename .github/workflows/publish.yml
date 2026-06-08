@@ -1,8 +1,14 @@
 name: Publish to npm
 
+# Trigger directly on the version tag (not on `release: published`): a release
+# created by the Release workflow's GITHUB_TOKEN does not trigger downstream
+# workflows, so chaining off it silently skips publishing. workflow_dispatch
+# gives a manual re-run handle.
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
 
 permissions:
   contents: read
