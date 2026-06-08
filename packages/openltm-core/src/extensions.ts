@@ -13,6 +13,11 @@
  */
 import { Database } from "bun:sqlite";
 import { existsSync } from "fs";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
+
+/** Directory of this module — used to resolve the vendored Honker binary. */
+const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
 
 export interface Capabilities {
   /** A system extension-enabled SQLite is active for this process. */
@@ -48,9 +53,9 @@ function envDisabled(name: string): boolean {
   return v === "1" || v === "true";
 }
 
-/** Locate a system extension-enabled libsqlite3, or null if none found. */
-export function locateSystemSqlite(): string | null {
-  for (const p of systemSqliteCandidates()) {
+/** First candidate path that exists on disk, or null. Never throws. */
+function firstExisting(candidates: string[]): string | null {
+  for (const p of candidates) {
     try {
       if (existsSync(p)) return p;
     } catch {
@@ -58,6 +63,32 @@ export function locateSystemSqlite(): string | null {
     }
   }
   return null;
+}
+
+/** Locate a system extension-enabled libsqlite3, or null if none found. */
+export function locateSystemSqlite(): string | null {
+  return firstExisting(systemSqliteCandidates());
+}
+
+// Probe order: explicit override first, then the vendored binary for this
+// platform (packages/openltm-core/vendor/honker/<platform>/libhonker_ext.<ext>).
+function honkerExtCandidates(): string[] {
+  const out: string[] = [];
+  const override = process.env["LTM_HONKER_EXT"];
+  if (override) out.push(override);
+  const platform = `${process.platform}-${process.arch}`;
+  const suffix = process.platform === "darwin" ? "dylib" : "so";
+  out.push(join(MODULE_DIR, "..", "vendor", "honker", platform, `libhonker_ext.${suffix}`));
+  return out;
+}
+
+/**
+ * Locate the Honker loadable extension, or null if none is available for this
+ * platform. Mirrors locateSystemSqlite(): LTM_HONKER_EXT override wins, then the
+ * vendored per-platform binary. A null result means Honker stays dormant.
+ */
+export function locateHonkerExt(): string | null {
+  return firstExisting(honkerExtCandidates());
 }
 
 /**
@@ -99,8 +130,8 @@ function loadVec(db: Database): boolean {
 }
 
 function loadHonker(db: Database): boolean {
-  const ext = process.env["LTM_HONKER_EXT"];
-  if (!ext || !existsSync(ext)) return false;
+  const ext = locateHonkerExt();
+  if (!ext) return false;
   try {
     db.loadExtension(ext);
     return true;
@@ -114,12 +145,14 @@ function loadHonker(db: Database): boolean {
  * capabilities for the process. Never throws.
  *
  * @param opts.vec    attempt sqlite-vec (default true; env LTM_DISABLE_VEC wins)
- * @param opts.honker attempt Honker (default false; env LTM_DISABLE_HONKER wins,
- *                    and a libhonker_ext path must be set via LTM_HONKER_EXT)
+ * @param opts.honker attempt Honker (default: auto-on when a libhonker_ext binary
+ *                    is discoverable via locateHonkerExt(); env LTM_DISABLE_HONKER
+ *                    force-disables, and LTM_HONKER_EXT overrides the binary path)
  */
 export function loadExtensions(db: Database, opts?: { vec?: boolean; honker?: boolean }): Capabilities {
   const wantVec = (opts?.vec ?? true) && !envDisabled("LTM_DISABLE_VEC");
-  const wantHonker = (opts?.honker ?? false) && !envDisabled("LTM_DISABLE_HONKER");
+  const wantHonker =
+    (opts?.honker ?? locateHonkerExt() !== null) && !envDisabled("LTM_DISABLE_HONKER");
 
   const customSqlite = ensureCustomSqlite();
   const vec = customSqlite && wantVec ? loadVec(db) : false;

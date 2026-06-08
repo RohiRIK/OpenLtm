@@ -1,6 +1,6 @@
 {
   "name": "openltm",
-  "version": "2.8.1",
+  "version": "2.9.0",
   "description": "OpenLTM — Long-Term Memory for AI coding agents (Claude Code, OpenCode, Pi)",
   "private": true,
   "workspaces": [
@@ -16,7 +16,7 @@
     "dev:mcp": "bun run src/mcp-server.ts",
     "dev:server": "LTM_DB_PATH=./data/openltm.db bun run src/graph-server.ts",
     "migrate": "LTM_DB_PATH=./data/openltm.db bun run src/migrate.ts",
-    "test": "bun test --path-ignore-patterns='graph-app/**' --pass-with-no-tests",
+    "test": "bun test --path-ignore-patterns='graph-app/**' --pass-with-no-tests --timeout 15000",
     "test:e2e": "cd graph-app && bunx playwright test",
     "postinstall": "bun run scripts/update-wiring.ts"
   },

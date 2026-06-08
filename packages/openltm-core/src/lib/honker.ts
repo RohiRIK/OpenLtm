@@ -13,7 +13,7 @@
  * pre-Honker behaviour (inline embed, HTTP poll, file-watcher).
  */
 import type { HonkerDb, HonkerModule } from "./honkerTypes.js";
-import { getCapabilities, locateSystemSqlite } from "../extensions.js";
+import { getCapabilities, locateSystemSqlite, locateHonkerExt } from "../extensions.js";
 import { DB_PATH } from "../shared-db.js";
 
 let _handle: HonkerDb | null | undefined = undefined;
@@ -31,7 +31,7 @@ export function getHonker(): HonkerDb | null {
 
 function openHonker(): HonkerDb | null {
   if (!getCapabilities().honker) return null;
-  const ext = process.env["LTM_HONKER_EXT"];
+  const ext = locateHonkerExt();
   if (!ext) return null;
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from "bun:test";
 import { Database } from "bun:sqlite";
 import {
   locateSystemSqlite,
+  locateHonkerExt,
   ensureCustomSqlite,
   loadExtensions,
   getCapabilities,
@@ -32,14 +33,27 @@ describe("extensions — capability probe", () => {
     expect(typeof caps.honker).toBe("boolean");
   });
 
-  it("honker is false when no LTM_HONKER_EXT binary is configured", () => {
-    const prev = process.env["LTM_HONKER_EXT"];
-    delete process.env["LTM_HONKER_EXT"];
+  it("honker is false when force-disabled via LTM_DISABLE_HONKER", () => {
+    const prev = process.env["LTM_DISABLE_HONKER"];
+    process.env["LTM_DISABLE_HONKER"] = "1";
     ensureCustomSqlite();
     const db = new Database(":memory:");
     const caps = loadExtensions(db);
     expect(caps.honker).toBe(false);
-    if (prev) process.env["LTM_HONKER_EXT"] = prev;
+    if (prev === undefined) delete process.env["LTM_DISABLE_HONKER"];
+    else process.env["LTM_DISABLE_HONKER"] = prev;
+  });
+
+  it("honker auto-loads when a vendored libhonker_ext binary is discoverable", () => {
+    // Mirrors the vec test: activation needs customSqlite (process-global, only
+    // before the first DB open) AND a discoverable binary. Skip when either is
+    // unavailable — that is the graceful-degradation path, not a failure.
+    if (locateHonkerExt() === null || process.env["LTM_DISABLE_HONKER"]) return;
+    ensureCustomSqlite();
+    const db = new Database(":memory:");
+    const caps = loadExtensions(db);
+    if (!caps.customSqlite) return;
+    expect(caps.honker).toBe(true);
   });
 
   it("respects LTM_DISABLE_VEC — vec capability is false when force-disabled", () => {
