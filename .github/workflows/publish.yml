@@ -34,11 +34,13 @@ jobs:
       - name: Test
         run: bun run test
 
+      # No `registry-url`: it makes setup-node write an .npmrc with an empty
+      # _authToken, which npm uses instead of OIDC → 404. Without it (and with no
+      # token), npm 11.5+ triggers OIDC trusted publishing against npmjs.org.
       - name: Setup Node.js for npm publish
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-          registry-url: "https://registry.npmjs.org"
 
       # OIDC trusted publishing needs npm >= 11.5 (the node-20 bundled npm is older)
       - name: Upgrade npm for OIDC trusted publishing
