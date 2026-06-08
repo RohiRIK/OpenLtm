@@ -22,28 +22,32 @@ Every task follows this workflow:
 
 ## Version Bump — MANDATORY
 
-**After EVERY fix, feature, or change that touches any file in this repo:**
+**After EVERY fix, feature, or change that touches any file in this repo**, bump the version in **all** of these — they must match exactly:
 
-1. Bump the patch version in **ALL THREE** files:
-   - `package.json` → `"version": "X.Y.Z"`
-   - `.claude-plugin/plugin.json` → `"version": "X.Y.Z"`
-   - `.claude-plugin/marketplace.json` → `metadata.version` **and** `plugins[0].version`
-2. All version fields MUST match. Verify: `claude plugin validate .` passes with no version-mismatch warning.
-3. Commit with `release: bump version to X.Y.Z`
-4. Push to GitHub.
+- `package.json`
+- `.claude-plugin/plugin.json`
+- `.claude-plugin/marketplace.json` → `metadata.version` **and** `plugins[0].version`
+- each `packages/*/package.json` (`openltm-core`, `adapter-opencode`, `adapter-pi`)
+- the version badge in `README.md`
 
-**Why:** The Claude Code plugin marketplace detects new versions via the version field in `.claude-plugin/plugin.json`. If the version is not bumped, users never see the update and "Update now" does nothing. A stale `marketplace.json` version triggers a `claude plugin validate` warning and version drift.
+`bun run bump <version>` updates most of these; `bun run verify-version` is the gate and fails if any are out of sync. Run it before committing. Also confirm `claude plugin validate .` passes.
 
-**Do not skip this step even for tiny one-line fixes.**
+**Why:** The Claude Code plugin marketplace detects new versions via `.claude-plugin/plugin.json`. If it is not bumped, "Update now" does nothing. Mismatched `packages/*` versions break the npm publish (the `workspace:*` → `^<version>` rewrite). Do not skip this even for one-line fixes.
 
-## Cache Sync — MANDATORY
+## Release & Publish
 
-After every fix, also patch the running cache at:
-`~/.claude/plugins/cache/ltm/ltm/<version>/`
+Publishing the `@rohirik/*` npm packages is automated and **tokenless** (npm OIDC trusted publishing):
 
-The plugin system reads from the cache, not the source repo. Changes only take effect if:
-- The cache file is patched directly (immediate), OR
-- The user clicks "Update now" in the plugin UI (requires version bump)
+1. Bump versions (above) and add a `## [X.Y.Z]` entry to `CHANGELOG.md`.
+2. Commit, then `git tag vX.Y.Z && git push origin main vX.Y.Z`.
+3. The tag push fires the **Release** workflow (creates the GitHub Release from the changelog) and the **Publish** workflow (publishes all three packages to npm via OIDC, with provenance).
+
+No `NPM_TOKEN` is stored — auth is via GitHub OIDC, configured per package as a Trusted Publisher on npmjs.com. See `CONTRIBUTING.md` for the full flow.
+
+## Cache Sync
+
+During local development, the plugin system reads from the cache at
+`~/.claude/plugins/cache/OpenLtm/openltm/<version>/`, not the source repo. Changes take effect when the cache is patched directly, or when the user clicks "Update now" after a version bump.
 
 ## Memory Contract
 
