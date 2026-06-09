@@ -7,7 +7,7 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import { normalizeAnchorPath, normalizeAnchorPaths } from "../anchors.js";
 import { _setDbForTesting } from "../shared-db.js";
-import { learn, flagStaleByPaths } from "../db.js";
+import { learn, flagStaleByPaths, revalidate, recall, decayMemories } from "../db.js";
 import { getMigrationFiles, parseMigration } from "../migrations.js";
 
 // Full schema = schema.sql baseline + every migration `up` (later columns like
@@ -174,5 +174,73 @@ describe("flagStaleByPaths (invalidate-on-commit)", () => {
   it("flags global (null-scope) anchors regardless of commit scope", () => {
     const m = learn({ content: "global anchor not scoped to a project", category: "pattern", files: ["src/g.ts"], skipExport: true });
     expect(flagStaleByPaths(["src/g.ts"], { project_scope: "someproj" }).ids).toContain(m.id);
+  });
+});
+
+describe("stale-aware recall + decay + revalidate", () => {
+  let db: Database;
+  beforeEach(async () => {
+    db = await freshDb();
+    _setDbForTesting(db);
+  });
+
+  function staleAt(id: number): string | null {
+    return (
+      db
+        .query<{ stale_flagged_at: string | null }, [number]>(
+          "SELECT stale_flagged_at FROM memories WHERE id=?",
+        )
+        .get(id)?.stale_flagged_at ?? null
+    );
+  }
+  function statusOf(id: number): string {
+    return (
+      db.query<{ status: string }, [number]>("SELECT status FROM memories WHERE id=?").get(id)
+        ?.status ?? ""
+    );
+  }
+
+  it("recall marks stale + downranks but still returns it (AC15)", async () => {
+    const fresh = learn({ content: "alpha keyword fresh memory body", category: "pattern", project_scope: "p", files: ["src/x.ts"], skipExport: true });
+    const stale = learn({ content: "alpha keyword stale memory body", category: "pattern", project_scope: "p", files: ["src/y.ts"], skipExport: true });
+    flagStaleByPaths(["src/y.ts"], { project_scope: "p" });
+
+    const res = await recall({ query: "alpha keyword", limit: 10 });
+    const ids = res.map((r) => r.id);
+    expect(ids).toContain(fresh.id);
+    expect(ids).toContain(stale.id);
+    expect(res.find((r) => r.id === stale.id)?.stale).toBe(true);
+    expect(res.find((r) => r.id === fresh.id)?.stale).toBe(false);
+    expect(ids.indexOf(fresh.id)).toBeLessThan(ids.indexOf(stale.id));
+  });
+
+  it("decay deprecates a flagged memory but never importance:5 or unflagged-fresh (AC16)", () => {
+    const flagged = learn({ content: "beta flagged should decay now", category: "pattern", project_scope: "p", files: ["src/a.ts"], skipExport: true });
+    const permanent = learn({ content: "beta permanent rule stays", category: "architecture", importance: 5, project_scope: "p", files: ["src/a.ts"], skipExport: true });
+    const freshUnflagged = learn({ content: "beta fresh untouched stays", category: "pattern", project_scope: "p", files: ["src/b.ts"], skipExport: true });
+
+    flagStaleByPaths(["src/a.ts"], { project_scope: "p" }); // flags `flagged`; skips imp5 `permanent`
+    decayMemories();
+
+    expect(statusOf(flagged.id)).toBe("deprecated");
+    expect(statusOf(permanent.id)).toBe("active");
+    expect(statusOf(freshUnflagged.id)).toBe("active");
+  });
+
+  it("reinforce (re-learn same content) clears the stale flag (AC17)", () => {
+    const m = learn({ content: "gamma reconfirm body text", category: "gotcha", project_scope: "p", files: ["src/a.ts"], skipExport: true });
+    flagStaleByPaths(["src/a.ts"], { project_scope: "p" });
+    expect(staleAt(m.id)).not.toBeNull();
+    const again = learn({ content: "gamma reconfirm body text", category: "gotcha", project_scope: "p", skipExport: true });
+    expect(again.id).toBe(m.id);
+    expect(staleAt(m.id)).toBeNull();
+  });
+
+  it("revalidate clears the flag and is a no-op when not flagged (AC18)", () => {
+    const m = learn({ content: "delta revalidate body text", category: "pattern", project_scope: "p", files: ["src/a.ts"], skipExport: true });
+    flagStaleByPaths(["src/a.ts"], { project_scope: "p" });
+    expect(revalidate(m.id).revalidated).toBe(true);
+    expect(staleAt(m.id)).toBeNull();
+    expect(revalidate(m.id).revalidated).toBe(false);
   });
 });

@@ -52,6 +52,8 @@ export interface Memory {
   workspace_id?: string;
   agent_id?: string;
   decay_score?: number;
+  stale_flagged_at?: string | null;
+  stale_reason?: string | null;
 }
 
 export interface MemoryRelation {
@@ -69,6 +71,8 @@ export interface MemoryWithRelations extends Memory {
   provenance?: import("./dao/types.js").ProvenanceRow[];
   /** Score breakdown + temperature — always populated by recall(). */
   explainer?: import("./recall/explainer.js").RecallExplainer;
+  /** True when a commit touched an anchored file and the memory hasn't been re-confirmed. */
+  stale?: boolean;
 }
 
 export interface LearnInput {
@@ -205,7 +209,7 @@ function getRelationsForMemory(db: Database, memoryId: number): MemoryWithRelati
 }
 
 function enrichMemory(db: Database, mem: Memory): MemoryWithRelations {
-  return { ...mem, tags: getTagsForMemory(db, mem.id), relations: getRelationsForMemory(db, mem.id) };
+  return { ...mem, stale: !!mem.stale_flagged_at, tags: getTagsForMemory(db, mem.id), relations: getRelationsForMemory(db, mem.id) };
 }
 
 // --- Decay / relevance scoring ---
@@ -268,8 +272,14 @@ export function decayMemories(): DecayResult {
   ).all();
 
   const toDeprecate = rows
-    .filter(mem => mem.importance !== 5 && mem.confirm_count < 5)
-    .filter(mem => computeDecayScore(mem) < DEPRECATION_THRESHOLD)
+    .filter(mem => mem.importance !== 5)
+    .filter(mem =>
+      // Code-invalidated memories are decay-eligible regardless of recall
+      // frequency — this is the "high-traffic but stale" case decay can't
+      // otherwise see. Otherwise fall back to the recency/confirm guard.
+      mem.stale_flagged_at != null ||
+      (mem.confirm_count < 5 && computeDecayScore(mem) < DEPRECATION_THRESHOLD)
+    )
     .map(mem => mem.id);
 
   if (toDeprecate.length > 0) {
@@ -342,6 +352,33 @@ export function flagStaleByPaths(
   return { flagged: candidates.length, ids: candidates };
 }
 
+/**
+ * Clear a stale flag — the memory was reviewed and is still valid. Use forget()
+ * instead when the memory is actually wrong. No-op if the memory wasn't flagged.
+ */
+export function revalidate(id: number): { revalidated: boolean } {
+  const db = getDb();
+  const before = snapshotMemory(db, id);
+  const res = db.run(
+    `UPDATE memories SET stale_flagged_at = NULL, stale_reason = NULL
+      WHERE id = ? AND stale_flagged_at IS NOT NULL`,
+    [id],
+  );
+  const revalidated = Number(res.changes ?? 0) > 0;
+  if (revalidated) {
+    tryAudit(() => {
+      insertAudit(db, {
+        memory_id: id,
+        op: "update",
+        actor: "revalidate",
+        before_json: before ? JSON.stringify(before) : null,
+        after_json: JSON.stringify(snapshotMemory(db, id)),
+      });
+    });
+  }
+  return { revalidated };
+}
+
 // Auto-relation detection — called fire-and-forget from learn()
 async function autoDetectRelations(
   newId: number,
@@ -394,7 +431,8 @@ export function learn(input: LearnInput): LearnResult {
     const beforeSnap = snapshotMemory(db, existing.id);
     db.run(
       `UPDATE memories SET confirm_count=confirm_count+1, last_confirmed_at=datetime('now'),
-       confidence=MIN(1.0, confidence+0.05) WHERE id=?`,
+       confidence=MIN(1.0, confidence+0.05),
+       stale_flagged_at=NULL, stale_reason=NULL WHERE id=?`,
       [existing.id]
     );
     if (input.tags) attachTags(db, existing.id, input.tags);
@@ -602,7 +640,7 @@ export async function recall(input: RecallInput = {}): Promise<MemoryWithRelatio
     `SELECT id, content, category, importance, confidence, source, project_scope, dedup_key,
             created_at, last_confirmed_at, last_used_at, confirm_count, status,
             first_recalled_at, last_recalled_at, recall_count, superseded_by, superseded_at,
-            workspace_id, agent_id, decay_score
+            workspace_id, agent_id, decay_score, stale_flagged_at, stale_reason
      FROM memories ${where} ${orderBy} LIMIT ${limit}`
   ).all(...params);
 
@@ -623,6 +661,12 @@ export async function recall(input: RecallInput = {}): Promise<MemoryWithRelatio
       .sort((a, b) => b.score - a.score)
       .map(({ m }) => m);
   }
+  // Downrank stale (code-invalidated) memories: stable partition pushes them
+  // after fresh ones at equal relevance — still returned, just demoted.
+  sorted = [
+    ...sorted.filter(m => !m.stale_flagged_at),
+    ...sorted.filter(m => m.stale_flagged_at),
+  ];
   if (sorted.length > 0) {
     const placeholders = sorted.map(() => "?").join(",");
     db.run(

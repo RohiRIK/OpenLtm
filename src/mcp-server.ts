@@ -6,7 +6,7 @@
 import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { getDb, learn, recall, relate, forget, getContextMerge, type Memory,
+import { getDb, learn, recall, relate, forget, revalidate, getContextMerge, type Memory,
          queryAudit, getItems, traverseGraph, buildReasoningContext } from "@rohirik/openltm-core";
 
 // ─── Config check ────────────────────────────────────────────────────────────
@@ -158,6 +158,18 @@ server.tool(
   async ({ id, reason }) => {
     forget({ id, reason, actor: "mcp:ltm_forget" });
     return { content: [{ type: "text", text: JSON.stringify({ ok: true, id, reason }) }] };
+  },
+);
+
+server.tool(
+  "revalidate",
+  "Clear a memory's stale flag after reviewing it — the code changed but this memory is still correct. Use forget instead when the memory is actually wrong.",
+  {
+    id: z.number().int().describe("Memory ID to revalidate"),
+  },
+  async ({ id }) => {
+    const result = revalidate(id);
+    return { content: [{ type: "text", text: JSON.stringify({ id, ...result }) }] };
   },
 );
 
