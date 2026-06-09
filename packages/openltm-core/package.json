@@ -9,7 +9,9 @@
     "./cli": "./src/cli/index.ts"
   },
   "bin": {
-    "ltm": "src/cli/bin.ts"
+    "ltm": "src/cli/bin.ts",
+    "openltm": "src/cli/bin.ts",
+    "openltm-core": "src/cli/bin.ts"
   },
   "repository": {
     "type": "git",
