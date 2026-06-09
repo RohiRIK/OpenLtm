@@ -13,11 +13,15 @@ import {
   DEFAULT_JANITOR_CRON,
 } from "../../scheduler/index.js";
 import { _resetHonkerForTesting } from "../../lib/honker.js";
+import { resetCapabilitiesForTesting } from "../../extensions.js";
 
 describe("scheduler — dormant path (no honker)", () => {
   beforeEach(() => {
     _resetHonkerForTesting();
     delete process.env["LTM_HONKER_EXT"];
+    // Reset cached caps so a prior test's honker=true (vendored binary is
+    // discoverable here) does not leak in — keeps this the dormant contract.
+    resetCapabilitiesForTesting();
   });
 
   it("exposes stable names + default cron", () => {

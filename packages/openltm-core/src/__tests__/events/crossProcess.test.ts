@@ -14,6 +14,7 @@ import {
   MEMORY_ADDED,
 } from "../../events/index.js";
 import { _resetHonkerForTesting } from "../../lib/honker.js";
+import { resetCapabilitiesForTesting } from "../../extensions.js";
 
 function seedDb(): Database {
   const db = new Database(":memory:");
@@ -25,6 +26,9 @@ describe("cross-process sync — flag + dormant contract (no honker)", () => {
   beforeEach(() => {
     _resetHonkerForTesting();
     delete process.env["LTM_HONKER_EXT"];
+    // Reset cached caps so a prior test's honker=true (vendored binary is
+    // discoverable here) does not leak in — keeps this the dormant contract.
+    resetCapabilitiesForTesting();
   });
   afterEach(() => {
     _resetHonkerForTesting();

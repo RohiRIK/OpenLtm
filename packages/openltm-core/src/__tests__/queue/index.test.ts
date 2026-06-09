@@ -15,10 +15,15 @@ import {
 } from "../../queue/index.js";
 import { startEmbeddingWorker } from "../../queue/worker.js";
 import { isHonkerAvailable, _resetHonkerForTesting } from "../../lib/honker.js";
+import { resetCapabilitiesForTesting } from "../../extensions.js";
 
 describe("queue — dormant path (no honker)", () => {
   beforeEach(() => {
     _resetHonkerForTesting();
+    // Force the dormant contract: a prior test may have cached caps.honker=true
+    // process-wide (the vendored binary is discoverable here). Reset so
+    // getCapabilities() returns the all-false default and honker stays dormant.
+    resetCapabilitiesForTesting();
   });
 
   it("EMBED_QUEUE has a stable name", () => {

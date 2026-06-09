@@ -1,6 +1,6 @@
 # ARCHITECTURE — OpenLTM Plugin
 
-* **Version:** 1.4 (against plugin v2.9.0)
+* **Version:** 1.4 (against plugin v2.9.1)
 * **Owner:** Rohi Rikman
 * **Status:** Baseline architecture spec; companion to `docs/internal/PRD.md`
 * **Last updated:** 2026-06-08
@@ -514,7 +514,7 @@ boost, return top-N.
 - **Pure embeddings (vector search).** Rejected. (a) Requires an embedding provider
   (model call or bundled runtime) — violates PRD N4. (b) Higher latency per query.
   (c) FTS5 alone is sufficient for the bulk of "did I learn X?" lookups, which are
-  keyword-shaped. Since v2.9.0 a subset of this gap is closed: when the SQLite
+  keyword-shaped. Since v2.9.1 a subset of this gap is closed: when the SQLite
   extension layer is active, the semantic fallback uses real vec0 KNN via
   `sqlite-vec` — no external vector DB, no sidecar.
 - **External vector DB (Qdrant, Chroma, sqlite-vss).** Rejected. Adds a binary
@@ -531,7 +531,7 @@ boost, return top-N.
 - (+) Determinism — same query, same DB, same ranking.
 - (–) Embedding column adds storage cost; the BLOB is stripped from MCP responses
   to avoid bloat.
-- (🔄 v2.9.0) Semantic fallback was upgraded: when the SQLite extension layer
+- (🔄 v2.9.1) Semantic fallback was upgraded: when the SQLite extension layer
   activates, vector comparison switches from JS-cosine to real KNN via
   `sqlite-vec` (vec0 virtual table). Without extensions the old JS-cosine path
   remains. OQ1 in the PRD is partially resolved.

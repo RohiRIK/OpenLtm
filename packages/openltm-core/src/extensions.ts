@@ -105,8 +105,16 @@ export function ensureCustomSqlite(): boolean {
   const lib = locateSystemSqlite();
   if (!lib) return false;
   try {
-    (Database as unknown as { setCustomSQLite: (p: string) => void }).setCustomSQLite(lib);
+    const DB = Database as unknown as { setCustomSQLite: (p: string) => void };
+    DB.setCustomSQLite(lib);
     _customSqliteApplied = true;
+    // setCustomSQLite is a once-per-process global (Bun throws "SQLite already
+    // loaded" on a second call). honker-bun's open() calls it again on its own
+    // connection and would throw — silently killing the honker handle even
+    // though the extension-enabled SQLite is already active process-wide. Now
+    // that we've loaded it, neutralise further calls so honker-bun (and any
+    // other consumer) no-ops instead of throwing.
+    DB.setCustomSQLite = () => {};
     return true;
   } catch {
     return false;

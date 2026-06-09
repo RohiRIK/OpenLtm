@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.9.1] — 2026-06-09
+
+### Fixed
+- **Honker handle now actually opens** — v2.9.0 reported `caps.honker = true` but `getHonker()` silently returned `null`, leaving the queue/cron/pub-sub features dormant. Root cause: both the plugin and `honker-bun`'s `open()` called the once-per-process `Database.setCustomSQLite()`, so honker-bun threw "SQLite already loaded". The plugin now neutralises further calls after loading the custom SQLite, so honker-bun reuses the already-active extension-enabled SQLite. Verified end-to-end (enqueue → claim → ack, pub-sub notify, scheduler register).
+
 ## [2.9.0] — 2026-06-08
 
 ### Added

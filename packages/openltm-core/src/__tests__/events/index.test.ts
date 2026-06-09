@@ -7,11 +7,15 @@
 import { describe, it, expect, beforeEach } from "bun:test";
 import { notifyLtm, startLtmListener, LTM_CHANNEL } from "../../events/index.js";
 import { _resetHonkerForTesting } from "../../lib/honker.js";
+import { resetCapabilitiesForTesting } from "../../extensions.js";
 
 describe("events — dormant path (no honker)", () => {
   beforeEach(() => {
     _resetHonkerForTesting();
     delete process.env["LTM_HONKER_EXT"];
+    // Reset cached caps so a prior test's honker=true (vendored binary is
+    // discoverable here) does not leak in — keeps this the dormant contract.
+    resetCapabilitiesForTesting();
   });
 
   it("exposes the stable channel name", () => {
