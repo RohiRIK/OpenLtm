@@ -6,6 +6,7 @@ import type { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import { normalizeKey } from "./dedup.js";
+import { normalizeAnchorPaths } from "./anchors.js";
 import { getDb, DB_PATH, configure as configureDb } from "./shared-db.js";
 import { enqueueEmbedding } from "./queue/index.js";
 import { notifyLtm, notifyMemoryAdded } from "./events/index.js";
@@ -83,6 +84,8 @@ export interface LearnInput {
   agent_id?: string;
   tags?: string[];
   relate_to?: Array<{ id: number; relationship_type: RelationshipType }>;
+  /** Repo-relative file paths this memory references — anchors for code-change invalidation. */
+  files?: string[];
   /** Skip regenerating docs/memory-long-term.md (use during bulk imports) */
   skipExport?: boolean;
   /** Audit/provenance — all optional; safe to omit from existing callers. */
@@ -142,6 +145,16 @@ function attachTags(db: Database, memoryId: number, tags: string[]): void {
   for (const tag of tags) {
     const tagId = upsertTag(db, tag.toLowerCase().trim());
     db.run(`INSERT OR IGNORE INTO memory_tags (memory_id, tag_id) VALUES (?, ?)`, [memoryId, tagId]);
+  }
+}
+
+/** Anchor a memory to the repo files it references (merge-safe). */
+function attachFiles(db: Database, memoryId: number, files: string[], projectScope: string | null): void {
+  for (const path of normalizeAnchorPaths(files)) {
+    db.run(
+      `INSERT OR IGNORE INTO memory_files (memory_id, path, project_scope) VALUES (?, ?, ?)`,
+      [memoryId, path, projectScope],
+    );
   }
 }
 
@@ -326,6 +339,7 @@ export function learn(input: LearnInput): LearnResult {
       [existing.id]
     );
     if (input.tags) attachTags(db, existing.id, input.tags);
+    if (input.files) attachFiles(db, existing.id, input.files, existing.project_scope ?? input.project_scope ?? null);
     if (input.relate_to) {
       for (const rel of input.relate_to) {
         relate({ source_id: existing.id, target_id: rel.id, relationship_type: rel.relationship_type });
@@ -368,6 +382,7 @@ export function learn(input: LearnInput): LearnResult {
   const newId = Number(result.lastInsertRowid);
 
   if (input.tags) attachTags(db, newId, input.tags);
+  if (input.files) attachFiles(db, newId, input.files, input.project_scope ?? null);
   if (input.relate_to) {
     for (const rel of input.relate_to) {
       relate({ source_id: newId, target_id: rel.id, relationship_type: rel.relationship_type });

@@ -85,11 +85,12 @@ server.tool(
     category: z.enum(["preference", "architecture", "gotcha", "pattern", "workflow", "constraint"]).optional().describe("Category (auto-detected when omitted)"),
     importance: z.number().int().min(1).max(5).optional().describe("Importance 1-5 (default 3, 5=never decays)"),
     tags: z.array(z.string()).optional().describe("Tags for categorization"),
+    files: z.array(z.string()).optional().describe("Repo-relative file paths this memory references — anchors so a commit touching them flags the memory stale"),
     project: z.string().optional().describe("Scope to a specific project"),
     workspace_id: z.string().optional().describe("Workspace for this memory"),
     agent_id: z.string().optional().describe("Agent ID for this memory"),
   },
-  async ({ content, title, category, importance, tags, project, workspace_id, agent_id }) => {
+  async ({ content, title, category, importance, tags, files, project, workspace_id, agent_id }) => {
     let resolvedCategory = category;
     let categoriseSource: string | undefined;
 
@@ -115,6 +116,7 @@ server.tool(
       category: resolvedCategory,
       importance,
       tags,
+      files,
       project_scope: project,
       workspace_id,
       agent_id,

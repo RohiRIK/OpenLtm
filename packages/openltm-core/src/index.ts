@@ -35,6 +35,7 @@ export { listByProject, upsertGoal, appendProgress, addDecision, addGotcha } fro
 // Utilities
 export { scrubSecrets } from "./secretsScrubber.js";
 export { normalizeKey } from "./dedup.js";
+export { normalizeAnchorPath, normalizeAnchorPaths } from "./anchors.js";
 export { embedText, getLlmConfig, callLlm } from "./embeddings.js";
 
 // Recall utilities
