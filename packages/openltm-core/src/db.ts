@@ -283,6 +283,65 @@ export function decayMemories(): DecayResult {
   return { deprecated: toDeprecate.length, scored: rows.length };
 }
 
+export interface FlagStaleResult {
+  flagged: number;
+  ids: number[];
+}
+
+/**
+ * Flag active memories anchored to any of `paths` as stale — the code they
+ * reference changed. Never deletes (audit trail preserved) and never touches
+ * importance=5 (permanent). Matches anchors in the same project scope or global
+ * (NULL-scoped) anchors. Idempotent: re-flagging refreshes stale_flagged_at.
+ */
+export function flagStaleByPaths(
+  paths: string[],
+  opts: { project_scope?: string | null; reason?: string; actor?: string; sessionId?: string } = {},
+): FlagStaleResult {
+  const db = getDb();
+  const norm = normalizeAnchorPaths(paths);
+  if (norm.length === 0) return { flagged: 0, ids: [] };
+
+  const scope = opts.project_scope ?? null;
+  const placeholders = norm.map(() => "?").join(",");
+  const candidates = db
+    .query<{ id: number }, (string | null)[]>(
+      `SELECT DISTINCT m.id
+         FROM memories m
+         JOIN memory_files mf ON mf.memory_id = m.id
+        WHERE m.status = 'active'
+          AND m.importance <> 5
+          AND mf.path IN (${placeholders})
+          AND (mf.project_scope IS ? OR mf.project_scope IS NULL)`,
+    )
+    .all(...norm, scope)
+    .map((r) => r.id);
+
+  const reason = opts.reason ?? "code change";
+  const actor = opts.actor ?? "git-commit";
+
+  for (const id of candidates) {
+    const beforeSnap = snapshotMemory(db, id);
+    db.run(
+      `UPDATE memories SET stale_flagged_at = datetime('now'), stale_reason = ? WHERE id = ?`,
+      [reason, id],
+    );
+    tryAudit(() => {
+      const afterSnap = snapshotMemory(db, id);
+      insertAudit(db, {
+        memory_id: id,
+        op: "update",
+        actor,
+        session_id: opts.sessionId,
+        before_json: beforeSnap ? JSON.stringify(beforeSnap) : null,
+        after_json: afterSnap ? JSON.stringify(afterSnap) : null,
+      });
+    });
+  }
+
+  return { flagged: candidates.length, ids: candidates };
+}
+
 // Auto-relation detection — called fire-and-forget from learn()
 async function autoDetectRelations(
   newId: number,

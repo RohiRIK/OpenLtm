@@ -10,11 +10,11 @@ export { configureCore, configureDocs } from "./db.js";
 export {
   learn, recall, forget, relate, getSimilarMemories,
   getContextMerge, getContextMergeWithGraph, computeDecayScore,
-  exportMarkdown, exportGraphJson,
+  exportMarkdown, exportGraphJson, flagStaleByPaths,
 } from "./db.js";
 export type {
   Memory, MemoryWithRelations, MemoryCategory, RelationshipType, MemoryRelation,
-  LearnInput, LearnResult, RecallInput, DecayResult,
+  LearnInput, LearnResult, RecallInput, DecayResult, FlagStaleResult,
 } from "./db.js";
 
 // Context items

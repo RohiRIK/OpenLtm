@@ -7,7 +7,7 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import { normalizeAnchorPath, normalizeAnchorPaths } from "../anchors.js";
 import { _setDbForTesting } from "../shared-db.js";
-import { learn } from "../db.js";
+import { learn, flagStaleByPaths } from "../db.js";
 import { getMigrationFiles, parseMigration } from "../migrations.js";
 
 // Full schema = schema.sql baseline + every migration `up` (later columns like
@@ -103,5 +103,76 @@ describe("anchor-on-learn", () => {
     expect(b.action).toBe("reinforced");
     expect(b.id).toBe(a.id);
     expect(anchorPaths(db, a.id)).toEqual(["src/a.ts", "src/b.ts"]);
+  });
+});
+
+describe("flagStaleByPaths (invalidate-on-commit)", () => {
+  let db: Database;
+  beforeEach(async () => {
+    db = await freshDb();
+    _setDbForTesting(db);
+  });
+
+  function staleAt(id: number): string | null {
+    return (
+      db
+        .query<{ stale_flagged_at: string | null }, [number]>(
+          "SELECT stale_flagged_at FROM memories WHERE id=?",
+        )
+        .get(id)?.stale_flagged_at ?? null
+    );
+  }
+
+  it("flags a memory anchored to a changed path + records reason and audit (AC10)", () => {
+    const m = learn({
+      content: "auth verified via jwt in the middleware layer",
+      category: "architecture",
+      project_scope: "p",
+      files: ["src/auth.ts"],
+      skipExport: true,
+    });
+    const res = flagStaleByPaths(["src/auth.ts"], { project_scope: "p", reason: "commit abc" });
+    expect(res.flagged).toBe(1);
+    expect(res.ids).toContain(m.id);
+    expect(staleAt(m.id)).not.toBeNull();
+    const row = db
+      .query<{ stale_reason: string }, [number]>("SELECT stale_reason FROM memories WHERE id=?")
+      .get(m.id);
+    expect(row?.stale_reason).toBe("commit abc");
+    const audit = db
+      .query<{ n: number }, [number]>(
+        "SELECT count(*) n FROM memory_audit WHERE memory_id=? AND op='update'",
+      )
+      .get(m.id);
+    expect(audit?.n ?? 0).toBeGreaterThanOrEqual(1);
+  });
+
+  it("never flags importance=5 memories (AC12)", () => {
+    const m = learn({
+      content: "permanent architectural rule never decays",
+      category: "architecture",
+      importance: 5,
+      project_scope: "p",
+      files: ["src/auth.ts"],
+      skipExport: true,
+    });
+    const res = flagStaleByPaths(["src/auth.ts"], { project_scope: "p" });
+    expect(res.flagged).toBe(0);
+    expect(staleAt(m.id)).toBeNull();
+  });
+
+  it("returns flagged:0 when no memory is anchored to the path (AC14)", () => {
+    learn({ content: "anchored to a different file entirely", category: "pattern", project_scope: "p", files: ["src/other.ts"], skipExport: true });
+    expect(flagStaleByPaths(["src/unrelated.ts"], { project_scope: "p" }).flagged).toBe(0);
+  });
+
+  it("normalises commit paths (./ , backslash) before matching", () => {
+    const m = learn({ content: "path normalisation parity check body", category: "gotcha", project_scope: "p", files: ["src/n.ts"], skipExport: true });
+    expect(flagStaleByPaths(["./src/n.ts"], { project_scope: "p" }).ids).toContain(m.id);
+  });
+
+  it("flags global (null-scope) anchors regardless of commit scope", () => {
+    const m = learn({ content: "global anchor not scoped to a project", category: "pattern", files: ["src/g.ts"], skipExport: true });
+    expect(flagStaleByPaths(["src/g.ts"], { project_scope: "someproj" }).ids).toContain(m.id);
   });
 });
