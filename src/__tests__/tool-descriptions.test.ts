@@ -1,7 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "fs";
 
-const source = readFileSync("src/mcp-server.ts", "utf-8");
+// The full server moved into the packaged module (src/mcp-server.ts is now a
+// thin wrapper) — tool descriptions live in openltm-core's mcp/server.ts.
+const source = readFileSync("packages/openltm-core/src/mcp/server.ts", "utf-8");
 
 /** Extract the description string for a given tool name. */
 function getDescription(toolName: string): string {
