@@ -28,6 +28,7 @@ Configure via `~/.claude/config.json`.
 | `evaluateSessionLlm` | `false` | Use LLM to evaluate sessions (costs tokens) |
 | `semanticFallback` | `true` | Fall back to embedding search when FTS returns no results |
 | `crossProcessSync` | `false` | Enable cross-agent memory notify via Honker pub-sub (opt-in; requires Honker extension loaded) |
+| `gitInvalidateEnabled` | `true` | When git-learn runs, also flag memories stale if a commit touches their anchored files (code-anchored invalidation). Set `false` to keep git-learn without invalidation. |
 
 ## SQLite extension env vars
 

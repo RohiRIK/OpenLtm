@@ -79,6 +79,26 @@ This is intentional. A gotcha you never revisited for six months probably no lon
 
 ---
 
+## Code-anchored invalidation
+
+Decay keys off *recall behaviour* — it can't see the most dangerous memory: one
+that is still actively recalled **and** silently stale (e.g. an assumption about an
+auth layer you just refactored). Recency-decay won't sink it because it keeps getting
+hit, and nothing tells the agent to `forget` it.
+
+So invalidation can be driven by *code change* instead. When you store a memory you may
+anchor it to the files it references (`learn`'s optional `files` param → `memory_files`
+table). The git post-commit hook already knows which files a commit touched; when
+`gitInvalidateEnabled` is on (default), a commit touching an anchored file **flags those
+memories stale** (`importance: 5` is exempt). Nothing is deleted — the flag is auditable.
+
+A stale memory is **downranked in `recall`** (still returned, marked `stale`) and becomes
+**decay-eligible regardless of recall frequency**, so the high-traffic-but-stale memory can
+finally sink. Clear the flag by re-confirming the memory (`learn` the same content) or with
+the `revalidate` tool; use `forget` when it's genuinely wrong.
+
+---
+
 ## SQLite extensions
 
 OpenLTM loads optional SQLite extensions to accelerate recall and enable background work:

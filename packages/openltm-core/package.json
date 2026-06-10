@@ -1,6 +1,6 @@
 {
   "name": "@rohirik/openltm-core",
-  "version": "2.9.1",
+  "version": "2.10.0",
   "description": "Shared LTM storage engine — path-agnostic SQLite core used by Claude Code, OpenCode, and Pi adapters",
   "type": "module",
   "main": "./src/index.ts",

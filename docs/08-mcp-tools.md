@@ -6,13 +6,14 @@ If you ever need to call them yourself (e.g. from a custom hook or script), this
 
 ---
 
-## The seven tools
+## The tools
 
 | Tool | Description |
 |------|-------------|
-| `recall` | Search memories. FTS5 first, semantic fallback if needed. |
-| `learn` | Store or reinforce a memory. Deduplicates automatically. |
+| `recall` | Search memories. FTS5 first, semantic fallback if needed. Results carry a `stale` flag and stale memories are downranked. |
+| `learn` | Store or reinforce a memory. Deduplicates automatically. Optional `files` param anchors the memory to repo-relative paths it references. |
 | `forget` | Delete a memory by ID. Cascades to relations. |
+| `revalidate` | Clear a memory's stale flag after review — the code changed but the memory is still correct. Use `forget` when it's actually wrong. |
 | `relate` | Create a typed relationship between two memories. |
 | `graph` | Traverse the memory graph from seed nodes. |
 | `context` | Get merged context (globals + project-scoped) for a project. |
@@ -25,6 +26,7 @@ If you ever need to call them yourself (e.g. from a custom hook or script), this
 - **`recall`** — fired by the `Learned` skill at session start, and by `/openltm:memory recall`
 - **`learn`** — fired by the `ContinuousLearning` skill on session end, and by `/openltm:memory learn`
 - **`forget`** — fired by `/openltm:memory forget <id>`
+- **`revalidate`** — clears a stale flag set by code-anchored invalidation (see below); also cleared automatically when the memory is re-confirmed via `learn`
 - **`relate`** — fired by `/openltm:memory relate <src> <tgt> <type>`, and by `autoRelate: true` in config
 - **`graph`** — fired by graph-server HTTP API; available to custom tools
 - **`context`** — fired by the `SessionStart` hook to inject project context
