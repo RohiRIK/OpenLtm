@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.10.0] — 2026-06-10
+
+### Added
+- **Code-anchored memory invalidation** — memories can be anchored to the files they reference (`learn`'s optional `files` param → new `memory_files` table, migration 023). The git post-commit hook flags anchored memories **stale** when a commit touches those files (config `gitInvalidateEnabled`, default `true`; `importance: 5` exempt). This catches the high-traffic-but-stale memory that recency-decay and `forget` can't see — invalidation driven by *code change*, not recall behaviour.
+- **Stale-aware recall + decay** — `recall` returns a `stale` flag and downranks stale memories (still returned); `decayMemories` deprecates flagged memories regardless of recall frequency. Nothing is deleted on invalidation — the flag is auditable.
+- **`revalidate` MCP tool** — clear a stale flag after review when the code changed but the memory is still correct. Re-confirming a memory via `learn` also clears it; `forget` remains for truly-wrong memories.
+
+### Fixed
+- **`bunx @rohirik/openltm-core` "Script not found"** — the package's only `bin` was named `ltm`, but bunx resolves a bin by the package basename. Added `openltm-core` and `openltm` bin aliases (keeping `ltm`), fixing the documented OpenCode install path.
+
 ## [2.9.1] — 2026-06-09
 
 ### Fixed

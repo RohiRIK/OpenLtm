@@ -63,7 +63,10 @@ CREATE TABLE IF NOT EXISTS memories (
   user_note  TEXT,
   -- Personal relevance signal: 'works' | 'doesnt' | NULL (unrated)
   relevance_signal     TEXT,
-  relevance_signal_at  TEXT
+  relevance_signal_at  TEXT,
+  -- Code-anchored invalidation (migration 023). NULL = not flagged stale.
+  stale_flagged_at     TEXT,
+  stale_reason         TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_memories_category   ON memories(category);
@@ -74,6 +77,20 @@ CREATE INDEX IF NOT EXISTS idx_memories_status     ON memories(status);
 CREATE INDEX IF NOT EXISTS idx_memories_last_used  ON memories(last_used_at);
 CREATE INDEX IF NOT EXISTS idx_memories_superseded ON memories(superseded_by);
 CREATE INDEX IF NOT EXISTS idx_memories_recall_count ON memories(recall_count DESC);
+CREATE INDEX IF NOT EXISTS idx_memories_stale ON memories(stale_flagged_at);
+
+-- ============================================================
+-- memory_files: code anchors — files a memory references (migration 023)
+-- A commit touching one of these paths can flag the memory stale.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS memory_files (
+  memory_id     INTEGER NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+  path          TEXT    NOT NULL,
+  project_scope TEXT,
+  created_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (memory_id, path)
+);
+CREATE INDEX IF NOT EXISTS idx_memory_files_path ON memory_files(path);
 
 -- ============================================================
 -- tags + memory_tags: many-to-many tagging for memories

@@ -15,7 +15,7 @@ import { homedir } from "os";
 import { spawnSync } from "child_process";
 import { resolveProject, CLAUDE_DIR } from "../lib/resolveProject.js";
 import { safeRun } from "../lib/hookUtils.js";
-import { emitEvent } from "@rohirik/openltm-core";
+import { emitEvent, flagStaleByPaths } from "@rohirik/openltm-core";
 import { EVENTS } from "../lib/eventNames.js";
 import { readConfigSync } from "../../src/config.js";
 import type { Config } from "../../src/config.js";
@@ -94,6 +94,25 @@ async function runExtract(payload: {
     tags: payload.files.slice(0, 5),
     preamble,
   });
+
+  // Code-anchored invalidation: flag memories anchored to the changed files as
+  // stale (importance=5 is exempt). Driven by code change, not recall — catches
+  // the high-traffic-but-stale memory decay/forget can't see. Never throws.
+  try {
+    const cfg = readConfigSync() as Config;
+    if (cfg.ltm?.gitInvalidateEnabled !== false && payload.files.length > 0) {
+      const res = flagStaleByPaths(payload.files, {
+        project_scope: payload.projectName,
+        reason: `commit ${payload.hash}`,
+        actor: "git-commit",
+      });
+      if (res.flagged > 0) {
+        process.stderr.write(`[GitCommit] flagged ${res.flagged} memory(ies) stale\n`);
+      }
+    }
+  } catch (err) {
+    process.stderr.write(`[GitCommit] invalidate error: ${err}\n`);
+  }
 }
 
 // ── Hook mode (main entry) ────────────────────────────────────────────────────

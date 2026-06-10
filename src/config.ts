@@ -34,6 +34,8 @@ export interface LtmConfig {
   gitLearnMinDiffChars: number;
   gitLearnFileFilter: string[];
   gitLearnIgnorePatterns: string[];
+  /** Flag memories stale when a commit touches their anchored files (runs inside the git-learn extract path). */
+  gitInvalidateEnabled: boolean;
   autoRecall: boolean;
 }
 
@@ -74,6 +76,7 @@ const DEFAULTS: Config = {
     gitLearnMinDiffChars: 200,
     gitLearnFileFilter: [],
     gitLearnIgnorePatterns: [],
+    gitInvalidateEnabled: true,
     autoRecall: true,
   },
   server: {
@@ -148,6 +151,7 @@ export async function loadConfig(): Promise<Config> {
       gitLearnMinDiffChars: ltm.gitLearnMinDiffChars ?? DEFAULTS.ltm.gitLearnMinDiffChars,
       gitLearnFileFilter: ltm.gitLearnFileFilter ?? DEFAULTS.ltm.gitLearnFileFilter,
       gitLearnIgnorePatterns: ltm.gitLearnIgnorePatterns ?? DEFAULTS.ltm.gitLearnIgnorePatterns,
+      gitInvalidateEnabled: ltm.gitInvalidateEnabled ?? DEFAULTS.ltm.gitInvalidateEnabled,
       autoRecall: ltm.autoRecall ?? DEFAULTS.ltm.autoRecall,
     },
     server: { apiPort: server.apiPort ?? DEFAULTS.server.apiPort, uiPort: server.uiPort ?? DEFAULTS.server.uiPort },

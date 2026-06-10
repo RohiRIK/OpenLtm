@@ -6,6 +6,7 @@ import type { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import { normalizeKey } from "./dedup.js";
+import { normalizeAnchorPaths } from "./anchors.js";
 import { getDb, DB_PATH, configure as configureDb } from "./shared-db.js";
 import { enqueueEmbedding } from "./queue/index.js";
 import { notifyLtm, notifyMemoryAdded } from "./events/index.js";
@@ -51,6 +52,8 @@ export interface Memory {
   workspace_id?: string;
   agent_id?: string;
   decay_score?: number;
+  stale_flagged_at?: string | null;
+  stale_reason?: string | null;
 }
 
 export interface MemoryRelation {
@@ -68,6 +71,8 @@ export interface MemoryWithRelations extends Memory {
   provenance?: import("./dao/types.js").ProvenanceRow[];
   /** Score breakdown + temperature — always populated by recall(). */
   explainer?: import("./recall/explainer.js").RecallExplainer;
+  /** True when a commit touched an anchored file and the memory hasn't been re-confirmed. */
+  stale?: boolean;
 }
 
 export interface LearnInput {
@@ -83,6 +88,8 @@ export interface LearnInput {
   agent_id?: string;
   tags?: string[];
   relate_to?: Array<{ id: number; relationship_type: RelationshipType }>;
+  /** Repo-relative file paths this memory references — anchors for code-change invalidation. */
+  files?: string[];
   /** Skip regenerating docs/memory-long-term.md (use during bulk imports) */
   skipExport?: boolean;
   /** Audit/provenance — all optional; safe to omit from existing callers. */
@@ -145,6 +152,16 @@ function attachTags(db: Database, memoryId: number, tags: string[]): void {
   }
 }
 
+/** Anchor a memory to the repo files it references (merge-safe). */
+function attachFiles(db: Database, memoryId: number, files: string[], projectScope: string | null): void {
+  for (const path of normalizeAnchorPaths(files)) {
+    db.run(
+      `INSERT OR IGNORE INTO memory_files (memory_id, path, project_scope) VALUES (?, ?, ?)`,
+      [memoryId, path, projectScope],
+    );
+  }
+}
+
 /** Fetch tags for a single memory — used in recall() results. */
 function getTagsForMemory(db: Database, memoryId: number): string[] {
   return db.query<{ name: string }, [number]>(
@@ -192,7 +209,7 @@ function getRelationsForMemory(db: Database, memoryId: number): MemoryWithRelati
 }
 
 function enrichMemory(db: Database, mem: Memory): MemoryWithRelations {
-  return { ...mem, tags: getTagsForMemory(db, mem.id), relations: getRelationsForMemory(db, mem.id) };
+  return { ...mem, stale: !!mem.stale_flagged_at, tags: getTagsForMemory(db, mem.id), relations: getRelationsForMemory(db, mem.id) };
 }
 
 // --- Decay / relevance scoring ---
@@ -255,8 +272,14 @@ export function decayMemories(): DecayResult {
   ).all();
 
   const toDeprecate = rows
-    .filter(mem => mem.importance !== 5 && mem.confirm_count < 5)
-    .filter(mem => computeDecayScore(mem) < DEPRECATION_THRESHOLD)
+    .filter(mem => mem.importance !== 5)
+    .filter(mem =>
+      // Code-invalidated memories are decay-eligible regardless of recall
+      // frequency — this is the "high-traffic but stale" case decay can't
+      // otherwise see. Otherwise fall back to the recency/confirm guard.
+      mem.stale_flagged_at != null ||
+      (mem.confirm_count < 5 && computeDecayScore(mem) < DEPRECATION_THRESHOLD)
+    )
     .map(mem => mem.id);
 
   if (toDeprecate.length > 0) {
@@ -268,6 +291,92 @@ export function decayMemories(): DecayResult {
   }
 
   return { deprecated: toDeprecate.length, scored: rows.length };
+}
+
+export interface FlagStaleResult {
+  flagged: number;
+  ids: number[];
+}
+
+/**
+ * Flag active memories anchored to any of `paths` as stale — the code they
+ * reference changed. Never deletes (audit trail preserved) and never touches
+ * importance=5 (permanent). Matches anchors in the same project scope or global
+ * (NULL-scoped) anchors. Idempotent: re-flagging refreshes stale_flagged_at.
+ */
+export function flagStaleByPaths(
+  paths: string[],
+  opts: { project_scope?: string | null; reason?: string; actor?: string; sessionId?: string } = {},
+): FlagStaleResult {
+  const db = getDb();
+  const norm = normalizeAnchorPaths(paths);
+  if (norm.length === 0) return { flagged: 0, ids: [] };
+
+  const scope = opts.project_scope ?? null;
+  const placeholders = norm.map(() => "?").join(",");
+  const candidates = db
+    .query<{ id: number }, (string | null)[]>(
+      `SELECT DISTINCT m.id
+         FROM memories m
+         JOIN memory_files mf ON mf.memory_id = m.id
+        WHERE m.status = 'active'
+          AND m.importance <> 5
+          AND mf.path IN (${placeholders})
+          AND (mf.project_scope IS ? OR mf.project_scope IS NULL)`,
+    )
+    .all(...norm, scope)
+    .map((r) => r.id);
+
+  const reason = opts.reason ?? "code change";
+  const actor = opts.actor ?? "git-commit";
+
+  for (const id of candidates) {
+    const beforeSnap = snapshotMemory(db, id);
+    db.run(
+      `UPDATE memories SET stale_flagged_at = datetime('now'), stale_reason = ? WHERE id = ?`,
+      [reason, id],
+    );
+    tryAudit(() => {
+      const afterSnap = snapshotMemory(db, id);
+      insertAudit(db, {
+        memory_id: id,
+        op: "update",
+        actor,
+        session_id: opts.sessionId,
+        before_json: beforeSnap ? JSON.stringify(beforeSnap) : null,
+        after_json: afterSnap ? JSON.stringify(afterSnap) : null,
+      });
+    });
+  }
+
+  return { flagged: candidates.length, ids: candidates };
+}
+
+/**
+ * Clear a stale flag — the memory was reviewed and is still valid. Use forget()
+ * instead when the memory is actually wrong. No-op if the memory wasn't flagged.
+ */
+export function revalidate(id: number): { revalidated: boolean } {
+  const db = getDb();
+  const before = snapshotMemory(db, id);
+  const res = db.run(
+    `UPDATE memories SET stale_flagged_at = NULL, stale_reason = NULL
+      WHERE id = ? AND stale_flagged_at IS NOT NULL`,
+    [id],
+  );
+  const revalidated = Number(res.changes ?? 0) > 0;
+  if (revalidated) {
+    tryAudit(() => {
+      insertAudit(db, {
+        memory_id: id,
+        op: "update",
+        actor: "revalidate",
+        before_json: before ? JSON.stringify(before) : null,
+        after_json: JSON.stringify(snapshotMemory(db, id)),
+      });
+    });
+  }
+  return { revalidated };
 }
 
 // Auto-relation detection — called fire-and-forget from learn()
@@ -322,10 +431,12 @@ export function learn(input: LearnInput): LearnResult {
     const beforeSnap = snapshotMemory(db, existing.id);
     db.run(
       `UPDATE memories SET confirm_count=confirm_count+1, last_confirmed_at=datetime('now'),
-       confidence=MIN(1.0, confidence+0.05) WHERE id=?`,
+       confidence=MIN(1.0, confidence+0.05),
+       stale_flagged_at=NULL, stale_reason=NULL WHERE id=?`,
       [existing.id]
     );
     if (input.tags) attachTags(db, existing.id, input.tags);
+    if (input.files) attachFiles(db, existing.id, input.files, existing.project_scope ?? input.project_scope ?? null);
     if (input.relate_to) {
       for (const rel of input.relate_to) {
         relate({ source_id: existing.id, target_id: rel.id, relationship_type: rel.relationship_type });
@@ -368,6 +479,7 @@ export function learn(input: LearnInput): LearnResult {
   const newId = Number(result.lastInsertRowid);
 
   if (input.tags) attachTags(db, newId, input.tags);
+  if (input.files) attachFiles(db, newId, input.files, input.project_scope ?? null);
   if (input.relate_to) {
     for (const rel of input.relate_to) {
       relate({ source_id: newId, target_id: rel.id, relationship_type: rel.relationship_type });
@@ -528,7 +640,7 @@ export async function recall(input: RecallInput = {}): Promise<MemoryWithRelatio
     `SELECT id, content, category, importance, confidence, source, project_scope, dedup_key,
             created_at, last_confirmed_at, last_used_at, confirm_count, status,
             first_recalled_at, last_recalled_at, recall_count, superseded_by, superseded_at,
-            workspace_id, agent_id, decay_score
+            workspace_id, agent_id, decay_score, stale_flagged_at, stale_reason
      FROM memories ${where} ${orderBy} LIMIT ${limit}`
   ).all(...params);
 
@@ -549,6 +661,12 @@ export async function recall(input: RecallInput = {}): Promise<MemoryWithRelatio
       .sort((a, b) => b.score - a.score)
       .map(({ m }) => m);
   }
+  // Downrank stale (code-invalidated) memories: stable partition pushes them
+  // after fresh ones at equal relevance — still returned, just demoted.
+  sorted = [
+    ...sorted.filter(m => !m.stale_flagged_at),
+    ...sorted.filter(m => m.stale_flagged_at),
+  ];
   if (sorted.length > 0) {
     const placeholders = sorted.map(() => "?").join(",");
     db.run(
