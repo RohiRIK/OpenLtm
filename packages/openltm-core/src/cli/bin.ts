@@ -14,6 +14,7 @@
  */
 import { runInstallCli } from "./install.js";
 import { runHook } from "./hook.js";
+import { runMemoryCli } from "./memory.js";
 
 function printHelp(): void {
   process.stdout.write(
@@ -29,8 +30,10 @@ function printHelp(): void {
       "    --help, -h      Show this help",
       "",
       "  Sub-commands:",
+      "    memory <cmd>          Read/write memories from the shell (learn, recall,",
+      "                          forget, relate, context) — run 'memory --help'",
       "    hook --name <event>   Lifecycle hook stub (for Claude Code hook wiring)",
-      "    mcp-serve             Start the LTM MCP server",
+      "    mcp-serve             Start the LTM MCP server (stdio)",
       "",
       "  If no target flags are given, agents are auto-detected.",
       "",
@@ -44,6 +47,12 @@ async function main(): Promise<void> {
   if (argv[0] === "--help" || argv[0] === "-h") {
     printHelp();
     process.exit(0);
+  }
+
+  // Sub-command: memory (learn | recall | forget | relate | context)
+  if (argv[0] === "memory") {
+    const exitCode = await runMemoryCli(argv.slice(1));
+    process.exit(exitCode);
   }
 
   // Sub-command: hook
@@ -64,6 +73,14 @@ async function main(): Promise<void> {
       "  ltm mcp-serve: not yet implemented — install the Claude Code plugin for MCP server support\n",
     );
     process.exit(0);
+  }
+
+  // Unknown positional sub-command: print help + exit 1. Never fall through
+  // to the install wizard (e.g. `ltm memry learn ...` must not start installing).
+  if (argv[0] && !argv[0].startsWith("--")) {
+    process.stderr.write(`  ltm: unknown sub-command '${argv[0]}'\n`);
+    printHelp();
+    process.exit(1);
   }
 
   // Parse installer flags
