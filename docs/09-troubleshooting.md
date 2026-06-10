@@ -33,6 +33,29 @@ The MCP tools are exposed as `mcp__plugin_openltm_memory__<tool>` (e.g. `recall`
 
 ---
 
+## Can't write memories from a plain shell (OpenCode CLI, scripts, cron)
+
+Symptoms: `/openltm:memory learn ...` at a bash prompt errors with `No such file or directory`; `ltm` is `command not found`; the `ltm_learn`/`ltm_recall` tools don't exist.
+
+Slash commands and plugin tools are **TUI-only** — they live inside the Claude Code / OpenCode agent chat, not in your shell. From a plain shell use the CLI instead:
+
+```bash
+bunx @rohirik/openltm-core memory learn --text "..." --category gotcha --json
+bunx @rohirik/openltm-core memory recall --query "..." --json
+bunx @rohirik/openltm-core memory --help
+```
+
+Or run the full MCP server for any MCP-capable host: `bunx @rohirik/openltm-core mcp-serve`.
+
+If the `ltm_*` tools are missing **inside** the OpenCode TUI:
+
+1. Check the plugin is registered: `jq '.plugin' ~/.config/opencode/opencode.json` should list `@rohirik/opencode-ltm`.
+2. If missing, rerun the installer: `bunx @rohirik/openltm-core --opencode`.
+3. Restart OpenCode — plugins load at startup.
+4. Point both surfaces at the same DB with `LTM_DB_PATH` if your agents and CLI must share memories across machines/paths.
+
+---
+
 ## "Database is locked"
 
 SQLite allows one writer at a time. A lock usually means a previous process didn't release the WAL.

@@ -104,6 +104,27 @@ Then try:
 
 That's it. The rest is hooks doing the work.
 
+### CLI access for headless agents
+
+Slash commands and the `ltm_*` plugin tools only exist inside an agent TUI. From a plain shell — scripts, cron jobs, CI, or a CLI agent running outside the TUI — use the `memory` subcommand:
+
+```bash
+bunx @rohirik/openltm-core memory learn --text "Docker Hub rate limits unauthenticated pulls" \
+  --category gotcha --importance 4 --project homelab --json
+bunx @rohirik/openltm-core memory recall --query "docker rate limit" --json
+bunx @rohirik/openltm-core memory forget --id 42 --reason "outdated"
+bunx @rohirik/openltm-core memory context --project homelab
+bunx @rohirik/openltm-core memory --help
+```
+
+`--json` emits machine-readable output. The DB resolves via `LTM_DB_PATH` (falls back to the plugin data dir). Writes go through the same secret-scrubbing path as the MCP server.
+
+Any MCP-capable host can also run the full server directly:
+
+```bash
+bunx @rohirik/openltm-core mcp-serve   # stdio MCP server: recall, learn, relate, forget, …
+```
+
 ---
 
 ## The shape of memory
