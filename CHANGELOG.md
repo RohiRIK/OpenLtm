@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.11.0] — 2026-06-10
+
+### Added
+- **`ltm memory` CLI subcommands** — `bunx @rohirik/openltm-core memory learn|recall|forget|relate|context` gives headless/CLI agents (OpenCode CLI, scripts, cron, CI) a direct shell path to LTM without the agent TUI, slash commands, or a running MCP server. `--json` for machine-readable output; DB resolves via `LTM_DB_PATH`; writes route through the same `scrubSecrets` path as the MCP server. Exit codes: 0 ok, 1 usage, 2 runtime.
+- **Runnable `mcp-serve`** — the full MCP server (tools, resources, prompts) moved into `@rohirik/openltm-core/mcp` (`buildMcpServer`/`startMcpServer` factory with injectable host-config hooks), so `bunx @rohirik/openltm-core mcp-serve` now starts the real stdio server on any machine instead of printing a "not yet implemented" stub. The Claude Code plugin's `src/mcp-server.ts` is now a thin wrapper — manifest path unchanged.
+
+### Fixed
+- **Unknown CLI sub-commands no longer launch the install wizard** — `ltm <typo> ...` previously fell through to the installer; it now prints help and exits 1.
+
+### Docs
+- README "CLI access for headless agents" section; troubleshooting guide for writing memories from a plain shell (slash commands are TUI-only) with an OpenCode plugin-load checklist.
+
 ## [2.10.0] — 2026-06-10
 
 ### Added

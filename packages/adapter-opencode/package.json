@@ -1,6 +1,6 @@
 {
   "name": "@rohirik/opencode-ltm",
-  "version": "2.10.0",
+  "version": "2.11.0",
   "description": "LTM (Long-Term Memory) plugin for OpenCode — share memories with Claude Code and Pi",
   "type": "module",
   "main": "./src/index.ts",
