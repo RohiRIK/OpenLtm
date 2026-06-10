@@ -21,7 +21,7 @@
     },
     "packages/adapter-opencode": {
       "name": "@rohirik/opencode-ltm",
-      "version": "2.7.0",
+      "version": "2.10.0",
       "dependencies": {
         "@rohirik/openltm-core": "workspace:*",
         "zod": "^3.0.0",
@@ -40,7 +40,7 @@
     },
     "packages/adapter-pi": {
       "name": "@rohirik/pi-ltm",
-      "version": "2.7.0",
+      "version": "2.10.0",
       "dependencies": {
         "@rohirik/openltm-core": "workspace:*",
       },
@@ -56,15 +56,19 @@
     },
     "packages/openltm-core": {
       "name": "@rohirik/openltm-core",
-      "version": "2.7.0",
+      "version": "2.10.0",
       "bin": {
-        "ltm": "./src/cli/bin.ts",
+        "ltm": "src/cli/bin.ts",
+        "openltm": "src/cli/bin.ts",
+        "openltm-core": "src/cli/bin.ts",
       },
       "dependencies": {
         "@clack/prompts": "^1.3.0",
         "@iarna/toml": "^2.2.5",
+        "@modelcontextprotocol/sdk": "^1.27.1",
         "bun-types": "^1.0.0",
         "sqlite-vec": "0.1.9",
+        "zod": "^4.3.6",
       },
       "devDependencies": {
         "@types/node": "^20.0.0",

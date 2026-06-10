@@ -1,0 +1,449 @@
+/**
+ * mcp/server.ts — LTM MCP Server (STDIO transport), packaged.
+ *
+ * The full MCP server lives here so any MCP-capable host can run it via
+ * `bunx @rohirik/openltm-core mcp-serve` — not only the Claude Code plugin.
+ * The plugin's repo-root src/mcp-server.ts is a thin wrapper around this
+ * module that injects config from the plugin's config file.
+ *
+ * IMPORTANT: Never use console.log() — STDIO transport uses stdout for protocol.
+ */
+import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { z } from "zod";
+import { learn, recall, relate, forget, revalidate, getContextMerge, type Memory } from "../db.js";
+import { getDb } from "../shared-db.js";
+import { queryAudit } from "../dao/provenanceAudit.js";
+import { getItems } from "../context.js";
+import { traverseGraph, buildReasoningContext } from "../graph.js";
+import { categorise } from "../recall/categorise.js";
+
+// ─── Options ─────────────────────────────────────────────────────────────────
+
+export interface McpServerOptions {
+  /** Host hook: return false to disable the server (e.g. config mcp.enabled=false). Default: enabled. */
+  isEnabled?: () => Promise<boolean>;
+  /** Host hook: confidence threshold for auto-categorisation (default 0.6). */
+  categoriseThreshold?: () => Promise<number>;
+}
+
+// Embedding excluded at the SQL query level — strip() is now a no-op passthrough kept for call-site compatibility.
+function strip(obj: unknown): unknown { return obj; }
+
+/** Compact formatter — strips verbose fields and truncates content to keep MCP responses small. */
+function compact(memories: unknown[]): unknown[] {
+  const MAX_CONTENT = 300;
+  return memories.map(m => {
+    const mem = m as Record<string, unknown>;
+    const content = typeof mem.content === "string" && mem.content.length > MAX_CONTENT
+      ? mem.content.slice(0, MAX_CONTENT) + "…"
+      : mem.content;
+    const relations = Array.isArray(mem.relations) && mem.relations.length > 0
+      ? { relations: mem.relations.map((r: Record<string, unknown>) => ({ id: (r.memory as Record<string, unknown>)?.id, type: r.relationship_type, dir: r.direction })) }
+      : {};
+    const exp = mem.explainer as Record<string, unknown> | undefined;
+    const score = exp
+      ? { temperature: exp.temperature, score: typeof exp.totalScore === "number" ? Math.round(exp.totalScore * 100) / 100 : undefined }
+      : {};
+    return { id: mem.id, content, category: mem.category, importance: mem.importance, tags: mem.tags, project_scope: mem.project_scope, ...score, ...relations };
+  });
+}
+
+// ─── Server factory ──────────────────────────────────────────────────────────
+
+/** Build the LTM MCP server with all tools, resources, and prompts registered. */
+export function buildMcpServer(options: McpServerOptions = {}): McpServer {
+  const server = new McpServer(
+    { name: "openltm", version: "1.0.0" },
+    {},
+  );
+
+  // ─── Tools ─────────────────────────────────────────────────────────────────
+
+  server.tool(
+    "recall",
+    "Surface prior decisions, gotchas, and patterns before a non-trivial task, or when starting work in an unfamiliar area. Ranks long-term memories by query, category, project scope, or tags. Skip for trivial one-liners.",
+    {
+      query: z.string().optional().describe("Full-text search query"),
+      project: z.string().optional().describe("Filter by project scope"),
+      limit: z.number().int().min(1).max(50).optional().describe("Max results (default 10)"),
+      category: z.enum(["preference", "architecture", "gotcha", "pattern", "workflow", "constraint"]).optional(),
+      verbose: z.boolean().optional().describe("Return full memory objects (default false)"),
+      since: z.string().optional().describe("Filter: memories after this ISO date"),
+      until: z.string().optional().describe("Filter: memories before this ISO date"),
+      sort_by: z.enum(["relevance", "created", "last_recalled", "recall_count"]).optional().describe("Sort results by"),
+      workspace_id: z.string().optional().describe("Filter by workspace"),
+      agent_id: z.string().optional().describe("Filter by agent"),
+      includeProvenance: z.boolean().optional().default(false).describe("Attach provenance chain to each result (off by default)"),
+    },
+    async ({ query, project, limit, category, verbose, since, until, sort_by, includeProvenance }) => {
+      const results = await recall({ query, project, limit, category, since, until, sort_by, includeProvenance });
+      const payload = verbose ? strip(results) : compact(strip(results) as unknown[]);
+      return { content: [{ type: "text", text: JSON.stringify(payload) }] };
+    },
+  );
+
+  server.tool(
+    "learn",
+    "Store or reinforce a memory after discovering a non-obvious pattern, gotcha, or architectural decision worth keeping across sessions. Skip facts already derivable from the code or git history. Always pass a concise title (the title param explains how).",
+    {
+      content: z.string().describe("The insight, pattern, or decision to store"),
+      title: z.string().max(60).optional().describe("Short noun-phrase label (≤60 chars) — e.g. 'Repository pattern for all DAO layers'. Always provide it; you generate it inline, no extra LLM call needed."),
+      category: z.enum(["preference", "architecture", "gotcha", "pattern", "workflow", "constraint"]).optional().describe("Category (auto-detected when omitted)"),
+      importance: z.number().int().min(1).max(5).optional().describe("Importance 1-5 (default 3, 5=never decays)"),
+      tags: z.array(z.string()).optional().describe("Tags for categorization"),
+      files: z.array(z.string()).optional().describe("Repo-relative file paths this memory references — anchors so a commit touching them flags the memory stale"),
+      project: z.string().optional().describe("Scope to a specific project"),
+      workspace_id: z.string().optional().describe("Workspace for this memory"),
+      agent_id: z.string().optional().describe("Agent ID for this memory"),
+    },
+    async ({ content, title, category, importance, tags, files, project, workspace_id, agent_id }) => {
+      let resolvedCategory = category;
+      let categoriseSource: string | undefined;
+
+      if (!resolvedCategory) {
+        try {
+          const threshold = await (options.categoriseThreshold?.() ?? Promise.resolve(0.6));
+          const result = await categorise(content, threshold);
+          resolvedCategory = result.category;
+          categoriseSource = result.source;
+        } catch {
+          resolvedCategory = "pattern";
+        }
+      }
+
+      const result = learn({
+        content,
+        title,
+        category: resolvedCategory,
+        importance,
+        tags,
+        files,
+        project_scope: project,
+        workspace_id,
+        agent_id,
+        actor: "mcp:ltm_learn",
+      });
+
+      try {
+        server.server.notification({
+          method: "notifications/message",
+          params: { level: "info", logger: "ltm", data: `memory_stored: id=${result.id} category=${resolvedCategory}${categoriseSource ? ` (auto:${categoriseSource})` : ""} importance=${importance ?? 3} action=${result.action}` },
+        });
+      } catch { /* notifications not supported by this client — ignore */ }
+
+      return { content: [{ type: "text", text: JSON.stringify({ ...result, category: resolvedCategory, categoriseSource }) }] };
+    },
+  );
+
+  server.tool(
+    "relate",
+    "Link two memories with a typed relationship when they connect — e.g. a decision caused a gotcha, or a pattern applies to an architecture.",
+    {
+      source_id: z.number().int(),
+      target_id: z.number().int(),
+      relationship_type: z.enum(["supports", "contradicts", "refines", "depends_on", "related_to", "supersedes"]),
+    },
+    async ({ source_id, target_id, relationship_type }) => {
+      relate({ source_id, target_id, relationship_type });
+      return { content: [{ type: "text", text: JSON.stringify({ ok: true }) }] };
+    },
+  );
+
+  server.tool(
+    "forget",
+    "Delete a memory by ID when it is wrong, outdated, or the user requests removal. Cascades to its relations.",
+    {
+      id: z.number().int(),
+      reason: z.string().optional().describe("Why this memory is being removed"),
+    },
+    async ({ id, reason }) => {
+      forget({ id, reason, actor: "mcp:ltm_forget" });
+      return { content: [{ type: "text", text: JSON.stringify({ ok: true, id, reason }) }] };
+    },
+  );
+
+  server.tool(
+    "revalidate",
+    "Clear a memory's stale flag after reviewing it — the code changed but this memory is still correct. Use forget instead when the memory is actually wrong.",
+    {
+      id: z.number().int().describe("Memory ID to revalidate"),
+    },
+    async ({ id }) => {
+      const result = revalidate(id);
+      return { content: [{ type: "text", text: JSON.stringify({ id, ...result }) }] };
+    },
+  );
+
+  server.tool(
+    "admin_audit",
+    "Query the memory audit log. Returns a list of audit events (insert, update, forget, redact, etc.) with before/after snapshots. Use for tracing who wrote or deleted a memory.",
+    {
+      memory_id: z.number().int().optional().describe("Filter to a specific memory ID"),
+      op: z.enum(["insert","update","forget","deprecate","supersede","redact","restore","archive"]).optional().describe("Filter by operation type"),
+      session_id: z.string().optional().describe("Filter by session that triggered the op"),
+      since: z.string().optional().describe("ISO date — only events after this time"),
+      limit: z.number().int().min(1).max(200).optional().default(50).describe("Max rows (default 50)"),
+      verbose: z.boolean().optional().default(false).describe("Include full before/after JSON snapshots"),
+    },
+    async ({ memory_id, op, session_id, since, limit, verbose }) => {
+      const db = getDb();
+      const rows = queryAudit(db, { memoryId: memory_id, op, sessionId: session_id, since, limit });
+      const payload = verbose ? rows : rows.map(r => ({
+        id: r.id, memory_id: r.memory_id, op: r.op, actor: r.actor,
+        session_id: r.session_id, created_at: r.created_at,
+        before_preview: r.before_json ? r.before_json.slice(0, 120) : null,
+        after_preview: r.after_json ? r.after_json.slice(0, 120) : null,
+      }));
+      return { content: [{ type: "text", text: JSON.stringify(payload) }] };
+    },
+  );
+
+  server.tool(
+    "context",
+    "Restore project goals, decisions, and gotchas at session start or when switching projects. Returns merged context (globals + project-scoped memories).",
+    {
+      project: z.string().describe("Project name from registry"),
+    },
+    async ({ project }) => {
+      const result = getContextMerge(project);
+      return { content: [{ type: "text", text: JSON.stringify(strip(result)) }] };
+    },
+  );
+
+  server.tool(
+    "graph",
+    "Traverse the memory graph from seed nodes when exploring connections between memories or tracing decision chains. Builds a reasoning context from the traversal.",
+    {
+      memory_ids: z.array(z.number().int()).min(1).describe("Starting memory IDs for traversal"),
+      depth: z.number().int().min(1).max(4).optional().describe("Traversal depth (default 2)"),
+    },
+    async ({ memory_ids, depth = 2 }) => {
+      const results = await Promise.allSettled(
+        memory_ids.map((id) => traverseGraph(id, depth, false)),
+      );
+
+      const blocks: string[] = [];
+      let totalNodes = 0;
+      let totalEdges = 0;
+
+      for (const r of results) {
+        if (r.status === "fulfilled") {
+          const block = buildReasoningContext(r.value);
+          totalNodes += r.value.chain.length;
+          totalEdges += r.value.reinforcements.length + r.value.conflicts.length;
+          if (block) blocks.push(block);
+        }
+      }
+
+      try {
+        server.server.notification({
+          method: "notifications/message",
+          params: { level: "info", logger: "ltm", data: `graph_traversal: nodes=${totalNodes} edges=${totalEdges} depth=${depth}` },
+        });
+      } catch { /* notifications not supported by this client — ignore */ }
+
+      return { content: [{ type: "text", text: blocks.join("\n\n") || "No reasoning context found." }] };
+    },
+  );
+
+  server.tool(
+    "context_items",
+    "List specific context types — goals, decisions, progress, or gotchas — for a project. Returns structured context items.",
+    {
+      project: z.string().describe("Project name from registry"),
+      type: z.enum(["goal", "decision", "progress", "gotcha"]).optional(),
+    },
+    async ({ project, type }) => {
+      const items = getItems(project, type);
+      return { content: [{ type: "text", text: JSON.stringify(items) }] };
+    },
+  );
+
+  // ─── Resources ─────────────────────────────────────────────────────────────
+
+  server.resource(
+    "memory://globals",
+    "memory://globals",
+    { description: "All importance=5 global memories (never decay)" },
+    async () => {
+      const db = getDb();
+      const rows = db.query<Memory, []>(
+        `SELECT * FROM memories WHERE importance = 5 AND project_scope IS NULL AND status = 'active' ORDER BY created_at DESC`,
+      ).all();
+      return { contents: [{ uri: "memory://globals", text: JSON.stringify(strip(rows)), mimeType: "application/json" }] };
+    },
+  );
+
+  server.resource(
+    "memory://recent",
+    "memory://recent",
+    { description: "Last 20 memories across all projects" },
+    async () => {
+      const db = getDb();
+      const rows = db.query<Memory, []>(
+        `SELECT * FROM memories WHERE status = 'active' ORDER BY created_at DESC LIMIT 20`,
+      ).all();
+      return { contents: [{ uri: "memory://recent", text: JSON.stringify(strip(rows)), mimeType: "application/json" }] };
+    },
+  );
+
+  server.resource(
+    "memory://tags",
+    "memory://tags",
+    { description: "All unique tags with usage counts" },
+    async () => {
+      const db = getDb();
+      const rows = db.query<{ name: string; count: number }, []>(
+        `SELECT t.name, COUNT(mt.memory_id) as count FROM tags t
+         JOIN memory_tags mt ON t.id = mt.tag_id
+         GROUP BY t.id ORDER BY count DESC`,
+      ).all();
+      return { contents: [{ uri: "memory://tags", text: JSON.stringify(strip(rows)), mimeType: "application/json" }] };
+    },
+  );
+
+  const projectTemplate = new ResourceTemplate("memory://project/{name}", { list: undefined });
+  server.resource(
+    "memory://project/{name}",
+    projectTemplate,
+    { description: "All active memories scoped to a specific project" },
+    async (uri, { name }) => {
+      const projectName = (Array.isArray(name) ? name[0] : name) ?? "";
+      const db = getDb();
+      const rows = db.query<Memory, [string]>(
+        `SELECT * FROM memories WHERE project_scope = ? AND status = 'active' ORDER BY importance DESC, created_at DESC`,
+      ).all(projectName);
+      return {
+        contents: [{
+          uri: uri.href,
+          text: JSON.stringify(strip(rows), null, 2),
+          mimeType: "application/json",
+        }],
+      };
+    },
+  );
+
+  // ─── Prompts ───────────────────────────────────────────────────────────────
+
+  server.prompt(
+    "recall_before_task",
+    "Before starting a task, recall relevant memories and past decisions",
+    { topic: z.string().describe("The topic or task you are about to work on") },
+    ({ topic }) => ({
+      messages: [{
+        role: "user",
+        content: {
+          type: "text",
+          text: `Before starting work on "${topic}", use the recall tool to search for relevant memories, past decisions, and gotchas related to this topic. Summarize what you find and note any decisions that should be followed.`,
+        },
+      }],
+    }),
+  );
+
+  server.prompt(
+    "learn_after_session",
+    "Extract learnable patterns and insights from a session summary",
+    { summary: z.string().describe("Summary of the session or work done") },
+    ({ summary }) => ({
+      messages: [{
+        role: "user",
+        content: {
+          type: "text",
+          text: `Extract learnable patterns, gotchas, and architectural decisions from this session summary. For each insight, use learn to store it with the appropriate category and importance.\n\nSession summary:\n${summary}`,
+        },
+      }],
+    }),
+  );
+
+  server.prompt(
+    "graph_reason",
+    "Use graph traversal to reason about a question using connected memories",
+    { question: z.string().describe("The question or topic to reason about") },
+    ({ question }) => ({
+      messages: [{
+        role: "user",
+        content: {
+          type: "text",
+          text: `Use recall to find memories related to "${question}", then use graph on the top result IDs to traverse connected memories. Synthesize the chain of reasoning, conflicts, and reinforcements into a coherent answer.`,
+        },
+      }],
+    }),
+  );
+
+  server.prompt(
+    "learn_after_decision",
+    "Store an architectural decision or key choice in long-term memory with full context",
+    {
+      decision: z.string().describe("The architectural decision or key choice that was made"),
+      rationale: z.string().describe("Why this decision was made"),
+      project: z.string().optional().describe("Project this decision belongs to"),
+    },
+    ({ decision, rationale, project }) => ({
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text: `We just made an architectural decision that should be preserved for future sessions. Store it using learn.\n\nDecision: ${decision}\nRationale: ${rationale}${project ? `\nProject: ${project}` : ""}\n\nStore with category=architecture, importance=4, and include the rationale in the content so future recall explains the "why".`,
+          },
+        },
+        {
+          role: "assistant",
+          content: {
+            type: "text",
+            text: `I'll store this decision now using learn with category=architecture and importance=4 so it persists across sessions and surfaces in future context loads.`,
+          },
+        },
+      ],
+    }),
+  );
+
+  server.prompt(
+    "context_before_work",
+    "Get full project context before starting work — combines context and recall for a complete picture",
+    {
+      project: z.string().describe("Project name from the LTM registry"),
+      topic: z.string().describe("What you are about to work on"),
+    },
+    ({ project, topic }) => ({
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text: `Before starting work on "${topic}" in project "${project}", gather full context:\n\n1. Call context(project="${project}") to load goals, decisions, and gotchas.\n2. Call recall(query="${topic}", project="${project}") to surface relevant past patterns.\n3. Synthesize: list any active decisions, known gotchas, or prior work that affects this task.`,
+          },
+        },
+        {
+          role: "assistant",
+          content: {
+            type: "text",
+            text: `I'll call context and recall now, then synthesize the relevant context before proceeding with "${topic}".`,
+          },
+        },
+      ],
+    }),
+  );
+
+  return server;
+}
+
+// ─── Start ───────────────────────────────────────────────────────────────────
+
+/** Connect the LTM MCP server to stdio. Resolves once the transport is up. */
+export async function startMcpServer(options: McpServerOptions = {}): Promise<void> {
+  process.on("unhandledRejection", (err) => {
+    process.stderr.write(`[ltm-mcp] Unhandled rejection: ${err}\n`);
+  });
+
+  if (options.isEnabled && !(await options.isEnabled())) {
+    process.stderr.write("[ltm-mcp] mcp.enabled=false — server disabled\n");
+    process.exit(0);
+  }
+
+  const server = buildMcpServer(options);
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  process.stderr.write("[ltm-mcp] LTM MCP server running on stdio\n");
+}

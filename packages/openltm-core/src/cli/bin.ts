@@ -67,12 +67,11 @@ async function main(): Promise<void> {
     return;
   }
 
-  // Sub-command: mcp-serve (stub — full implementation deferred)
+  // Sub-command: mcp-serve — run the LTM MCP server on stdio
   if (argv[0] === "mcp-serve") {
-    process.stderr.write(
-      "  ltm mcp-serve: not yet implemented — install the Claude Code plugin for MCP server support\n",
-    );
-    process.exit(0);
+    const { startMcpServer } = await import("../mcp/server.js");
+    await startMcpServer();
+    return; // keep the process alive — transport owns the event loop
   }
 
   // Unknown positional sub-command: print help + exit 1. Never fall through
