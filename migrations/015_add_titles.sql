@@ -1,32 +1,14 @@
--- Migration 015: add title columns to memories and context_items
+-- Migration 015: add title columns to memories and context_items (DDL only)
 -- Title is a short human-readable label (≤60 chars).
--- Backfills existing rows with a first-sentence heuristic (no network call).
+--
+-- Pure-DDL, isolated from the value backfill so this step is self-heal eligible
+-- on a fresh install: schema.sql already pre-bakes `title`, so the ALTERs
+-- collide and the four-form DDL self-heal gate records the version once it
+-- proves both columns exist. On a legacy pre-015 install the columns are
+-- genuinely missing, so the ALTERs succeed and add them here.
+--
+-- The data-changing backfill (UPDATE ... SET title FROM content) lives in
+-- 024_title_backfill.sql with its own status gate and idempotency check.
 
 ALTER TABLE memories ADD COLUMN title TEXT;
 ALTER TABLE context_items ADD COLUMN title TEXT;
-
--- Backfill memories: first sentence (up to '.', '!', '?', or newline), else first 60 chars.
-UPDATE memories SET title =
-  CASE
-    WHEN instr(content, '.') > 1 AND instr(content, '.') <= 61
-      THEN trim(substr(content, 1, instr(content, '.') - 1))
-    WHEN instr(content, char(10)) > 1 AND instr(content, char(10)) <= 61
-      THEN trim(substr(content, 1, instr(content, char(10)) - 1))
-    WHEN length(trim(content)) <= 60
-      THEN trim(content)
-    ELSE substr(trim(content), 1, 57) || '…'
-  END
-WHERE title IS NULL;
-
--- Backfill context_items with same heuristic.
-UPDATE context_items SET title =
-  CASE
-    WHEN instr(content, '.') > 1 AND instr(content, '.') <= 61
-      THEN trim(substr(content, 1, instr(content, '.') - 1))
-    WHEN instr(content, char(10)) > 1 AND instr(content, char(10)) <= 61
-      THEN trim(substr(content, 1, instr(content, char(10)) - 1))
-    WHEN length(trim(content)) <= 60
-      THEN trim(content)
-    ELSE substr(trim(content), 1, 57) || '…'
-  END
-WHERE title IS NULL;

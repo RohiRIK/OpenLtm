@@ -210,6 +210,352 @@ export function parseMigration(content: string): ParsedMigration {
   return { up, down };
 }
 
+// ── R-2: fail-closed self-heal gate ─────────────────────────────────────────────
+// The old runPendingMigrations() catch treated any `duplicate column name` /
+// `already exists` error as proof the migration could be recorded. That is
+// unsound: db.exec(up) aborts at the FIRST failing statement, so the error only
+// proves the first colliding statement — nothing about later columns, tables,
+// indexes, or backfills. The recorder must never trust the error string; it must
+// independently prove the whole post-migration state against the live schema.
+
+function skipWs(s: string, pos: number): number {
+  while (pos < s.length && /\s/.test(s.charAt(pos))) pos++;
+  return pos;
+}
+
+/**
+ * Match a single SQL keyword at `pos` (whitespace before it is skipped),
+ * case-insensitively. Returns the position just past the keyword, or null if
+ * `kw` does not appear there as a whole word.
+ */
+function matchKeyword(s: string, pos: number, kw: string): number | null {
+  const p = skipWs(s, pos);
+  const raw = s.slice(p, p + kw.length);
+  if (raw.toUpperCase() !== kw) return null;
+  const after = p + kw.length;
+  if (after < s.length && /[A-Za-z0-9_]/.test(s.charAt(after))) return null;
+  return after;
+}
+
+/**
+ * If the text at `pos` begins `IF NOT EXISTS`, return the position just past
+ * it; otherwise return `pos` unchanged. Only the exact `IF NOT EXISTS` keyword
+ * sequence is recognised.
+ */
+function consumeIfNotExists(s: string, pos: number): number {
+  const ifEnd = matchKeyword(s, pos, "IF");
+  if (ifEnd === null) return pos;
+  const notEnd = matchKeyword(s, ifEnd, "NOT");
+  if (notEnd === null) return pos;
+  const existsEnd = matchKeyword(s, notEnd, "EXISTS");
+  return existsEnd === null ? pos : existsEnd;
+}
+
+/**
+ * Match a single SQL identifier starting at `pos`: a bare `[A-Za-z_][A-Za-z0-9_]*`
+ * name or one of the quoted forms `"..."`, `` `...` ``, `[...]`. Returns the
+ * unquoted name and the position just past the identifier, or null if none starts
+ * there.
+ */
+function matchIdent(s: string, pos: number): { name: string; end: number } | null {
+  if (pos >= s.length) return null;
+  const ch = s.charAt(pos);
+  if (ch === '"' || ch === "`") {
+    let i = pos + 1;
+    let name = "";
+    for (; i < s.length; i++) {
+      if (s.charAt(i) === ch) {
+        if (s.charAt(i + 1) === ch) {
+          name += ch;
+          i++;
+          continue;
+        }
+        return { name, end: i + 1 };
+      }
+      name += s.charAt(i);
+    }
+    return null; // unterminated quote
+  }
+  if (ch === "[") {
+    const end = s.indexOf("]", pos + 1);
+    if (end === -1) return null;
+    return { name: s.slice(pos + 1, end), end: end + 1 };
+  }
+  const m = /^[A-Za-z_][A-Za-z0-9_]*/.exec(s.slice(pos));
+  return m ? { name: m[0], end: pos + m[0].length } : null;
+}
+
+/**
+ * True when `tail` (the column-definition remainder of an `ALTER TABLE ... ADD
+ * COLUMN <col>` statement) contains nothing beyond a plain column definition.
+ * Rejects a top-level comma (SQLite multi-action ALTER) and any top-level
+ * DROP/RENAME keyword, so a statement such as `ALTER TABLE t ADD COLUMN a, DROP
+ * COLUMN b` can never slip through. Commas and keywords inside parentheses or
+ * string literals are allowed (CHECK constraints, functional defaults).
+ */
+function isColumnDefinitionTail(tail: string): boolean {
+  let depth = 0;
+  let quote: string | null = null;
+  for (let i = 0; i < tail.length; i++) {
+    const ch = tail.charAt(i);
+    if (quote !== null) {
+      if (ch === quote) {
+        if (tail.charAt(i + 1) === quote) {
+          i++; // doubled quote inside a string literal
+          continue;
+        }
+        quote = null;
+      }
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === "`") {
+      quote = ch;
+      continue;
+    }
+    if (ch === "(") {
+      depth++;
+      continue;
+    }
+    if (ch === ")") {
+      depth = Math.max(0, depth - 1);
+      continue;
+    }
+    if (depth === 0 && ch === ",") return false;
+    if (
+      depth === 0 &&
+      ((ch >= "A" && ch <= "Z") || (ch >= "a" && ch <= "z") || ch === "_")
+    ) {
+      if (/^(DROP|RENAME)\b/i.test(tail.slice(i))) return false;
+    }
+  }
+  return true;
+}
+
+export type DdlTargetKind =
+  | "alter-add-column"
+  | "create-table"
+  | "create-index"
+  | "create-trigger";
+
+export interface DdlTarget {
+  kind: DdlTargetKind;
+  /** Table / index / trigger name that must exist in the live schema. */
+  name: string;
+  /** Column name that must exist on `name` (only for "alter-add-column"). */
+  column?: string;
+  /** Table an index is built on (informational — the index itself is verified). */
+  onTable?: string;
+}
+
+/**
+ * Parse a single SQL statement into one of the four DDL forms the self-heal
+ * gate can prove against the live schema:
+ *
+ *   - `ALTER TABLE <t> ADD [COLUMN] <c> <column-definition>`
+ *   - `CREATE TABLE [IF NOT EXISTS] <t> ( ... )`
+ *   - `CREATE [UNIQUE] INDEX [IF NOT EXISTS] <i> ON <t> ( ... )`
+ *   - `CREATE [TEMP|TEMPORARY] TRIGGER [IF NOT EXISTS] <t> ...`
+ *
+ * Returns null for anything else — UPDATE / INSERT / DELETE, DROP, ALTER ...
+ * RENAME, CREATE VIEW / VIRTUAL TABLE, PRAGMA writes, VACUUM, REPLACE,
+ * multi-action ALTER — so the gate refuses to self-heal whenever any statement
+ * is not one of the supported forms.
+ */
+export function parseStatementDdl(stmt: string): DdlTarget | null {
+  const s = stmt.trim();
+  if (s.length === 0) return null;
+  const start = skipWs(s, 0);
+
+  // ── CREATE forms ──────────────────────────────────────────────────────────
+  const createEnd = matchKeyword(s, start, "CREATE");
+  if (createEnd !== null) {
+    // CREATE TABLE [IF NOT EXISTS] <t> ( ... )
+    const tableEnd = matchKeyword(s, createEnd, "TABLE");
+    if (tableEnd !== null) {
+      const ident = matchIdent(s, skipWs(s, consumeIfNotExists(s, tableEnd)));
+      if (ident === null) return null;
+      const after = skipWs(s, ident.end);
+      // Require the column-list form — rejects `CREATE TABLE ... AS SELECT`.
+      if (after >= s.length || s.charAt(after) !== "(") return null;
+      return { kind: "create-table", name: ident.name };
+    }
+
+    // CREATE [UNIQUE] INDEX [IF NOT EXISTS] <i> ON <t> ( ... )
+    const uniqueEnd = matchKeyword(s, createEnd, "UNIQUE");
+    const indexStart = uniqueEnd !== null ? uniqueEnd : createEnd;
+    const indexEnd = matchKeyword(s, indexStart, "INDEX");
+    if (indexEnd !== null) {
+      const ident = matchIdent(s, skipWs(s, consumeIfNotExists(s, indexEnd)));
+      if (ident === null) return null;
+      const onEnd = matchKeyword(s, ident.end, "ON");
+      if (onEnd === null) return null;
+      const tableIdent = matchIdent(s, skipWs(s, onEnd));
+      if (tableIdent === null) return null;
+      const after = skipWs(s, tableIdent.end);
+      if (after >= s.length || s[after] !== "(") return null;
+      return { kind: "create-index", name: ident.name, onTable: tableIdent.name };
+    }
+
+    // CREATE [TEMP | TEMPORARY] TRIGGER [IF NOT EXISTS] <i> ...
+    const tempEnd = matchKeyword(s, createEnd, "TEMP");
+    const tmpEnd = tempEnd !== null ? tempEnd : matchKeyword(s, createEnd, "TEMPORARY");
+    const triggerEnd = matchKeyword(s, tmpEnd ?? createEnd, "TRIGGER");
+    if (triggerEnd !== null) {
+      const ident = matchIdent(s, skipWs(s, consumeIfNotExists(s, triggerEnd)));
+      if (ident === null) return null;
+      return { kind: "create-trigger", name: ident.name };
+    }
+
+    return null; // CREATE VIEW / CREATE VIRTUAL TABLE / any other CREATE form
+  }
+
+  // ── ALTER TABLE <t> ADD [COLUMN] <c> <column-definition> ──────────────────
+  const alterEnd = matchKeyword(s, start, "ALTER");
+  if (alterEnd !== null) {
+    const tableEnd = matchKeyword(s, alterEnd, "TABLE");
+    if (tableEnd === null) return null;
+    const tableIdent = matchIdent(s, skipWs(s, tableEnd));
+    if (tableIdent === null) return null;
+    const addEnd = matchKeyword(s, tableIdent.end, "ADD");
+    if (addEnd === null) return null;
+    const columnEnd = matchKeyword(s, addEnd, "COLUMN");
+    const columnStart = columnEnd !== null ? columnEnd : addEnd;
+    const columnIdent = matchIdent(s, skipWs(s, columnStart));
+    if (columnIdent === null) return null;
+    if (!isColumnDefinitionTail(s.slice(skipWs(s, columnIdent.end)))) return null;
+    return { kind: "alter-add-column", name: tableIdent.name, column: columnIdent.name };
+  }
+
+  return null;
+}
+
+function quoteIdent(name: string): string {
+  return `"${name.replace(/"/g, '""')}"`;
+}
+
+/** True when `column` exists on `table` in the live schema (PRAGMA table_info). */
+function columnExists(db: Database, table: string, column: string): boolean {
+  const rows = db
+    .query<{ name: string }, []>(`PRAGMA table_info(${quoteIdent(table)})`)
+    .all();
+  return rows.some((r) => r.name === column);
+}
+
+/** True when a table / index / trigger of `name` exists in the live schema. */
+function schemaObjectExists(
+  db: Database,
+  type: "table" | "index" | "trigger",
+  name: string,
+): boolean {
+  const row = db
+    .query<{ cnt: number }, [string, string]>(
+      "SELECT COUNT(*) AS cnt FROM sqlite_master WHERE type = ? AND name = ?",
+    )
+    .get(type, name);
+  return (row?.cnt ?? 0) > 0;
+}
+
+/**
+ * Narrow, source-independent recovery gate. Called from the error catch in
+ * `runPendingMigrations` instead of trusting the error string.
+ *
+ * Splits `up` into statements and requires every statement to be one of the
+ * four supported DDL forms (`parseStatementDdl`), then verifies every declared
+ * schema target (column / table / index / trigger) against the LIVE schema. If
+ * any statement is unrecognised, data-changing, or destructive, or any declared
+ * target is missing, this throws and the runner fails closed — it refuses to
+ * record the version.
+ *
+ * Empty marker migrations (no DDL) never reach the caller's catch and return
+ * here defensively with nothing to prove.
+ */
+export function assertSelfHealEligible(db: Database, up: string): void {
+  const statements = up
+    .split(";")
+    .map((stmt) => stmt.trim())
+    .filter((stmt) => stmt.length > 0);
+
+  if (statements.length === 0) return;
+
+  const targets: DdlTarget[] = [];
+  for (const statement of statements) {
+    const target = parseStatementDdl(statement);
+    if (target === null) {
+      throw new Error(
+        `statement is not a supported idempotent DDL form (ALTER TABLE ... ADD COLUMN, ` +
+          `CREATE TABLE, CREATE INDEX, CREATE TRIGGER): "${statement}"`,
+      );
+    }
+    targets.push(target);
+  }
+
+  for (const target of targets) {
+    switch (target.kind) {
+      case "alter-add-column":
+        if (!columnExists(db, target.name, target.column!)) {
+          throw new Error(
+            `column "${target.column}" is missing on table "${target.name}"`,
+          );
+        }
+        break;
+      case "create-table":
+        if (!schemaObjectExists(db, "table", target.name)) {
+          throw new Error(`table "${target.name}" does not exist`);
+        }
+        break;
+      case "create-index":
+        if (!schemaObjectExists(db, "index", target.name)) {
+          throw new Error(`index "${target.name}" does not exist`);
+        }
+        break;
+      case "create-trigger":
+        if (!schemaObjectExists(db, "trigger", target.name)) {
+          throw new Error(`trigger "${target.name}" does not exist`);
+        }
+        break;
+    }
+  }
+}
+
+/**
+ * Integrity check that runs at the top of `runPendingMigrations`, before any
+ * pending work is selected. For every applied version it recomputes
+ * `sha256(file.content)` from the on-disk migration file and requires exact
+ * equality with the recorded checksum. An edited or renamed migration file, or
+ * a missing file for an applied version, stops the whole run. There is no
+ * allowlist to bypass this — recorded state is never trusted.
+ */
+export function verifyRecordedChecksums(
+  db: Database,
+  files: MigrationFile[],
+  applied: Set<number>,
+): void {
+  if (applied.size === 0) return;
+
+  const fileByVersion = new Map(files.map((f) => [f.version, f] as const));
+  const rows = db
+    .query<{ version: number; checksum: string }, []>(
+      "SELECT version, checksum FROM _schema_version",
+    )
+    .all();
+
+  for (const row of rows) {
+    const file = fileByVersion.get(row.version);
+    if (file === undefined) {
+      throw new Error(
+        `[migrations] fail closed: applied version ${row.version} has no matching migration file`,
+      );
+    }
+    const current = computeChecksum(file.content);
+    if (current !== row.checksum) {
+      throw new Error(
+        `[migrations] fail closed: checksum mismatch for applied version ${row.version} ` +
+          `(${file.name}); recorded ${row.checksum} != current ${current}. Refusing to continue.`,
+      );
+    }
+  }
+}
+
 // ── Core migration actions ─────────────────────────────────────────────────────
 
 export interface MigrationResult {
@@ -224,6 +570,13 @@ export async function runPendingMigrations(db?: Database): Promise<MigrationResu
 
   const files = await getMigrationFiles();
   const applied = getAppliedVersions(_db);
+
+  // R-2: before any pending work is selected, prove every already-recorded
+  // version still matches its on-disk migration file. An edited or renamed
+  // migration file, or a missing file, stops the whole run — recorded state
+  // is never trusted.
+  verifyRecordedChecksums(_db, files, applied);
+
   const pending = files.filter((f) => !applied.has(f.version));
 
   if (pending.length === 0) return [];
@@ -245,16 +598,25 @@ export async function runPendingMigrations(db?: Database): Promise<MigrationResu
         );
       })();
     } catch (err: unknown) {
-      const msg = (err as { message?: string }).message ?? "";
-      // Column was already added by shared-db.ts runMigrations() — self-heal by recording as applied
-      if (msg.includes("duplicate column name") || msg.includes("already exists")) {
-        _db.run(
-          `INSERT OR IGNORE INTO _schema_version (version, name, checksum) VALUES (?, ?, ?)`,
-          [file.version, file.name, checksum],
+      // R-2: a duplicate-column / already-exists error only proves the FIRST
+      // colliding statement failed — db.exec(up) aborts there, so later
+      // columns, tables, indexes, and backfills may still be missing. Never
+      // trust the error string: self-heal only when every statement is a
+      // supported idempotent DDL form AND every declared schema target is
+      // verifiably present in the live schema. Otherwise fail closed.
+      try {
+        assertSelfHealEligible(_db, up);
+      } catch (selfHealErr: unknown) {
+        throw new Error(
+          `Migration ${file.version} (${file.name}) failed and is not self-heal eligible; ` +
+            `refusing to record it. Original error: ${(err as Error).message}. ` +
+            `Self-heal refusal: ${(selfHealErr as Error).message}`,
         );
-      } else {
-        throw err;
       }
+      _db.run(
+        `INSERT OR IGNORE INTO _schema_version (version, name, checksum) VALUES (?, ?, ?)`,
+        [file.version, file.name, checksum],
+      );
     }
 
     results.push({ version: file.version, name: file.name, action: "applied" });

@@ -7,7 +7,7 @@
 CREATE TABLE IF NOT EXISTS memory_files (
   memory_id     INTEGER NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
   path          TEXT    NOT NULL,            -- normalised repo-relative path
-  project_scope TEXT,                        -- NULL = global; else project name (cross-repo safety)
+  project_scope TEXT,                        -- NULL = global, else project name (cross-repo safety)
   created_at    TEXT    NOT NULL DEFAULT (datetime('now')),
   PRIMARY KEY (memory_id, path)
 );
