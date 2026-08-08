@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.12.0] — 2026-08-08
+
+### Added
+- **Hermes memory provider plugin consolidated into this repo** (`hermes/openltm_hermes/`) — the one-repo strategy: plugin, canonical `schema.sql`, and extraction logic now live under OpenLtm; `hermes-brain` repo retired. Install contract for any Hermes install: `hermes plugins install RohiRIK/OpenLtm/hermes/openltm_hermes` (or symlink for a live repo-sourced wiring).
+- **R2 migration runner v2** — fail-closed DDL gate; Option-B split of 015/017 into idempotent parts + new migrations 024 (`title_backfill`) and 025 (`idx_memories_hidden`).
+
+### Fixed
+- **Migration runner edge cases** — `decay_score`, `created_by`, `workspace_id`, `agent_id` columns (migrations 007/011/013) now guaranteed present on fresh installs so `learn()` and the janitor never crash on a column-terminal schema.
+- **CI: Trivy Security Scan HIGH CVEs** — bumped `fast-uri`, `nanoid`, `next` deps (5 HIGH → 0); Trivy 0/0 on both lockfiles.
+- **CI: Build hook bundle protected-main auto-push** — replaced with a drift-gate workflow (`contents:read` only) that verifies `hooks/GitCommit.bundle.mjs` freshness instead of pushing to `main`.
+
 ## [2.11.0] — 2026-06-10
 
 ### Added
