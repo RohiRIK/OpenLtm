@@ -16,6 +16,11 @@ data/*.db-shm
 data/*.db-wal
 data/*.bak*
 
+# Python plugin artifacts (hermes/) — never commit bytecode or pytest caches
+__pycache__/
+.pytest_cache/
+*.pyc
+
 # Env
 .env
 .env.local

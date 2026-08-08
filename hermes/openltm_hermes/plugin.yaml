@@ -1,0 +1,4 @@
+name: openltm_hermes
+version: 1.0.0
+description: "OpenLTM — Long-term memory with FTS5 full-text search, vector embeddings, graph relationships, and importance-weighted decay. Local SQLite, zero dependencies."
+pip_dependencies: []

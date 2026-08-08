@@ -89,6 +89,24 @@ cd ~/Projects/OpenLtm && bash install.sh
 
 ---
 
+## Hermes memory plugin
+
+Hermes (the Nous Research agent runtime) uses the same memory engine through a native
+Python plugin. The plugin, its canonical schema, and its extraction logic live in
+[`hermes/`](hermes/README.md) — one source of truth for the Hermes integration:
+
+```bash
+hermes plugins install RohiRIK/OpenLtm/hermes/openltm_hermes
+```
+
+- Store: local SQLite at `~/.hermes/openltm.db` (no server, no network)
+- Provider: `memory.provider: openltm_hermes` in `~/.hermes/config.yaml`
+- Schema: [`hermes/schema.sql`](hermes/schema.sql) — column-terminal, folds migrations
+  007/011/013 so fresh installs never crash the plugin's learn/janitor paths
+- Tests: 38 plugin tests; run from a scratch copy (`hermes/README.md` has the command)
+
+---
+
 ## Quick Start
 
 Start a new session. Context is injected at the top automatically.
