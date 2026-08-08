@@ -1,4 +1,14 @@
-name: Build hook bundle
+name: Verify hook bundle freshness
+
+# The committed hooks/GitCommit.bundle.mjs must exactly match a fresh build,
+# because git-clone installs run the bundle directly and never build the
+# workspace (see f63becc). main is a protected branch, so CI can never
+# auto-push the regenerated bundle — instead we verify and fail loudly when
+# the committed artifact is stale.
+#
+# If you touch hooks/src, hooks/lib, packages/openltm-core/src, or
+# package.json, run `bun run build:hooks` and commit the regenerated
+# hooks/GitCommit.bundle.mjs in the same change.
 
 on:
   push:
@@ -8,32 +18,37 @@ on:
       - 'hooks/lib/**'
       - 'packages/openltm-core/src/**'
       - 'package.json'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'hooks/src/**'
+      - 'hooks/lib/**'
+      - 'packages/openltm-core/src/**'
+      - 'package.json'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  bundle:
+  verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          persist-credentials: true
 
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
-      - run: bun install
+      - run: bun install --frozen-lockfile
 
       - name: Build hooks bundle
         run: bun run build:hooks
 
-      - name: Commit bundle
+      - name: Verify committed bundle is fresh
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -f hooks/GitCommit.bundle.mjs
-          git diff --staged --quiet && echo "No changes" && exit 0
-          git commit -m "ci: rebuild GitCommit.bundle.mjs [skip ci]"
-          git push
+          if ! git diff --quiet -- hooks/GitCommit.bundle.mjs; then
+            echo "::error::hooks/GitCommit.bundle.mjs is stale. Run 'bun run build:hooks' and commit the regenerated bundle."
+            git diff --stat -- hooks/GitCommit.bundle.mjs
+            exit 1
+          fi
+          echo "hooks/GitCommit.bundle.mjs is up to date."
