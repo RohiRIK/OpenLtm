@@ -37,10 +37,12 @@ jobs:
       # No `registry-url`: it makes setup-node write an .npmrc with an empty
       # _authToken, which npm uses instead of OIDC → 404. Without it (and with no
       # token), npm 11.5+ triggers OIDC trusted publishing against npmjs.org.
+      # Node 24: latest npm (12.x) requires node ^22.22.2 || ^24.15.0 || >=26 —
+      # node 20 can't host `npm install -g npm@latest` (EBADENGINE).
       - name: Setup Node.js for npm publish
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
 
       # OIDC trusted publishing needs npm >= 11.5 (the node-20 bundled npm is older)
       - name: Upgrade npm for OIDC trusted publishing
