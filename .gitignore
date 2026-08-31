@@ -47,3 +47,4 @@ node-compile-cache/
 aegis-policy.json
 opencode.json
 .opencode/
+r2-split-harness/canonical-check/
