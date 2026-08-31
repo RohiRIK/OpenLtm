@@ -1,0 +1,131 @@
+diff --git a/migrations/015_add_titles.sql b/migrations/015_add_titles.sql
+index 92fb3c9..7eb0b20 100644
+--- a/migrations/015_add_titles.sql
++++ b/migrations/015_add_titles.sql
+@@ -1,32 +1,14 @@
+--- Migration 015: add title columns to memories and context_items
++-- Migration 015: add title columns to memories and context_items (DDL only)
+ -- Title is a short human-readable label (≤60 chars).
+--- Backfills existing rows with a first-sentence heuristic (no network call).
++--
++-- Pure-DDL, isolated from the value backfill so this step is self-heal eligible
++-- on a fresh install: schema.sql already pre-bakes `title`, so the ALTERs
++-- collide and the four-form DDL self-heal gate records the version once it
++-- proves both columns exist. On a legacy pre-015 install the columns are
++-- genuinely missing, so the ALTERs succeed and add them here.
++--
++-- The data-changing backfill (UPDATE ... SET title FROM content) lives in
++-- 024_title_backfill.sql with its own status gate and idempotency check.
+ 
+ ALTER TABLE memories ADD COLUMN title TEXT;
+ ALTER TABLE context_items ADD COLUMN title TEXT;
+-
+--- Backfill memories: first sentence (up to '.', '!', '?', or newline), else first 60 chars.
+-UPDATE memories SET title =
+-  CASE
+-    WHEN instr(content, '.') > 1 AND instr(content, '.') <= 61
+-      THEN trim(substr(content, 1, instr(content, '.') - 1))
+-    WHEN instr(content, char(10)) > 1 AND instr(content, char(10)) <= 61
+-      THEN trim(substr(content, 1, instr(content, char(10)) - 1))
+-    WHEN length(trim(content)) <= 60
+-      THEN trim(content)
+-    ELSE substr(trim(content), 1, 57) || '…'
+-  END
+-WHERE title IS NULL;
+-
+--- Backfill context_items with same heuristic.
+-UPDATE context_items SET title =
+-  CASE
+-    WHEN instr(content, '.') > 1 AND instr(content, '.') <= 61
+-      THEN trim(substr(content, 1, instr(content, '.') - 1))
+-    WHEN instr(content, char(10)) > 1 AND instr(content, char(10)) <= 61
+-      THEN trim(substr(content, 1, instr(content, char(10)) - 1))
+-    WHEN length(trim(content)) <= 60
+-      THEN trim(content)
+-    ELSE substr(trim(content), 1, 57) || '…'
+-  END
+-WHERE title IS NULL;
+diff --git a/migrations/017_node_ui_state.sql b/migrations/017_node_ui_state.sql
+index 5c6cee1..3ed7eee 100644
+--- a/migrations/017_node_ui_state.sql
++++ b/migrations/017_node_ui_state.sql
+@@ -1,10 +1,14 @@
+--- Migration 017: per-node UI state (view-independent)
++-- Migration 017: per-node UI state columns (DDL only)
+ -- hidden: excluded from /api/graph unless ?includeHidden=1
+ -- color: manual override; NULL means use category color
+ -- icon: optional emoji/icon key
++--
++-- Pure DDL, isolated from the supporting index: the four ALTER statements
++-- self-heal cleanly on a fresh install (schema.sql pre-bakes the columns).
++-- The partial index that backs `hidden=1` lookups lives in
++-- 025_idx_memories_hidden.sql with its own status gate, so on fresh installs
++-- the column step never fails just because the index target is still missing.
+ 
+ ALTER TABLE memories ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0;
+ ALTER TABLE memories ADD COLUMN color  TEXT;
+ ALTER TABLE memories ADD COLUMN icon   TEXT;
+-
+-CREATE INDEX IF NOT EXISTS idx_memories_hidden ON memories(hidden) WHERE hidden = 1;
+diff --git a/migrations/024_title_backfill.sql b/migrations/024_title_backfill.sql
+new file mode 100644
+index 0000000..c3d92d3
+--- /dev/null
++++ b/migrations/024_title_backfill.sql
+@@ -0,0 +1,38 @@
++-- Migration 024: backfill title values from content (data-changing, own gate)
++-- Populates title for rows that predate the title column (legacy pre-015
++-- installs). Kept in its own migration so the DDL step (015) stays pure-DDL
++-- and self-heal eligible; this step is its own status-gated unit like any
++-- migration, and the runner's checksum is recorded as usual.
++--
++-- Idempotent by construction: only rows WHERE title IS NULL are touched, so
++-- re-running this migration (or the runner) is a no-op on already-backfilled
++-- rows. No destructiveness, no rename — fail-closed runner accepts it as a
++-- data-changing step that never needs self-heal because the columns it reads
++-- (content, title) exist for both fresh (pre-baked or added by 015) and legacy
++-- installs by the time this version runs (015 < 016 < ... < 024).
++
++-- Backfill memories: first sentence (up to '.', '!', '?', or newline), else first 57 chars + ellipsis.
++UPDATE memories SET title =
++  CASE
++    WHEN instr(content, '.') > 1 AND instr(content, '.') <= 61
++      THEN trim(substr(content, 1, instr(content, '.') - 1))
++    WHEN instr(content, char(10)) > 1 AND instr(content, char(10)) <= 61
++      THEN trim(substr(content, 1, instr(content, char(10)) - 1))
++    WHEN length(trim(content)) <= 60
++      THEN trim(content)
++    ELSE substr(trim(content), 1, 57) || '…'
++  END
++WHERE title IS NULL;
++
++-- Backfill context_items with same heuristic.
++UPDATE context_items SET title =
++  CASE
++    WHEN instr(content, '.') > 1 AND instr(content, '.') <= 61
++      THEN trim(substr(content, 1, instr(content, '.') - 1))
++    WHEN instr(content, char(10)) > 1 AND instr(content, char(10)) <= 61
++      THEN trim(substr(content, 1, instr(content, char(10)) - 1))
++    WHEN length(trim(content)) <= 60
++      THEN trim(content)
++    ELSE substr(trim(content), 1, 57) || '…'
++  END
++WHERE title IS NULL;
+diff --git a/migrations/025_idx_memories_hidden.sql b/migrations/025_idx_memories_hidden.sql
+new file mode 100644
+index 0000000..beecc15
+--- /dev/null
++++ b/migrations/025_idx_memories_hidden.sql
+@@ -0,0 +1,12 @@
++-- Migration 025: partial index on memories(hidden) (pure DDL, idempotent)
++-- Supports the /api/graph exclude-hidden filter. Split out of 017 so that
++-- migration stays pure-DDL and self-heal eligible: on a fresh install
++-- schema.sql pre-bakes hidden/color/icon but NOT this index, so the gate
++-- would otherwise refuse 017 because the index target doesn't exist yet.
++--
++-- Own status-gated unit. `CREATE INDEX IF NOT EXISTS` is natively idempotent
++-- in SQLite, so it succeeds identically whether the index already exists
++-- (legacy install that ran the old 017) or not (fresh install that only just
++-- added the column). Pure DDL, indistinguishable to the fail-closed runner.
++
++CREATE INDEX IF NOT EXISTS idx_memories_hidden ON memories(hidden) WHERE hidden = 1;
