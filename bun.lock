@@ -21,7 +21,7 @@
     },
     "packages/adapter-opencode": {
       "name": "@rohirik/opencode-ltm",
-      "version": "2.11.0",
+      "version": "2.12.1",
       "dependencies": {
         "@rohirik/openltm-core": "workspace:*",
         "zod": "^3.0.0",
@@ -40,7 +40,7 @@
     },
     "packages/adapter-pi": {
       "name": "@rohirik/pi-ltm",
-      "version": "2.11.0",
+      "version": "2.12.1",
       "dependencies": {
         "@rohirik/openltm-core": "workspace:*",
       },
@@ -56,7 +56,7 @@
     },
     "packages/openltm-core": {
       "name": "@rohirik/openltm-core",
-      "version": "2.11.0",
+      "version": "2.12.1",
       "bin": {
         "ltm": "src/cli/bin.ts",
         "openltm": "src/cli/bin.ts",
