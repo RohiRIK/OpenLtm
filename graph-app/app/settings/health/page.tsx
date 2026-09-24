@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Play, Loader2, Sparkles, ArchiveRestore } from "lucide-react";
+import { Loader2, Sparkles, ArchiveRestore } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import type { JanitorRunResult, JanitorStatus } from "@/lib/types";
-import { AnimatedStatusBadge } from "@/components/ui/animated-status-badge";
 import { RecoverDrawer } from "@/components/settings/RecoverDrawer";
 
 function formatKeeperResult(r: JanitorRunResult): string {
@@ -62,7 +61,7 @@ export default function HealthSection() {
         if (!s.running) {
           stopPolling();
           setRunning(false);
-          setStatus({ running: false, lastRun: s.lastRun });
+          setStatus(s);
           if (s.lastResult) setResult(formatKeeperResult(s.lastResult));
         }
       } catch {
@@ -92,14 +91,17 @@ export default function HealthSection() {
             )}
           </div>
           {running ? (
-            <AnimatedStatusBadge status="verifying" label="Running…" />
+            <span role="status" className="inline-flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+              Running…
+            </span>
           ) : (
             <Button
               size="sm"
               onClick={() => void runJanitor()}
               className="bg-[var(--accent-blue)] text-[var(--accent-blue-foreground)] hover:opacity-90"
             >
-              {running ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Sparkles className="w-3.5 h-3.5 mr-1" />}
+              <Sparkles className="w-3.5 h-3.5 mr-1" />
               Run Janitor
             </Button>
           )}

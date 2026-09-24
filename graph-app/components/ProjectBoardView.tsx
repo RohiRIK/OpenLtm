@@ -16,7 +16,7 @@ function Stars({ count }: { count: number }) {
   );
 }
 
-type Editing = { id: string; value: string } | null;
+type Editing = { id: number; value: string } | null;
 
 export default function ProjectBoardView({
   memories,

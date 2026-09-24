@@ -9,11 +9,12 @@ import ProjectTimeline from "@/components/ProjectTimeline";
 import ProjectConnections from "@/components/ProjectConnections";
 import ProjectRelevance from "@/components/ProjectRelevance";
 import { api } from "@/lib/api";
-import type { ProjectDetail } from "@/lib/types";
+import type { GraphNode, ProjectDetail } from "@/lib/types";
 
 interface ProjectSheetProps {
   projectName: string | null;
   onClose: () => void;
+  onSelect: (node: GraphNode) => void;
 }
 
 const CTX_ORDER: { key: string; label: string }[] = [
@@ -26,7 +27,7 @@ const CTX_ORDER: { key: string; label: string }[] = [
 /** Detail view for a single project, opened from the Overview/Health tiles.
  *  Four sections (overview, timeline, connections, personal relevance) are
  *  filled in across Phases 4–6 — this shell wires the data fetch + layout. */
-export default function ProjectSheet({ projectName, onClose }: ProjectSheetProps) {
+export default function ProjectSheet({ projectName, onClose, onSelect }: ProjectSheetProps) {
   const [detail, setDetail] = useState<ProjectDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -95,9 +96,9 @@ export default function ProjectSheet({ projectName, onClose }: ProjectSheetProps
                 </Accordion>
               </section>
 
-              <ProjectTimeline detail={detail} />
+              <ProjectTimeline memories={detail.memories} onSelect={onSelect} />
 
-              <ProjectConnections detail={detail} />
+              <ProjectConnections detail={detail} onSelect={onSelect} />
 
               <ProjectRelevance detail={detail} />
             </>

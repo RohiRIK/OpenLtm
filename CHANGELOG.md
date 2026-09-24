@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.12.1] — 2026-09-23
+
+### Fixed
+- **Hermes auto-capture provenance** — one-turn requests to invoke read-only OpenLTM tools are no longer persisted by `sync_turn` or `on_session_end`; durable user constraints remain eligible for automatic learning.
+- **Hermes provider setup docs** — corrected the provider identifier to `openltm_hermes`.
+
 ## [2.12.0] — 2026-08-08
 
 ### Added

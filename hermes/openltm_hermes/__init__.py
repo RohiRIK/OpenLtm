@@ -38,11 +38,61 @@ _TRANSIENT_OPS_RE = re.compile(
     r"|\[?important:\s*background process",
     re.IGNORECASE,
 )
+_READ_ONLY_MEMORY_TOOL = r"openltm_(?:recall|context|graph|brain_stats)"
+_MARKDOWN_WRAPPED_READ_ONLY_TOOL_RE = re.compile(
+    rf"[`*_~]+({_READ_ONLY_MEMORY_TOOL})[`*_~]+",
+    re.IGNORECASE,
+)
+_READ_ONLY_MEMORY_CALL_RE = re.compile(
+    rf"(?:(?:can|could|would)\s+you\s+(?:please\s+)?|please\s+)?"
+    rf"(?:call|invoke|run|query|check|use)\s+(?:the\s+)?"
+    rf"{_READ_ONLY_MEMORY_TOOL}"
+    rf"(?:\s+(?:now|exactly\s+once))?"
+    rf"(?:\s*(?:,|and)\s*(?:report|return|show)\s+"
+    rf"(?:the\s+)?(?:status|result|results|stats|statistics|output))?",
+    re.IGNORECASE,
+)
+_DESCRIBED_BRAIN_STATS_CALL = (
+    "call the openltm tool that reports memory statistics exactly once, then "
+    "report the total memory count in one short sentence"
+)
+_OPERATIONAL_REPORT_RE = re.compile(
+    r"(?:report|return|show)\s+(?:the\s+)?"
+    r"(?:status|result|results|stats|statistics|output)",
+    re.IGNORECASE,
+)
+_NO_MEMORY_WRITE_RE = re.compile(
+    r"(?:do\s+not|don't|must\s+not)\s+"
+    r"(?:write|store|save|add|learn|delete|forget)(?:\s+(?:to|from))?"
+    r"(?:\s+or\s+(?:write|store|save|add|learn|delete|forget)"
+    r"(?:\s+(?:to|from))?)?\s+(?:any\s+)?memor(?:y|ies)",
+    re.IGNORECASE,
+)
 
 
 def _is_transient_operational(text: str) -> bool:
     """True when ``text`` is a runtime notification, not durable knowledge."""
     return bool(text) and _TRANSIENT_OPS_RE.search(text) is not None
+
+
+def _is_wholly_read_only_memory_operation(text: str) -> bool:
+    """True when every clause is part of one read-only OpenLTM request."""
+    if not text:
+        return False
+    normalized = _MARKDOWN_WRAPPED_READ_ONLY_TOOL_RE.sub(r"\1", text)
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    clauses = [part.strip() for part in re.split(r"[;.!?]+", normalized) if part.strip()]
+    first_clause = clauses[0] if clauses else ""
+    if (
+        _READ_ONLY_MEMORY_CALL_RE.fullmatch(first_clause) is None
+        and first_clause.casefold() != _DESCRIBED_BRAIN_STATS_CALL
+    ):
+        return False
+    return all(
+        _OPERATIONAL_REPORT_RE.fullmatch(clause) is not None
+        or _NO_MEMORY_WRITE_RE.fullmatch(clause) is not None
+        for clause in clauses[1:]
+    )
 
 # Lazy-import _db to avoid circular imports at module load time
 _db_module = None
@@ -408,13 +458,14 @@ class OpenLtmpMemoryProvider(MemoryProvider):
         # Lower the length gates — architecture/env facts are often short.
         if len(user_content) < 8 or len(assistant_content) < 5:
             return
-        # Reject transient operational notifications. Broad auto-store was
-        # capturing templated runtime messages (delegation-batch-complete,
-        # context-compaction markers, background-process-done notices) as if they
-        # were durable knowledge — they piled up as near-duplicate pollution
-        # (found via the janitor's semantic dedup, 2026-07-17). These are ops
-        # noise, not facts; skip them before they reach the store.
-        if _is_transient_operational(user_content) or _is_transient_operational(assistant_content):
+        # Reject transient operational notifications and messages composed only
+        # of a read-only OpenLTM request plus reporting/no-write guardrails. Mixed
+        # messages continue into extraction so durable constraints are retained.
+        if (
+            _is_transient_operational(user_content)
+            or _is_transient_operational(assistant_content)
+            or _is_wholly_read_only_memory_operation(user_content)
+        ):
             return
 
         db_mod = _get_db()
@@ -710,10 +761,13 @@ class OpenLtmpMemoryProvider(MemoryProvider):
 
             content = _text(msg)
             # ``on_session_end`` receives synthetic runtime envelopes as
-            # role=user messages too. Apply the same provenance guard used by
-            # sync_turn() before keyword extraction so operational notices can
-            # never become durable memory.
-            if _is_transient_operational(content):
+            # role=user messages too, and may also revisit wholly operational
+            # read-only OpenLTM requests. Apply the same provenance guards used
+            # by sync_turn() before keyword extraction.
+            if (
+                _is_transient_operational(content)
+                or _is_wholly_read_only_memory_operation(content)
+            ):
                 continue
             lower = content.lower()
 

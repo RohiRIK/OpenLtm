@@ -30,7 +30,7 @@ A Hermes memory provider plugin that wraps [OpenLTM](https://github.com/RohiRIK/
 
 1. Enable the provider:
    ```bash
-   hermes config set memory.provider openltm
+   hermes config set memory.provider openltm_hermes
    ```
 
 2. Start a new session (`/reset`)
