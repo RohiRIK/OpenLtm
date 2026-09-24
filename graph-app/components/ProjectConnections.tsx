@@ -46,7 +46,7 @@ function endpointId(v: GraphLink["source"]): number {
 
 interface ProjectConnectionsProps {
   detail: ProjectDetail;
-  onSelect?: (node: GraphNode) => void;
+  onSelect: (node: GraphNode) => void;
 }
 
 export default function ProjectConnections({ detail, onSelect }: ProjectConnectionsProps) {
