@@ -174,10 +174,34 @@ if (subdir && existsSync(subdirPath)) {
   fail("subdir exists", subdir ? `"${subdir}" not found` : "no subdir declared");
 }
 
-// version must match the repo version.
-const repoVersion = JSON.parse(readFileSync(join(root, "package.json"), "utf-8")).version as string;
-if (entry["version"] === repoVersion) ok("version matches package.json", repoVersion);
-else fail("version matches package.json", `entry "${entry["version"]}" vs package.json "${repoVersion}"`);
+// The entry describes the PINNED COMMIT, not the working tree. Rule 4 of the
+// catalog admission policy requires the visible version label to match the code
+// at the pin, so compare against the pinned commit's own package.json. This is
+// what lets the pin legitimately trail the working tree by one commit.
+let pinnedVersion: string | null = null;
+try {
+  const pinned = execSync(`git show ${sha}:package.json`, {
+    cwd: root,
+    stdio: ["ignore", "pipe", "ignore"],
+  }).toString();
+  pinnedVersion = JSON.parse(pinned).version ?? null;
+} catch {
+  pinnedVersion = null;
+}
+
+const entryVersion = String(entry["version"] ?? "");
+if (pinnedVersion === null) {
+  fail("pinned commit readable", `could not read package.json at ${sha.slice(0, 7)}`);
+} else if (!entryVersion) {
+  ok("version label", "absent (cosmetic field, optional)");
+} else if (entryVersion === pinnedVersion) {
+  ok("version matches the pinned commit", `${entryVersion} (catalog shows "${entryVersion} @ ${sha.slice(0, 7)}")`);
+} else {
+  fail(
+    "version matches the pinned commit",
+    `entry says "${entryVersion}" but ${sha.slice(0, 7)} is v${pinnedVersion} — rule 4 requires the label to match the pinned code`,
+  );
+}
 
 // Cross-check declared capabilities against the real plugin source.
 if (existsSync(pluginPath)) {

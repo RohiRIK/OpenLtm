@@ -32,6 +32,15 @@ function git(...cmd: string[]): string {
   }).toString().trim();
 }
 
+/** For queries that legitimately fail (e.g. describe on an untagged commit). */
+function gitOptional(...cmd: string[]): string | null {
+  try {
+    return git(...cmd);
+  } catch {
+    return null;
+  }
+}
+
 let sha: string;
 if (target) {
   // Reject anything that is not a plain ref name — this is interpolated into a
@@ -44,7 +53,7 @@ if (target) {
   console.log(`resolved ${target} → ${sha.slice(0, 7)}`);
 } else {
   sha = git("rev-parse", "HEAD");
-  const describe = git("describe", "--tags", "--exact-match", "HEAD");
+  const describe = gitOptional("describe", "--tags", "--exact-match", "HEAD");
   console.log(`resolved HEAD${describe ? ` (${describe})` : " (untagged)"} → ${sha.slice(0, 7)}`);
 }
 
@@ -53,7 +62,17 @@ if (!/^[0-9a-f]{40}$/.test(sha)) {
   process.exit(1);
 }
 
-const version = JSON.parse(readFileSync(join(root, "package.json"), "utf-8")).version as string;
+// The version label must describe the PINNED COMMIT, not the working tree:
+// rule 4 of the catalog admission policy requires the label users see to match
+// the code at the pin.
+let version: string;
+try {
+  const pinned = git("show", `${sha}:package.json`);
+  version = JSON.parse(pinned).version as string;
+} catch {
+  console.error(`Could not read package.json at ${sha.slice(0, 7)} — is that a real commit?`);
+  process.exit(1);
+}
 const before = readFileSync(entryPath, "utf-8");
 
 const after = before
