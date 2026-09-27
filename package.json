@@ -23,7 +23,8 @@
     "catalog:drift": "bun run scripts/catalog-sync.ts --check",
     "test:e2e": "cd graph-app && bunx playwright test",
     "postinstall": "bun run scripts/update-wiring.ts",
-    "check:openclaw": "bun run scripts/check-openclaw-manifest.ts"
+    "check:openclaw": "bun run scripts/check-openclaw-manifest.ts",
+    "check:published": "bun run scripts/check-published-versions.ts"
   },
   "dependencies": {
     "@clack/prompts": "^1.3.0",

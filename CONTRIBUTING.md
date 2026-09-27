@@ -34,6 +34,7 @@ The project is a Bun workspace. The storage engine lives in `packages/openltm-co
 | `bun run dev:server` | Run the graph visualizer against a local DB |
 | `bun run migrate` | Apply schema migrations to a local DB |
 | `bun run verify-version` | Check that all version sources agree |
+| `bun run check:published` | Compare npm's published versions against the repo; fails only if npm holds a version the repo does not (`--strict` to also fail on lag) |
 | `bun run check:monthly` | Run the monthly maintenance sweep: tests, typecheck, version sync, bun audit, and optional local scanners (`--json` for a machine-readable summary) |
 | `bun run bump` | Bump the version across every required file |
 

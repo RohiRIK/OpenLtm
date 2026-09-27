@@ -11,6 +11,9 @@
 - **Adapter tarballs were only publishable from CI.** `workspace:*` was rewritten by a `sed` step inside the release workflow, so `npm pack` anywhere else produced a tarball that failed to install with `EUNSUPPORTEDPROTOCOL`. All three adapters now resolve workspace deps in `prepack` and restore in `postpack`, so a tarball is always correct and the working tree stays clean.
 - **Adapter tarballs could ship a stale bundle.** `npm pack` does not run `prepublishOnly`, so a local pack shipped whatever `dist/` happened to be on disk. `prepack` now builds before packing, which also let the duplicated CI build steps be removed.
 
+### Added
+- **Published-version drift check** — `bun run check:published` compares every workspace package's npm version against the repo, and fails when npm holds a version the repo does not contain. Motivation: `v2.15.0` shipped `@rohirik/openclaw-ltm` without `publishConfig.access`, which only surfaced when publishing by hand well after the tag. It runs in `check:monthly` as an advisory step; `--strict` also fails on ordinary pre-release lag.
+
 ### Docs
 - **New: `docs/12-comparison.md`** — a comparison of OpenLTM against Mem0, Letta, Graphiti/Zep, LangMem, Cognee, and the reference MCP memory server, answering issue #10. Compares them on memory shape, write path, retrieval, forgetting, staleness detection, and auditability, and breaks "self-improvement" into four distinct mechanisms (LLM-as-writer, agent self-edit, structure-first enrichment, signal-driven) with an explicit trade-off table. Includes an honest section on what OpenLTM deliberately does not do. Comparators verified against their own repositories on 2026-09-27.
 - `docs/11-publishing.md` updated with the OpenClaw integration: the target version, the verified SDK resolution route, the plugin shape chosen, the exclusivity tradeoff, and the host-verification result.

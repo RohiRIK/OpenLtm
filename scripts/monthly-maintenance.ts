@@ -46,6 +46,8 @@ const steps: Step[] = [
   { label: "dependency-audit", command: ["bun", "audit"] },
   { label: "catalog-entry", command: ["bun", "run", "catalog:check"] },
   { label: "openclaw-manifest", command: ["bun", "run", "check:openclaw"] },
+  // Advisory: only fails if npm holds a version the repo does not.
+  { label: "published-versions", command: ["bun", "run", "check:published"] },
   { label: "trivy", command: ["trivy", "fs", "--scanners", "vuln", "--severity", "HIGH,CRITICAL", "."], optional: true },
   { label: "trufflehog", command: ["trufflehog", "filesystem", "--exclude-paths", ".trufflehogignore", "."], optional: true },
   {
