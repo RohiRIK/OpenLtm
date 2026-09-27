@@ -1,16 +1,9 @@
-import { recall, learn } from "@rohirik/openltm-core";
+import { buildPrefillContext, deriveProjectFromCwd, learn } from "@rohirik/openltm-core";
 
 type PiAny = any;
 
-const MAX_CONTEXT_MEMORIES = 10;
-
-function formatContextBlock(memories: Array<{ id: number; content: string; category: string }>): string {
-  const lines = memories.map((m) => `- [${m.id}] (${m.category}) ${m.content}`);
-  return "## Prior Knowledge (LTM)\n\n" + lines.join("\n") + "\n";
-}
-
 function projectFromCwd(cwd: string): string {
-  return cwd.replace(/\/$/, "").split("/").pop() ?? "";
+  return deriveProjectFromCwd(cwd);
 }
 
 export function registerHooks(pi: PiAny): void {
@@ -19,12 +12,8 @@ export function registerHooks(pi: PiAny): void {
     try {
       const cwd = String(event?.cwd ?? process.cwd());
       const project = projectFromCwd(cwd);
-      const memories = await recall({ project, limit: MAX_CONTEXT_MEMORIES, sort_by: "relevance" });
-      if (memories.length === 0) return;
-
-      const block = formatContextBlock(
-        memories.map((m) => ({ id: m.id, content: m.content, category: m.category })),
-      );
+      const block = buildPrefillContext({ project, maxMemories: 10, maxLines: 18 });
+      if (!block) return;
       const existing = String(event?.systemPrompt ?? "");
       const parts = existing ? [existing, block] : [block];
       return { systemPrompt: parts.join("\n\n") };

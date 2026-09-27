@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.12.2] — 2026-09-27
+
+### Changed
+- **Installer target registry** — `openltm-core` now drives host installation from a shared `INSTALL_TARGETS` registry, reducing the work to add future agent hosts.
+- **Shared session prefill** — OpenCode, Pi hooks, and the portable Claude bunx hook path now use one core prefill builder, making the "already pre-filled" experience more consistent and honoring a tighter context budget.
+- **Portable Claude bunx hook** — `bunx @rohirik/openltm-core hook --name SessionStart` now emits a real Prior Knowledge block instead of only printing a stub warning; non-session-start hooks remain safe no-ops.
+- **Monthly maintenance command** — added `bun run check:monthly` to run tests, typecheck, version sync, dependency audit, and optional local security scanners in one pass.
+- **Test scope hardening** — root `bun test` now targets the explicit test directories so temporary scripts and Playwright e2e specs do not get executed as accidental Bun tests.
+
+### Fixed
+- **Dependency audit floor** — bumped MCP SDK ranges and tightened root overrides for `hono`, `@hono/node-server`, `body-parser`, and `qs` to clear the current moderate/low audit findings from the monthly maintenance path.
+
 ## [2.12.1] — 2026-09-23
 
 ### Fixed

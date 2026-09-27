@@ -27,6 +27,10 @@ export interface ExplainerInput {
   semanticScore?: number | null;
 }
 
+function roundScore(value: number): number {
+  return Math.round(value * 1_000_000) / 1_000_000;
+}
+
 /** Compute memory temperature from access pattern. */
 export function computeTemperature(
   recallCount: number,
@@ -49,7 +53,7 @@ export function buildExplainer(input: ExplainerInput): RecallExplainer {
   const daysSince = input.last_recalled_at
     ? (Date.now() - new Date(input.last_recalled_at).getTime()) / 86_400_000
     : 90;
-  const recencyBoost = Math.max(0, 1 - daysSince / 90);
+  const recencyBoost = roundScore(Math.max(0, 1 - daysSince / 90));
 
   const ftsRank = input.ftsRank ?? null;
   const semanticScore = input.semanticScore ?? null;
@@ -70,7 +74,7 @@ export function buildExplainer(input: ExplainerInput): RecallExplainer {
     semanticScore,
     importanceBoost,
     recencyBoost,
-    totalScore,
+    totalScore: roundScore(totalScore),
     temperature: computeTemperature(input.recall_count, input.last_recalled_at),
   };
 }

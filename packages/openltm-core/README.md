@@ -22,6 +22,7 @@ idempotent — safe to run multiple times.
 
 - Adds the `ltm` MCP server entry (`bunx @rohirik/openltm-core mcp-serve`)
 - Wires three lifecycle hooks: `SessionStart`, `PreCompact`, `PostEditCheck`
+- `SessionStart` now emits a portable Prior Knowledge prefill directly from `openltm-core`; the other two are safe no-ops unless the full Claude plugin checkout is installed
 
 ### OpenCode (`opencode.json`)
 
@@ -53,6 +54,8 @@ If no target flags are given, agents are auto-detected by probing well-known
 config directories.
 
 ## Programmatic API
+
+Installers are registry-driven under `INSTALL_TARGETS`, so adding a new host now means defining one target entry (detect + install) instead of editing the CLI orchestrator in multiple places.
 
 ```typescript
 import { installClaude, installOpenCode, installPi, detectAgents } from "@rohirik/openltm-core/cli";

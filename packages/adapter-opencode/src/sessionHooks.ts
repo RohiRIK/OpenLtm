@@ -1,17 +1,9 @@
 import type { Hooks } from "@opencode-ai/plugin";
-import { recall } from "@rohirik/openltm-core";
-
-const MAX_CONTEXT_MEMORIES = 10;
-const PRIOR_KNOWLEDGE_HEADER = "## Prior Knowledge (LTM)\n\n";
-
-function formatContextBlock(memories: Array<{ id: number; content: string; category: string }>): string {
-  const lines = memories.map(m => `- [${m.id}] (${m.category}) ${m.content}`);
-  return PRIOR_KNOWLEDGE_HEADER + lines.join("\n") + "\n";
-}
+import { buildPrefillContext, deriveProjectFromCwd, recall } from "@rohirik/openltm-core";
 
 function projectName(path: string): string {
   // Use last path segment as project scope (matching Claude Code convention)
-  return path.replace(/\/$/, "").split("/").pop() ?? path;
+  return deriveProjectFromCwd(path) || path;
 }
 
 export function buildSessionHooks(opts: { dbPath: string; project: string }): Pick<Hooks, "experimental.chat.system.transform" | "experimental.session.compacting"> {
@@ -20,16 +12,8 @@ export function buildSessionHooks(opts: { dbPath: string; project: string }): Pi
   return {
     "experimental.chat.system.transform": async (_ctx, output) => {
       try {
-        const memories = await recall({
-          project,
-          limit: MAX_CONTEXT_MEMORIES,
-          sort_by: "relevance",
-        });
-        if (memories.length > 0) {
-          output.system.push(formatContextBlock(
-            memories.map(m => ({ id: m.id, content: m.content, category: m.category })),
-          ));
-        }
+        const block = buildPrefillContext({ project, maxMemories: 10, maxLines: 18 });
+        if (block) output.system.push(block);
       } catch {
         // Non-fatal — session continues without LTM context
       }

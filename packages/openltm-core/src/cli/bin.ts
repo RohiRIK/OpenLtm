@@ -9,8 +9,8 @@
  *   bunx @rohirik/openltm-core --pi               # Pi only
  *   bunx @rohirik/openltm-core --dry-run --claude # preview without writing
  *
- *   bunx @rohirik/openltm-core hook --name <hookName>  # lifecycle hook stub
- *   bunx @rohirik/openltm-core mcp-serve               # MCP server (future)
+ *   bunx @rohirik/openltm-core hook --name <hookName>  # lifecycle hook entrypoint
+ *   bunx @rohirik/openltm-core mcp-serve               # MCP server
  */
 import { runInstallCli } from "./install.js";
 import { runHook } from "./hook.js";
@@ -32,7 +32,7 @@ function printHelp(): void {
       "  Sub-commands:",
       "    memory <cmd>          Read/write memories from the shell (learn, recall,",
       "                          forget, relate, context) — run 'memory --help'",
-      "    hook --name <event>   Lifecycle hook stub (for Claude Code hook wiring)",
+      "    hook --name <event>   Lifecycle hook entrypoint (SessionStart prefill + safe no-ops)",
       "    mcp-serve             Start the LTM MCP server (stdio)",
       "",
       "  If no target flags are given, agents are auto-detected.",
@@ -63,7 +63,7 @@ async function main(): Promise<void> {
       process.stderr.write("  ltm hook: missing --name argument\n");
       process.exit(1);
     }
-    runHook(hookName);
+    await runHook(hookName);
     return;
   }
 

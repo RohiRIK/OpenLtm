@@ -1,7 +1,5 @@
 [test]
 timeout = 30000
 
-# Exclude graph-app Playwright tests from bun test (use bun run test:e2e instead)
-# Bun does not support an "exclude" key in bunfig.toml — the exclusion is handled
-# via --path-ignore-patterns in the package.json "test" script.
-# Always use `bun run test` (not bare `bun test`) to pick up the ignore pattern.
+# Playwright e2e specs live under graph-app/e2e/*.pw.ts so bare `bun test`
+# ignores them automatically. Run `bun run test:e2e` for the browser suite.

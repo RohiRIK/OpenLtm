@@ -11,11 +11,9 @@
  */
 import * as clack from "@clack/prompts";
 import { detectAgents } from "./detect.js";
-import { installClaude } from "./claude.js";
-import { installOpenCode } from "./opencode.js";
-import { installPi } from "./pi.js";
 import type { CliInstallOptions, CliInstallResult, InstallStep, InstallResult } from "./types.js";
 import { InstallTarget } from "./types.js";
+import { INSTALL_TARGETS } from "./targets.js";
 
 // ── Known targets set (legacy validation) ────────────────────────────────────
 
@@ -124,53 +122,19 @@ export async function runInstallCli(opts: CliRunOpts): Promise<CliRunResult> {
 
   const results: InstallResult[] = [];
 
-  // Claude
-  if (targets.claude) {
+  for (const target of INSTALL_TARGETS) {
+    if (!targets[target.id]) continue;
     const s = silent ? null : clack.spinner();
-    if (s) s.start("Installing into Claude Code…");
-    const r = await installClaude({ homedir, dryRun });
+    if (s) s.start(`Installing into ${target.label}…`);
+    const r = await target.install({ homedir, dryRun });
     results.push(r);
     if (s) {
       if (r.status === "installed") {
-        s.stop(`Claude Code: installed${dryRun ? " (dry-run)" : ""}`);
+        s.stop(`${target.label}: installed${dryRun ? " (dry-run)" : ""}`);
       } else if (r.status === "skipped") {
-        s.stop("Claude Code: already configured (skipped)");
+        s.stop(`${target.label}: already configured (skipped)`);
       } else {
-        s.stop(`Claude Code: error — ${r.detail ?? "unknown error"}`);
-      }
-    }
-  }
-
-  // OpenCode
-  if (targets.opencode) {
-    const s = silent ? null : clack.spinner();
-    if (s) s.start("Installing into OpenCode…");
-    const r = await installOpenCode({ homedir, dryRun });
-    results.push(r);
-    if (s) {
-      if (r.status === "installed") {
-        s.stop(`OpenCode: installed${dryRun ? " (dry-run)" : ""}`);
-      } else if (r.status === "skipped") {
-        s.stop("OpenCode: already configured (skipped)");
-      } else {
-        s.stop(`OpenCode: error — ${r.detail ?? "unknown error"}`);
-      }
-    }
-  }
-
-  // Pi
-  if (targets.pi) {
-    const s = silent ? null : clack.spinner();
-    if (s) s.start("Installing into Pi…");
-    const r = await installPi({ dryRun });
-    results.push(r);
-    if (s) {
-      if (r.status === "installed") {
-        s.stop(`Pi: installed${dryRun ? " (dry-run)" : ""}`);
-      } else if (r.status === "skipped") {
-        s.stop("Pi: already configured (skipped)");
-      } else {
-        s.stop(`Pi: error — ${r.detail ?? "unknown error"}`);
+        s.stop(`${target.label}: error — ${r.detail ?? "unknown error"}`);
       }
     }
   }

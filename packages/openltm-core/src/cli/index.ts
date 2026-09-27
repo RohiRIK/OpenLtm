@@ -20,3 +20,5 @@ export { detectAgents } from "./detect.js";
 export { installClaude } from "./claude.js";
 export { installOpenCode } from "./opencode.js";
 export { installPi } from "./pi.js";
+export { INSTALL_TARGETS, getInstallTarget } from "./targets.js";
+export type { InstallTargetDefinition } from "./targets.js";

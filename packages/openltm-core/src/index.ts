@@ -43,6 +43,10 @@ export { categorise } from "./recall/categorise.js";
 export { buildExplainer, computeTemperature } from "./recall/explainer.js";
 export type { MemoryTemperature, RecallExplainer, ExplainerInput } from "./recall/explainer.js";
 
+// Session prefill helpers
+export { buildPrefillContext, deriveProjectFromCwd, selectPrefillMemories } from "./prefill.js";
+export type { PrefillOptions, PrefillSelection } from "./prefill.js";
+
 // Embedding providers
 export * from "./providers/index.js";
 export { WriteQueue, writeQueue } from "./lib/writeQueue.js";

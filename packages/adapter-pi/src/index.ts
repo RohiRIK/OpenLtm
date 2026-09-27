@@ -42,7 +42,7 @@ function findBun(): string | null {
   return null;
 }
 
-function findMcpServer(): string | null {
+function findMcpServer(): { script: string; args: string[] } | null {
   // 1. Plugin cache — newest version first (Claude Code users)
   const cacheBase = join(homedir(), ".claude", "plugins", "cache", "ltm", "ltm");
   if (existsSync(cacheBase)) {
@@ -52,19 +52,19 @@ function findMcpServer(): string | null {
         .sort()
         .reverse();
       for (const v of versions) {
-        const s = join(cacheBase, v, "src", "mcp-server.ts");
-        if (existsSync(s)) return s;
+        const script = join(cacheBase, v, "src", "mcp-server.ts");
+        if (existsSync(script)) return { script, args: [] };
       }
     } catch {
       // continue to next strategy
     }
   }
-  // 2. openltm-core package (if mcp-server is added in a future version)
+  // 2. openltm-core package — run the packaged CLI entrypoint with mcp-serve
   try {
     const req = createRequire(import.meta.url);
     const pkgJson = req.resolve("@rohirik/openltm-core/package.json");
-    const script = resolve(dirname(pkgJson), "src", "mcp-server.ts");
-    if (existsSync(script)) return script;
+    const script = resolve(dirname(pkgJson), "src", "cli", "bin.ts");
+    if (existsSync(script)) return { script, args: ["mcp-serve"] };
   } catch {
     // not available
   }
@@ -89,6 +89,7 @@ class LtmMcpClient {
   constructor(
     private readonly runtime: string,
     private readonly script: string,
+    private readonly args: string[] = [],
   ) {}
 
   start(): void {
@@ -96,7 +97,7 @@ class LtmMcpClient {
     const depth = parseInt(process.env[BRIDGE_DEPTH_ENV] ?? "0", 10);
     const env = { ...process.env, [BRIDGE_DEPTH_ENV]: String(depth + 1) };
 
-    this.child = spawn(this.runtime, [this.script], { stdio: ["pipe", "pipe", "pipe"], env });
+    this.child = spawn(this.runtime, [this.script, ...this.args], { stdio: ["pipe", "pipe", "pipe"], env });
 
     this.child.stdout?.on("data", (chunk: Buffer) => {
       this.buffer += chunk.toString("utf-8");
@@ -184,6 +185,33 @@ class LtmMcpClient {
 
 // ── Extension entry point ─────────────────────────────────────────────────────
 
+function formatContextPayload(project: string, raw: string): string {
+  try {
+    const parsed = JSON.parse(raw) as {
+      globals?: Array<{ id: number; content: string }>;
+      scoped?: Array<{ id: number; content: string }>;
+    };
+    const globals = Array.isArray(parsed.globals) ? parsed.globals : [];
+    const scoped = Array.isArray(parsed.scoped) ? parsed.scoped : [];
+    if (globals.length === 0 && scoped.length === 0) return "";
+
+    const lines: string[] = ["## Prior Knowledge (LTM)", ""];
+    if (globals.length > 0) {
+      lines.push("Global:");
+      for (const m of globals.slice(0, 3)) lines.push(`- [${m.id}] ${String(m.content).replace(/\s+/g, " ").trim()}`);
+      lines.push("");
+    }
+    if (scoped.length > 0) {
+      lines.push(`Project (${project}):`);
+      for (const m of scoped.slice(0, 7)) lines.push(`- [${m.id}] ${String(m.content).replace(/\s+/g, " ").trim()}`);
+      lines.push("");
+    }
+    return lines.join("\n").trimEnd() + "\n";
+  } catch {
+    return "";
+  }
+}
+
 export default function ltmExtension(pi: unknown): void {
   const p = pi as {
     registerTool: (def: {
@@ -198,19 +226,21 @@ export default function ltmExtension(pi: unknown): void {
   if (parseInt(process.env[BRIDGE_DEPTH_ENV] ?? "0", 10) > 0) return;
 
   const bun = findBun();
-  const script = findMcpServer();
-  if (!bun || !script) return; // degrade gracefully — no bun or server found
+  const server = findMcpServer();
+  if (!bun || !server) return; // degrade gracefully — no bun or server found
 
-  const client = new LtmMcpClient(bun, script);
+  const client = new LtmMcpClient(bun, server.script, server.args);
   client.start();
 
   // Bootstrap runs async — tools are registered once handshake completes.
   // Pi allows registerTool after extension load; before_agent_start awaits ready.
+  const toolNames = new Set<string>();
   const ready = (async () => {
     await client.initialize();
     const tools = await client.listTools();
     for (const tool of tools) {
       const name = tool.name;
+      toolNames.add(name);
       p.registerTool({
         name,
         label: name,
@@ -231,9 +261,15 @@ export default function ltmExtension(pi: unknown): void {
     try {
       const cwd = String(ev?.cwd ?? process.cwd());
       const project = cwd.replace(/\/$/, "").split("/").pop() ?? "";
-      const text = await client.callTool("ltm_recall", { project, limit: 8, sort_by: "relevance" });
-      if (!text || text === "[]") return;
-      const block = `## Prior Knowledge (LTM)\n\n${text}\n`;
+      const toolName = toolNames.has("context") ? "context" : (toolNames.has("recall") ? "recall" : "");
+      if (!toolName) return;
+      const text = toolName === "context"
+        ? await client.callTool("context", { project })
+        : await client.callTool("recall", { project, limit: 8, sort_by: "relevance" });
+      const block = toolName === "context"
+        ? formatContextPayload(project, text)
+        : `## Prior Knowledge (LTM)\n\n${text}\n`;
+      if (!block.trim()) return;
       const existing = String(ev?.systemPrompt ?? "");
       return { systemPrompt: existing ? `${existing}\n\n${block}` : block };
     } catch {
