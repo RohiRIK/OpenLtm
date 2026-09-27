@@ -52,7 +52,7 @@ jobs:
       - name: Resolve workspace dependencies
         run: |
           VERSION=$(node -p "require('./package.json').version")
-          for f in packages/adapter-opencode/package.json packages/adapter-pi/package.json; do
+          for f in packages/adapter-opencode/package.json packages/adapter-pi/package.json packages/adapter-openclaw/package.json; do
             sed -i "s|\"workspace:\*\"|\"^${VERSION}\"|g" "$f"
           done
 
@@ -72,4 +72,12 @@ jobs:
 
       - name: Publish pi extension
         working-directory: packages/adapter-pi
+        run: npm publish --provenance
+
+      - name: Build openclaw extension
+        working-directory: packages/adapter-openclaw
+        run: bun run build
+
+      - name: Publish openclaw extension
+        working-directory: packages/adapter-openclaw
         run: npm publish --provenance

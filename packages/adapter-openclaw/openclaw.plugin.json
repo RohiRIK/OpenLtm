@@ -1,0 +1,80 @@
+{
+  "id": "openltm",
+  "name": "OpenLTM Memory",
+  "description": "Long-term memory for OpenClaw agents, stored in a local SQLite database. FTS5 search with optional vector recall, importance-weighted decay, a memory graph, and a shared database with the Claude Code, OpenCode, and Pi plugins.",
+  "categories": ["memory"],
+  "activation": {
+    "onStartup": true
+  },
+  "contracts": {
+    "tools": [
+      "openltm_recall",
+      "openltm_learn",
+      "openltm_forget",
+      "openltm_context",
+      "openltm_relate",
+      "openltm_graph",
+      "openltm_brain_stats",
+      "openltm_stale"
+    ]
+  },
+  "toolMetadata": {
+    "openltm_forget": {
+      "sideEffecting": true
+    },
+    "openltm_learn": {
+      "sideEffecting": true
+    },
+    "openltm_relate": {
+      "sideEffecting": true
+    }
+  },
+  "uiHints": {
+    "autoRecall": {
+      "label": "Auto-Recall",
+      "help": "Inject a compact Prior Knowledge block into the system prompt at the start of each turn"
+    },
+    "prefillLines": {
+      "label": "Prefill Line Budget",
+      "help": "Maximum lines in the injected Prior Knowledge block",
+      "advanced": true,
+      "placeholder": "18"
+    },
+    "dbPath": {
+      "label": "Database Path",
+      "help": "Override the shared openltm.db location. Leave blank to use the default.",
+      "advanced": true
+    }
+  },
+  "configGroups": [
+    {
+      "id": "memory-context",
+      "title": "Memory context",
+      "order": 10,
+      "properties": ["autoRecall", "prefillLines"]
+    },
+    {
+      "id": "storage",
+      "title": "Storage",
+      "order": 20,
+      "properties": ["dbPath"]
+    }
+  ],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "autoRecall": {
+        "type": "boolean"
+      },
+      "prefillLines": {
+        "type": "number",
+        "minimum": 4,
+        "maximum": 200
+      },
+      "dbPath": {
+        "type": "string"
+      }
+    }
+  }
+}

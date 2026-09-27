@@ -110,6 +110,12 @@ export const VERSION_TARGETS: VersionTarget[] = [
     patches: [versionJson("version field")],
   },
   {
+    file: "packages/adapter-openclaw/package.json",
+    label: "packages/adapter-openclaw",
+    required: true,
+    patches: [versionJson("version field")],
+  },
+  {
     file: "hermes/openltm_hermes/plugin.yaml",
     label: "hermes plugin.yaml",
     patches: [

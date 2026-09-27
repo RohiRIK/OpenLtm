@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.15.0] — 2026-09-27
+
+### Added
+- **OpenClaw plugin package** — `packages/adapter-openclaw` registers OpenLTM's eight memory tools with an OpenClaw host and injects a Prior Knowledge block each turn via `registerMemoryPromptSupplement`. It shares the same SQLite database as the Claude Code, OpenCode, and Pi plugins, and ships `openclaw.plugin.json` (categories `["memory"]`, `contracts.tools`, `toolMetadata`, `configSchema`). Published as `@rohirik/openclaw-ltm` on tag, pinned to `openclaw >= 2026.9.6` through an optional peer dependency.
+- **OpenClaw manifest checker** — `bun run check:openclaw` validates the manifest against OpenClaw's real loader rules: `configSchema` is required, 1–3 categories from the published taxonomy, the `kind` enum, `uiHints`/`configGroups` cross-referenced against the schema, every `contracts.tools` entry actually registered (and nothing registered undeclared), write tools flagged `sideEffecting`, and `compat`/`minHostVersion`/peer ranges agreeing. Wired into `check:monthly`.
+- **OpenClaw adapter tests** — 10 tests drive the plugin's `register()` against a fake host API, covering tool registration, manifest/registration agreement, learn↔recall round-trip, unknown-category rejection, error surfacing, stale listing, and the auto-recall toggle.
+
+### Docs
+- `docs/11-publishing.md` updated with the OpenClaw integration: the target version, the verified SDK resolution route, the plugin shape chosen, and the exclusivity tradeoff.
+
 ## [2.14.3] — 2026-09-27
 
 ### Added

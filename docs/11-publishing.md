@@ -90,7 +90,7 @@ Docs: <https://docs.openclaw.ai> · source: <https://github.com/openclaw/opencla
 
 There are three viable routes, in increasing order of effort and payoff.
 
-### 4a. Install as an external npm package (lowest effort)
+### 4a. Install as an external npm package
 
 OpenClaw resolves bare package names from npm, and we are already published:
 
@@ -111,24 +111,54 @@ an entry in `package.json`:
 }
 ```
 
-**This is the blocker today:** `@rohirik/openltm-core` is a *library* with a CLI
-and an MCP server. It is not an OpenClaw plugin and does not declare an
-`openclaw` block, so this route needs a thin adapter package.
+**This was the blocker:** `@rohirik/openltm-core` is a *library* with a CLI and
+an MCP server, not an OpenClaw plugin, and it does not declare an `openclaw`
+block. The adapter package in §4b is what satisfies it.
 
-### 4b. Native OpenClaw memory plugin (the real integration)
+### 4b. Native OpenClaw plugin — BUILT (`packages/adapter-openclaw`)
 
-Add a small package (e.g. `packages/adapter-openclaw`) that:
+Target pinned to **`openclaw@2026.9.6`** (latest at time of writing).
 
-- ships `openclaw.plugin.json` with `id`, `name`, `description`,
-  `categories: ["memory"]`, `contracts.tools`, `activation`, `configSchema`
-- exports a `definePluginEntry` from `openclaw/plugin-sdk/plugin-entry`
-- registers the 8 tools and the turn/session hooks
-- delegates storage to `@rohirik/openltm-core`
+**Feasibility, verified rather than assumed:** `@openclaw/plugin-sdk` is a
+workspace package and is *not* published to npm (404), so an external plugin
+cannot import it directly. It does not need to: the published `openclaw` tarball
+contains `dist/plugin-sdk/plugin-entry.js` and its `exports` map includes
+`./plugin-sdk/plugin-entry`. Plugins import
+`openclaw/plugin-sdk/plugin-entry` and declare `openclaw` as an **optional peer
+dependency**, which is what the adapter does.
 
-OpenClaw already ships memory plugins of this shape (`memory-wiki`,
-`memory-lancedb`), so the pattern is established. Requirements: Node 24.16+ or
-26.1+, npm/pnpm, TypeScript ESM. **All plugin APIs are experimental** — we would
-pin the host version we test against and declare it in `compat`.
+**Shape chosen: a tool plugin, not a memory-slot plugin.** OpenClaw's memory slot
+is exclusive and its runtime contract is *file/line* oriented — `MemorySearchResult`
+carries `path`, `startLine`, `endLine`, and `snippet`. OpenLTM stores rows with
+integer ids. Claiming the slot would mean fabricating file paths for every
+memory, which would be dishonest data modelling and would fight OpenClaw's own
+memory plugin. The adapter therefore:
+
+- declares `categories: ["memory"]` so it is discoverable on the memory shelf
+- omits `kind: "memory"`, so it does **not** claim the exclusive slot
+- registers the eight `openltm_*` tools
+- injects Prior Knowledge each turn via `registerMemoryPromptSupplement`
+
+This is the shape their own quickstart documents, and it composes with
+OpenClaw's built-in memory rather than displacing it.
+
+Files:
+
+- `packages/adapter-openclaw/src/index.ts` — `definePluginEntry` + tool registration
+- `packages/adapter-openclaw/openclaw.plugin.json` — manifest
+- `packages/adapter-openclaw/types/openclaw-plugin-sdk.d.ts` — ambient SDK types,
+  needed because the host package is not installable in CI
+- `packages/adapter-openclaw/src/__tests__/plugin.test.ts` — 10 tests
+
+Verified: `bun run check:openclaw` (17 checks against their real loader rules),
+10 adapter tests, typecheck, and a clean esbuild bundle that keeps both
+`openclaw` and `@rohirik/openltm-core` external (a bundled copy of core would mean
+a second DB singleton).
+
+**Not verified:** the plugin has never been loaded by a real OpenClaw host —
+installing OpenClaw is an owner decision. The manifest is validated against
+OpenClaw's actual loader source, and the registration logic is tested, but
+end-to-end host loading is untested.
 
 ### 4c. Hosted marketplace feed (later)
 
@@ -149,23 +179,16 @@ reading bundle metadata — the docs explicitly say such bundles are *not*
 validated against the `openclaw.plugin.json` schema. For a memory provider we
 should not rely on it; route 4b is the supported path.
 
-### Recommended order
+### Recommended next step
 
-1. Ship 4b (`packages/adapter-openclaw`) with the same shape as
-   `adapter-pi` / `adapter-opencode`, reusing `buildPrefillContext` and
-   `rankRecallResults` from core.
-2. Publish it to npm; route 4a then works out of the box.
-3. Optionally add a `marketplace.json` (4c) once the package is proven.
+The adapter is built and packaged. Once OpenClaw is installed locally, the
+remaining step is host-level verification:
 
-### Open questions to settle before building 4b
+```bash
+openclaw plugins install @rohirik/openclaw-ltm
+openclaw plugins list --json
+# then exercise recall/learn inside a live OpenClaw session
+```
 
-- Which `openclaw` host version and `pluginApi` range to pin and test against.
-- Whether OpenClaw's memory surface expects a dedicated capability kind, or
-  whether a plain tool plugin plus hooks is sufficient.
-- Whether the existing MCP server route (`openclaw plugins install` an MCP
-  server) is an acceptable lower-effort alternative to a native plugin.
-
-I did not write any OpenClaw code yet: the manifest schema and the SDK entry
-contract are large and version-pinned, and guessing them would produce a
-manifest that fails their validator. Point me at the specific version you want
-to target and I will build against its documented schema.
+Optionally add a `marketplace.json` (§4c) once the package is proven in a real
+host.
