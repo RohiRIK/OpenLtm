@@ -1,7 +1,7 @@
 {
   "name": "openltm",
   "description": "OpenLTM — Long-Term Memory for AI coding agents: semantic search, context injection, session learning",
-  "version": "2.14.2",
+  "version": "2.14.3",
   "author": {
     "name": "RohiRIK"
   },

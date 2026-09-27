@@ -15,6 +15,7 @@ Read top to bottom for a guided path, or jump to what you need.
 | 08 | [MCP Tools](08-mcp-tools.md) | The `mcp__plugin_openltm_memory__*` tool API |
 | 09 | [Troubleshooting](09-troubleshooting.md) | Diagnose and fix common issues |
 | 10 | [Hermes Integration](10-hermes-plugin.md) | Install/run OpenLTM as the Hermes memory provider |
+| 11 | [External Distribution](11-publishing.md) | Publishing to npm, the Claude marketplace, the Hermes catalog, and OpenClaw |
 
 **Top-level docs** live at the repository root: [README](../README.md) · [Changelog](../CHANGELOG.md) · [Contributing](../CONTRIBUTING.md).
 

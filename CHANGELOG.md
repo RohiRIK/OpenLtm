@@ -2,12 +2,18 @@
 
 ## [2.14.2] — 2026-09-27
 
-### Fixed
-- **Published npm package shipped without its migrations** — `migrations/` lived only at the repo root, so a published `@rohirik/openltm-core` tarball resolved `node_modules/migrations`, found zero migration files, and produced a column-incomplete database. A fresh `bunx @rohirik/openltm-core memory learn` failed with `no such column: decay_score` (and `workspace_id` on the context path). `migrations/` is now vendored into the package and `getMigrationsDir()` prefers the package-local copy, falling back to the monorepo root only in development. Verified by installing the packed tarball and running learn/recall/context end to end.
-- **Hermes plugin version drift** — `hermes/openltm_hermes/plugin.yaml` was pinned at `1.0.0` and was not covered by any version check. It is now a tracked version reference, so the release tooling bumps and verifies it.
-
 ### Added
+- **Hermes Plugin Catalog submission package** — `hermes/plugin-catalog/openltm.yaml`, modelled on the closest existing catalog entry (a native Python memory provider), declaring all 8 `openltm_*` tools and the 7 hooks the provider actually implements. `hermes/plugin-catalog/README.md` documents the submission steps and the requirements checklist.
+- **Catalog tooling** — `bun run catalog:check` validates the entry (schema fields, 40-hex SHA, SHA reachability and ancestry, `subdir` contents, version match) and cross-checks every declared tool and hook against the plugin source, so a renamed tool fails locally instead of in a maintainer's review queue. `bun run catalog:sync` repoints the SHA and version; `bun run catalog:drift` fails when the pin is stale. Wired into `check:monthly`.
 - **Packaging regression tests** — `packages/openltm-core/src/__tests__/packaging.test.ts` asserts the package-local migration copy is complete and byte-identical to the repo root, that the packaged path is preferred, and that the manifest does not exclude migrations. This is the class of bug that only appears after publish.
+- **External distribution guide** — `docs/11-publishing.md` records the state of every external channel (npm, Claude marketplace, Hermes catalog, OpenClaw) and the remaining work for each.
+
+### Docs
+- `docs/11-publishing.md` added to the documentation index.
+
+### Fixed
+- **Published npm package shipped without its migrations** — `migrations/` lived only at the repo root, so a published `@rohirik/openltm-core` tarball resolved `node_modules/migrations`, found zero migration files, and produced a column-incomplete database. A fresh `bunx @rohirik/openltm-core memory learn` failed with `no such column: decay_score` (and `workspace_id` on the context path). `migrations/` is now vendored into the package and `getMigrationsDir()` prefers the package-local copy, falling back to the monorepo root only in development. Verified by installing the packed tarball and running learn/recall/context end to end, and re-verified against the live registry at 2.14.2.
+- **Hermes plugin version drift** — `hermes/openltm_hermes/plugin.yaml` was pinned at `1.0.0` and was not covered by any version check. It is now a tracked version reference, so the release tooling bumps and verifies it.
 
 ## [2.14.0] — 2026-09-27
 
