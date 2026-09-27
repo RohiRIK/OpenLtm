@@ -187,6 +187,7 @@ Full documentation index: [`docs/`](docs/README.md).
 | Tune decay, injection, embedding behavior | [Configuration](docs/04-configuration.md) |
 | See how it works under the hood | [How It Works](docs/02-how-it-works.md) · [Architecture](docs/03-architecture.md) |
 | Understand the schema and data model | [DB Spec](docs/internal/DB-SPEC.md) |
+| **Compare against other memory tools** | **[Comparison](docs/12-comparison.md)** |
 | See all hooks, skills, and MCP tools | [Hooks](docs/06-hooks.md) · [Skills](docs/07-skills.md) · [MCP Tools](docs/08-mcp-tools.md) |
 | Fix a problem | [Troubleshooting](docs/09-troubleshooting.md) |
 | See the product vision and where it's going | [PRD](docs/internal/PRD.md) · [Roadmap](docs/internal/ROADMAP.md) |

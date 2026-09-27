@@ -12,6 +12,7 @@
 - **Adapter tarballs could ship a stale bundle.** `npm pack` does not run `prepublishOnly`, so a local pack shipped whatever `dist/` happened to be on disk. `prepack` now builds before packing, which also let the duplicated CI build steps be removed.
 
 ### Docs
+- **New: `docs/12-comparison.md`** — a comparison of OpenLTM against Mem0, Letta, Graphiti/Zep, LangMem, Cognee, and the reference MCP memory server, answering issue #10. Compares them on memory shape, write path, retrieval, forgetting, staleness detection, and auditability, and breaks "self-improvement" into four distinct mechanisms (LLM-as-writer, agent self-edit, structure-first enrichment, signal-driven) with an explicit trade-off table. Includes an honest section on what OpenLTM deliberately does not do. Comparators verified against their own repositories on 2026-09-27.
 - `docs/11-publishing.md` updated with the OpenClaw integration: the target version, the verified SDK resolution route, the plugin shape chosen, the exclusivity tradeoff, and the host-verification result.
 
 ### Added
