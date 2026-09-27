@@ -109,6 +109,20 @@ export const VERSION_TARGETS: VersionTarget[] = [
     required: true,
     patches: [versionJson("version field")],
   },
+  {
+    file: "hermes/openltm_hermes/plugin.yaml",
+    label: "hermes plugin.yaml",
+    patches: [
+      {
+        // YAML style: `version: "2.14.1"` or `version: 2.14.1`. Only the
+        // `version` key is touched — the plugin `name` must be left alone.
+        pattern: /^version:\s*"?[0-9]+\.[0-9]+\.[0-9]+"?/gm,
+        replace: (match, newVersion) => `version: "${newVersion}"`,
+        extract: (match) => /version:\s*"?([0-9]+\.[0-9]+\.[0-9]+)"?/.exec(match)?.[1] ?? match,
+        describe: "version field",
+      },
+    ],
+  },
 ];
 
 /** Count total version occurrences this list expects to manage. */

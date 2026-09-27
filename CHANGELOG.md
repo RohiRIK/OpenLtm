@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.14.2] — 2026-09-27
+
+### Fixed
+- **Published npm package shipped without its migrations** — `migrations/` lived only at the repo root, so a published `@rohirik/openltm-core` tarball resolved `node_modules/migrations`, found zero migration files, and produced a column-incomplete database. A fresh `bunx @rohirik/openltm-core memory learn` failed with `no such column: decay_score` (and `workspace_id` on the context path). `migrations/` is now vendored into the package and `getMigrationsDir()` prefers the package-local copy, falling back to the monorepo root only in development. Verified by installing the packed tarball and running learn/recall/context end to end.
+- **Hermes plugin version drift** — `hermes/openltm_hermes/plugin.yaml` was pinned at `1.0.0` and was not covered by any version check. It is now a tracked version reference, so the release tooling bumps and verifies it.
+
+### Added
+- **Packaging regression tests** — `packages/openltm-core/src/__tests__/packaging.test.ts` asserts the package-local migration copy is complete and byte-identical to the repo root, that the packaged path is preferred, and that the manifest does not exclude migrations. This is the class of bug that only appears after publish.
+
 ## [2.14.0] — 2026-09-27
 
 ### Added
