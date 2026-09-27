@@ -12,7 +12,8 @@
     "dist",
     "src",
     "openclaw.plugin.json",
-    "assets"
+    "assets",
+    "README.md"
   ],
   "keywords": [
     "openclaw",

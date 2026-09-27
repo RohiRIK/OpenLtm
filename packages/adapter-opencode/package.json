@@ -10,7 +10,7 @@
   "scripts": {
     "typecheck": "bunx tsc --noEmit",
     "test": "bun test",
-    "prepack": "bun run build && bun run ../../scripts/resolve-workspace-deps.ts rewrite package.json",
+    "prepack": "bun run ../../scripts/resolve-workspace-deps.ts rewrite package.json",
     "postpack": "bun run ../../scripts/resolve-workspace-deps.ts restore package.json"
   },
   "repository": {
