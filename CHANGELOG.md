@@ -1,6 +1,6 @@
 # Changelog
 
-## [2.14.2] — 2026-09-27
+## [2.14.3] — 2026-09-27
 
 ### Added
 - **Hermes Plugin Catalog submission package** — `hermes/plugin-catalog/openltm.yaml`, modelled on the closest existing catalog entry (a native Python memory provider), declaring all 8 `openltm_*` tools and the 7 hooks the provider actually implements. `hermes/plugin-catalog/README.md` documents the submission steps and the requirements checklist.
