@@ -14,7 +14,6 @@ from __future__ import annotations
 import json
 import logging
 import struct
-from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -174,44 +173,42 @@ class OllamaProvider(EmbeddingProvider):
 
 # ─── Discovery ───────────────────────────────────────────────────────────────
 
-def detect_provider(hermes_home: str) -> Optional[EmbeddingProvider]:
-    """Auto-detect the best available embedding provider.
+def detect_provider(embedder: str = "ollama") -> Optional[EmbeddingProvider]:
+    """Build the embedding backend chosen in openltm.json (``embedder``).
 
-    Priority: Gemini > OpenAI > Ollama (based on configured API keys).
+    Cloud backends are never picked up from ambient API keys: ``gemini`` /
+    ``openai`` must be selected explicitly (and their key must be set),
+    ``ollama`` (default) probes the local server, ``none`` disables vectors.
     """
     import os
 
-    # Try Gemini first (check mem0.json for API key)
-    gemini_key = os.environ.get("GEMINI_API_KEY")
-    if not gemini_key:
-        mem0_path = Path(hermes_home) / "mem0.json"
-        if mem0_path.exists():
-            try:
-                cfg = json.loads(mem0_path.read_text())
-                gemini_key = cfg.get("llm_api_key", "")
-            except Exception:
-                pass
-    if gemini_key:
-        logger.info("Detected Gemini embedding provider")
-        return GeminiProvider(gemini_key)
+    if embedder == "gemini":
+        key = os.environ.get("GEMINI_API_KEY")
+        if key:
+            return GeminiProvider(key)
+        logger.warning("embedder=gemini but GEMINI_API_KEY is not set — vector search disabled")
+        return None
 
-    # Try OpenAI
-    openai_key = os.environ.get("OPENAI_API_KEY")
-    if openai_key:
-        logger.info("Detected OpenAI embedding provider")
-        return OpenAIProvider(openai_key)
+    if embedder == "openai":
+        key = os.environ.get("OPENAI_API_KEY")
+        if key:
+            return OpenAIProvider(key)
+        logger.warning("embedder=openai but OPENAI_API_KEY is not set — vector search disabled")
+        return None
 
-    # Try Ollama
-    try:
-        import urllib.request
-        req = urllib.request.Request("http://localhost:11434/api/tags")
-        with urllib.request.urlopen(req, timeout=2) as resp:
-            logger.info("Detected Ollama embedding provider")
-            return OllamaProvider()
-    except Exception:
-        pass
+    if embedder == "ollama":
+        try:
+            import urllib.request
+            req = urllib.request.Request("http://localhost:11434/api/tags")
+            with urllib.request.urlopen(req, timeout=2) as resp:
+                logger.info("Detected Ollama embedding provider")
+                return OllamaProvider()
+        except Exception:
+            logger.info("Ollama not reachable — vector search disabled")
+            return None
 
-    logger.info("No embedding provider available — vector search disabled")
+    if embedder != "none":
+        logger.warning("Unknown embedder %r — vector search disabled", embedder)
     return None
 
 
