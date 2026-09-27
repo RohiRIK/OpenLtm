@@ -14,7 +14,11 @@
 ### Docs
 - `docs/11-publishing.md` updated with the OpenClaw integration: the target version, the verified SDK resolution route, the plugin shape chosen, the exclusivity tradeoff, and the host-verification result.
 
+### Added
+- **ClawHub catalog icon** — `packages/adapter-openclaw/assets/icon.png`, a 512×512 PNG (9.1 KB) shipped through the package `files` allowlist so the ClawHub catalog shows OpenLTM artwork instead of the generic memory-category glyph.
+
 ### Verified
+- **The OpenClaw plugin passes the ClawHub plugin inspector with zero findings** — `clawhub package validate` reports `PASS`, 0 breakages, 0 warnings; `clawhub package publish --dry-run` resolves the package as `@rohirik/openclaw-ltm` 2.15.0, auto-detects the source commit, reads the compat ranges, and lists 6 files (122 KB) including the icon. Only `clawhub login` remains, which is a human account action.
 - **The OpenClaw plugin loads in a real host.** Installed into `openclaw@2026.9.6` (Node 26.8.1) via `openclaw plugins install`; `openclaw plugins list --json` reports `openltm | status: loaded | version: 2.15.0`. Loading forced a design correction: OpenClaw runs on Node and `@rohirik/openltm-core` imports `bun:sqlite`, so a static import failed with `ERR_UNSUPPORTED_ESM_URL_SCHEME`. The adapter now never imports core and instead spawns the core MCP server as a Bun child over stdio JSON-RPC, mirroring the Pi adapter.
 
 ## [2.14.3] — 2026-09-27

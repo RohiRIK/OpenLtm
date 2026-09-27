@@ -181,8 +181,8 @@ should not rely on it; route 4b is the supported path.
 
 ### Recommended next step
 
-The adapter is built and packaged. Once OpenClaw is installed locally, the
-remaining step is host-level verification:
+The adapter is built and packaged, and loads in a real host. Host-level
+verification:
 
 ```bash
 openclaw plugins install @rohirik/openclaw-ltm
@@ -190,5 +190,104 @@ openclaw plugins list --json
 # then exercise recall/learn inside a live OpenClaw session
 ```
 
-Optionally add a `marketplace.json` (§4c) once the package is proven in a real
-host.
+### 4c. Two distinct marketplaces
+
+OpenClaw has two separate things people call "the marketplace". They are not the
+same, and only one is self-serve.
+
+**(i) ClawHub — the built-in, signed feed.** This is the official one.
+`openclaw plugins install clawhub:<package>` resolves against a DSSE-signed
+hosted feed, and the docs note OpenClaw will only bundle ClawHub's production
+public key "after ClawHub generates and hands off that key" — so until then the
+built-in profile grants no signed-feed install authority. Getting listed needs a
+ClawHub account and a publish. See "Applying for ClawHub" below.
+
+**(ii) A self-serve marketplace manifest.** Fully under our control, no
+application needed. `openclaw plugins marketplace list <source>` accepts a local
+path, a `marketplace.json`, a GitHub shorthand like `owner/repo`, a GitHub URL,
+or a git URL.
+
+Two things found by testing against a real host:
+
+- OpenClaw's manifest discovery order is **`.claude-plugin/marketplace.json`
+  first**, then `marketplace.json`. So it already reads our Claude marketplace
+  file — and lists the `openltm` entry from it.
+- That entry is **discoverable but not installable**: it resolves to the repo
+  root, which is a private, non-plugin package with no `openclaw` block, no
+  manifest, and no build output. A second manifest is needed pointing at the
+  real package.
+
+The runtime schema differs from the TypeScript types: the source object uses
+`"type"` (not `"kind"`), and `npm` is **not** a supported source kind. Confirmed
+working source forms:
+
+```json
+{
+  "name": "openltm",
+  "version": "2.15.0",
+  "plugins": [{
+    "name": "openltm",
+    "version": "2.15.0",
+    "description": "OpenLTM long-term memory for OpenClaw",
+    "source": { "type": "github", "repo": "RohiRIK/OpenLtm", "path": "packages/adapter-openclaw" }
+  }]
+}
+```
+
+Users would then run:
+
+```bash
+openclaw plugins marketplace list RohiRIK/OpenLtm
+openclaw plugins install openltm@openltm
+```
+
+### Applying for ClawHub
+
+**Status: the package validates and the dry-run is clean. Only authentication
+remains, and that is a human account action.**
+
+```bash
+npm install -g clawhub          # or run it locally
+clawhub login                    # ← human, interactive, browser sign-in
+clawhub package validate packages/adapter-openclaw
+clawhub package publish packages/adapter-openclaw --dry-run
+clawhub package publish packages/adapter-openclaw
+```
+
+Verified locally before any login:
+
+```
+$ clawhub package validate packages/adapter-openclaw
+Plugin Inspector: PASS
+Breakages: 0 · Warnings: 0 · Findings: none
+
+$ clawhub package publish packages/adapter-openclaw --dry-run
+Name:      @rohirik/openclaw-ltm
+Version:   2.15.0
+Commit:    7c656c2f5fc2675e3f7423d971139451251a5fc8
+Compat:    pluginApi=>=2026.9.6, builtWith=2026.9.6, minGateway=>=2026.9.6
+Files:     6 files (122.0 KB)
+Tags:      latest
+```
+
+Requirements ClawHub enforces, and our status:
+
+| Requirement | Status |
+|---|---|
+| `openclaw.plugin.json` in the package | yes |
+| `package.json` with `openclaw.compat.pluginApi` | yes — `>=2026.9.6` |
+| `package.json` with `openclaw.build.openclawVersion` | yes — `2026.9.6` |
+| Manifest `id` unique within the publisher's packages | yes — `openltm` |
+| Scoped package name matching the publish owner | `@rohirik/…` — the ClawHub owner handle must be `rohirik` |
+| Source repository + exact commit metadata | detected automatically from the GitHub-backed checkout |
+| `assets/icon.png` at package root, valid PNG ≤ 512 KiB | yes — 512×512, 9.1 KB, shipped via the `files` allowlist |
+| `clawhub package validate` clean | **PASS, 0 findings** |
+| `clawhub package publish --dry-run` clean | **clean** |
+
+Note that the package scope must match the publish owner. If the owner handle is
+claimed by someone else, ClawHub requires an Org / Namespace Claim issue with
+public proof — so confirm the handle before logging in.
+
+New releases stay out of public install surfaces until ClawHub's automated
+security checks and verification finish, so listing is not instant.
+

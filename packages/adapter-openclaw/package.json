@@ -11,7 +11,8 @@
   "files": [
     "dist",
     "src",
-    "openclaw.plugin.json"
+    "openclaw.plugin.json",
+    "assets"
   ],
   "keywords": [
     "openclaw",
