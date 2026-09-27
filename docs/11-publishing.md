@@ -270,6 +270,32 @@ Files:     6 files (122.0 KB)
 Tags:      latest
 ```
 
+### Bootstrapping a brand-new npm package
+
+OIDC trusted publishing is configured **per package**, so a package that does not
+exist yet cannot be published by CI — the workflow fails with `ENEEDAUTH`
+because npm has nothing to attach a trusted publisher to. The first release of a
+new package therefore has to be created by an authenticated human:
+
+```bash
+npm login
+npm publish /tmp/openclaw-ltm-bootstrap.tgz    # the verified 2.15.0 tarball
+```
+
+Then add a Trusted Publisher on the package page (repo `RohiRIK/OpenLtm`,
+workflow `publish.yml`) and CI owns every release from then on.
+
+Publishing is **resumable**: `scripts/npm-publish-if-needed.sh` skips any package
+whose exact version is already on the registry, so a release that half-fails can
+be finished with a single re-run instead of dying on "cannot publish over the
+previously published versions".
+
+Re-run a failed release with:
+
+```bash
+gh workflow run publish.yml --ref main      # NOT --ref <tag>: a tag predates the fix
+```
+
 Requirements ClawHub enforces, and our status:
 
 | Requirement | Status |
