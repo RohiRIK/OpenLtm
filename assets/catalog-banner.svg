@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="600" viewBox="0 0 1200 600">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="rgba(23,16,46,1)"/>
+      <stop offset="0.55" stop-color="#120c26"/>
+      <stop offset="1" stop-color="rgba(10,9,22,1)"/>
+    </linearGradient>
+    <linearGradient id="nodeGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="rgba(251,191,36,1)"/>
+      <stop offset="1" stop-color="rgba(232,121,249,1)"/>
+    </linearGradient>
+    <radialGradient id="coreGrad" cx="0.38" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#fff6d8"/>
+      <stop offset="0.45" stop-color="rgba(251,191,36,1)"/>
+      <stop offset="1" stop-color="rgba(232,121,249,1)"/>
+    </radialGradient>
+    <radialGradient id="hazeA" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="rgba(251,191,36,0.26)"/>
+      <stop offset="1" stop-color="rgba(251,191,36,0)"/>
+    </radialGradient>
+    <radialGradient id="hazeB" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="rgba(232,121,249,0.24)"/>
+      <stop offset="1" stop-color="rgba(232,121,249,0)"/>
+    </radialGradient>
+    <filter id="soft" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="2.4"/>
+    </filter>
+    <filter id="soft2" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="0.6"/>
+    </filter>
+    <!-- Scrim keeps the wordmark legible where it crosses the graph. -->
+    <linearGradient id="scrim" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="rgba(10,9,22,0)"/>
+      <stop offset="0.16" stop-color="rgba(10,9,22,0.82)"/>
+      <stop offset="0.84" stop-color="rgba(10,9,22,0.82)"/>
+      <stop offset="1" stop-color="rgba(10,9,22,0)"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="600" fill="url(#bg)"/>
+  <ellipse cx="150" cy="300" rx="440" ry="400" fill="url(#hazeA)"/>
+  <ellipse cx="1060" cy="300" rx="440" ry="400" fill="url(#hazeB)"/>
+
+  <!-- One gradient across the whole canvas, so the left stays amber and the
+       right stays magenta, matching the README hero. -->
+  <g stroke="rgba(255,255,255,0.2)" stroke-width="1.4" stroke-linecap="round">
+    <line x1="240.0" y1="294.0" x2="192.3" y2="422.7"/>
+      <line x1="240.0" y1="294.0" x2="157.1" y2="171.0"/>
+      <line x1="240.0" y1="294.0" x2="407.4" y2="352.1"/>
+      <line x1="240.0" y1="294.0" x2="90.3" y2="351.3"/>
+      <line x1="240.0" y1="294.0" x2="307.5" y2="160.2"/>
+      <line x1="240.0" y1="294.0" x2="268.8" y2="400.4"/>
+      <line x1="240.0" y1="294.0" x2="90.0" y2="221.2"/>
+      <line x1="240.0" y1="294.0" x2="416.2" y2="266.9"/>
+      <line x1="192.3" y1="422.7" x2="157.1" y2="171.0"/>
+      <line x1="157.1" y1="171.0" x2="407.4" y2="352.1"/>
+      <line x1="407.4" y1="352.1" x2="90.3" y2="351.3"/>
+      <line x1="90.3" y1="351.3" x2="307.5" y2="160.2"/>
+      <line x1="307.5" y1="160.2" x2="268.8" y2="400.4"/>
+      <line x1="268.8" y1="400.4" x2="90.0" y2="221.2"/>
+      <line x1="90.0" y1="221.2" x2="416.2" y2="266.9"/>
+      <line x1="416.2" y1="266.9" x2="192.3" y2="422.7"/>
+      <line x1="192.3" y1="422.7" x2="90.3" y2="351.3"/>
+      <line x1="407.4" y1="352.1" x2="268.8" y2="400.4"/>
+      <line x1="307.5" y1="160.2" x2="416.2" y2="266.9"/><line x1="992.7" y1="283.4" x2="843.7" y2="277.3"/>
+      <line x1="992.7" y1="283.4" x2="1157.4" y2="210.6"/>
+      <line x1="992.7" y1="283.4" x2="960.2" y2="426.5"/>
+      <line x1="992.7" y1="283.4" x2="922.7" y2="183.1"/>
+      <line x1="992.7" y1="283.4" x2="1124.5" y2="343.6"/>
+      <line x1="992.7" y1="283.4" x2="852.1" y2="352.8"/>
+      <line x1="992.7" y1="283.4" x2="1080.6" y2="173.3"/>
+      <line x1="843.7" y1="277.3" x2="1157.4" y2="210.6"/>
+      <line x1="1157.4" y1="210.6" x2="960.2" y2="426.5"/>
+      <line x1="960.2" y1="426.5" x2="922.7" y2="183.1"/>
+      <line x1="922.7" y1="183.1" x2="1124.5" y2="343.6"/>
+      <line x1="1124.5" y1="343.6" x2="852.1" y2="352.8"/>
+      <line x1="852.1" y1="352.8" x2="1080.6" y2="173.3"/>
+      <line x1="1080.6" y1="173.3" x2="843.7" y2="277.3"/>
+      <line x1="843.7" y1="277.3" x2="922.7" y2="183.1"/>
+      <line x1="960.2" y1="426.5" x2="852.1" y2="352.8"/>
+      <line x1="1124.5" y1="343.6" x2="843.7" y2="277.3"/>
+  </g>
+  <g stroke="rgba(232,121,249,0.22)" stroke-width="2.4" filter="url(#soft)" opacity="0.6">
+    <line x1="992.7" y1="283.4" x2="843.7" y2="277.3"/>
+      <line x1="992.7" y1="283.4" x2="1157.4" y2="210.6"/>
+      <line x1="992.7" y1="283.4" x2="960.2" y2="426.5"/>
+      <line x1="992.7" y1="283.4" x2="922.7" y2="183.1"/>
+      <line x1="992.7" y1="283.4" x2="1124.5" y2="343.6"/>
+      <line x1="992.7" y1="283.4" x2="852.1" y2="352.8"/>
+      <line x1="992.7" y1="283.4" x2="1080.6" y2="173.3"/>
+      <line x1="843.7" y1="277.3" x2="1157.4" y2="210.6"/>
+      <line x1="1157.4" y1="210.6" x2="960.2" y2="426.5"/>
+      <line x1="960.2" y1="426.5" x2="922.7" y2="183.1"/>
+      <line x1="922.7" y1="183.1" x2="1124.5" y2="343.6"/>
+      <line x1="1124.5" y1="343.6" x2="852.1" y2="352.8"/>
+      <line x1="852.1" y1="352.8" x2="1080.6" y2="173.3"/>
+      <line x1="1080.6" y1="173.3" x2="843.7" y2="277.3"/>
+      <line x1="843.7" y1="277.3" x2="922.7" y2="183.1"/>
+      <line x1="960.2" y1="426.5" x2="852.1" y2="352.8"/>
+      <line x1="1124.5" y1="343.6" x2="843.7" y2="277.3"/>
+  </g>
+  <g filter="url(#soft)" opacity="0.8"><circle cx="230.0" cy="300.0" r="24.0" fill="rgba(200,125,166,1)"/><circle cx="192.3" cy="422.7" r="11.2" fill="rgba(208,136,145,1)"/><circle cx="157.1" cy="171.0" r="13.8" fill="rgba(216,146,125,1)"/><circle cx="407.4" cy="352.1" r="16.4" fill="rgba(178,91,247,1)"/><circle cx="90.3" cy="351.3" r="8.7" fill="rgba(231,165,87,1)"/><circle cx="307.5" cy="160.2" r="11.2" fill="rgba(182,103,210,1)"/><circle cx="268.8" cy="400.4" r="13.8" fill="rgba(191,114,188,1)"/><circle cx="90.0" cy="221.2" r="16.4" fill="rgba(231,165,87,1)"/><circle cx="416.2" cy="266.9" r="8.7" fill="rgba(180,92,247,1)"/><circle cx="1000.0" cy="300.0" r="22.0" fill="rgba(176,89,247,1)"/><circle cx="843.7" cy="277.3" r="10.4" fill="rgba(197,122,174,1)"/><circle cx="1157.4" cy="210.6" r="12.8" fill="rgba(220,114,249,1)"/><circle cx="960.2" cy="426.5" r="15.2" fill="rgba(171,88,240,1)"/><circle cx="922.7" cy="183.1" r="8.1" fill="rgba(179,99,219,1)"/><circle cx="1124.5" cy="343.6" r="10.4" fill="rgba(211,109,248,1)"/><circle cx="852.1" cy="352.8" r="12.8" fill="rgba(195,119,179,1)"/><circle cx="1080.6" cy="173.3" r="15.2" fill="rgba(198,102,248,1)"/></g>
+  <g filter="url(#soft2)"><circle cx="230.0" cy="300.0" r="24.0" fill="rgba(200,125,166,1)"/><circle cx="192.3" cy="422.7" r="11.2" fill="rgba(208,136,145,1)"/><circle cx="157.1" cy="171.0" r="13.8" fill="rgba(216,146,125,1)"/><circle cx="407.4" cy="352.1" r="16.4" fill="rgba(178,91,247,1)"/><circle cx="90.3" cy="351.3" r="8.7" fill="rgba(231,165,87,1)"/><circle cx="307.5" cy="160.2" r="11.2" fill="rgba(182,103,210,1)"/><circle cx="268.8" cy="400.4" r="13.8" fill="rgba(191,114,188,1)"/><circle cx="90.0" cy="221.2" r="16.4" fill="rgba(231,165,87,1)"/><circle cx="416.2" cy="266.9" r="8.7" fill="rgba(180,92,247,1)"/><circle cx="225.2" cy="294.2" r="10.1" fill="#fffdf2" opacity="0.85"/><circle cx="190.0" cy="420.0" r="3.4" fill="#fffdf2" opacity="0.7"/><circle cx="154.3" cy="167.7" r="4.1" fill="#fffdf2" opacity="0.7"/><circle cx="404.1" cy="348.2" r="4.9" fill="#fffdf2" opacity="0.7"/><circle cx="88.6" cy="349.3" r="2.6" fill="#fffdf2" opacity="0.7"/><circle cx="305.3" cy="157.5" r="3.4" fill="#fffdf2" opacity="0.7"/><circle cx="266.0" cy="397.1" r="4.1" fill="#fffdf2" opacity="0.7"/><circle cx="86.7" cy="217.3" r="4.9" fill="#fffdf2" opacity="0.7"/><circle cx="414.5" cy="264.8" r="2.6" fill="#fffdf2" opacity="0.7"/><circle cx="1000.0" cy="300.0" r="22.0" fill="rgba(176,89,247,1)"/><circle cx="843.7" cy="277.3" r="10.4" fill="rgba(197,122,174,1)"/><circle cx="1157.4" cy="210.6" r="12.8" fill="rgba(220,114,249,1)"/><circle cx="960.2" cy="426.5" r="15.2" fill="rgba(171,88,240,1)"/><circle cx="922.7" cy="183.1" r="8.1" fill="rgba(179,99,219,1)"/><circle cx="1124.5" cy="343.6" r="10.4" fill="rgba(211,109,248,1)"/><circle cx="852.1" cy="352.8" r="12.8" fill="rgba(195,119,179,1)"/><circle cx="1080.6" cy="173.3" r="15.2" fill="rgba(198,102,248,1)"/><circle cx="995.6" cy="294.7" r="9.2" fill="#fffdf2" opacity="0.85"/><circle cx="841.6" cy="274.8" r="3.1" fill="#fffdf2" opacity="0.7"/><circle cx="1154.8" cy="207.6" r="3.8" fill="#fffdf2" opacity="0.7"/><circle cx="957.1" cy="422.9" r="4.6" fill="#fffdf2" opacity="0.7"/><circle cx="921.1" cy="181.1" r="2.4" fill="#fffdf2" opacity="0.7"/><circle cx="1122.4" cy="341.1" r="3.1" fill="#fffdf2" opacity="0.7"/><circle cx="849.6" cy="349.7" r="3.8" fill="#fffdf2" opacity="0.7"/><circle cx="1077.6" cy="169.7" r="4.6" fill="#fffdf2" opacity="0.7"/></g>
+
+  <rect x="240" y="0" width="720" height="600" fill="url(#scrim)"/>
+
+  <g font-family="Liberation Sans, DejaVu Sans, sans-serif">
+    <text x="600" y="292" font-size="104" font-weight="bold" fill="rgba(255,255,255,1)"
+          text-anchor="middle" letter-spacing="-1.5">OpenLTM</text>
+    <text x="600" y="344" font-size="30" font-weight="normal" fill="rgba(255,255,255,0.86)"
+          text-anchor="middle">Long-term memory for AI coding agents</text>
+    <text x="600" y="390" font-size="20" font-weight="normal" fill="rgba(255,255,255,0.72)"
+          text-anchor="middle" letter-spacing="1.6">FTS5 SEARCH · VECTOR RECALL · DECAY · MEMORY GRAPH</text>
+  </g>
+</svg>

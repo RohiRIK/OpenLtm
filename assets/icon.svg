@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="rgba(23,16,46,1)"/>
+      <stop offset="1" stop-color="rgba(10,9,22,1)"/>
+    </linearGradient>
+    <linearGradient id="nodeGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="rgba(251,191,36,1)"/>
+      <stop offset="1" stop-color="rgba(232,121,249,1)"/>
+    </linearGradient>
+    <radialGradient id="coreGrad" cx="0.38" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#fff6d8"/>
+      <stop offset="0.45" stop-color="rgba(251,191,36,1)"/>
+      <stop offset="1" stop-color="rgba(232,121,249,1)"/>
+    </radialGradient>
+    <radialGradient id="hazeA" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="rgba(251,191,36,0.3)"/>
+      <stop offset="1" stop-color="rgba(251,191,36,0)"/>
+    </radialGradient>
+    <radialGradient id="hazeB" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="rgba(232,121,249,0.28)"/>
+      <stop offset="1" stop-color="rgba(232,121,249,0)"/>
+    </radialGradient>
+    <filter id="soft" x="-70%" y="-70%" width="240%" height="240%">
+      <feGaussianBlur stdDeviation="2.6"/>
+    </filter>
+    <filter id="soft2" x="-70%" y="-70%" width="240%" height="240%">
+      <feGaussianBlur stdDeviation="0.7"/>
+    </filter>
+    <!-- Everything is clipped to the rounded square so the ambient haze cannot
+         leak past the corners (which produced bright wedges in v1). -->
+    <clipPath id="squircle">
+      <rect width="512" height="512" rx="112" ry="112"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#squircle)">
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <ellipse cx="140" cy="160" rx="260" ry="240" fill="url(#hazeA)"/>
+  <ellipse cx="382" cy="352" rx="260" ry="240" fill="url(#hazeB)"/>
+
+  <g stroke="rgba(255,255,255,0.26)" stroke-width="1.7" stroke-linecap="round">
+    <line x1="256.0" y1="248.0" x2="354.0" y2="317.6"/>
+    <line x1="256.0" y1="248.0" x2="99.8" y2="248.2"/>
+    <line x1="256.0" y1="248.0" x2="345.1" y2="170.2"/>
+    <line x1="256.0" y1="248.0" x2="243.6" y2="359.9"/>
+    <line x1="256.0" y1="248.0" x2="153.6" y2="134.4"/>
+    <line x1="256.0" y1="248.0" x2="386.7" y2="269.7"/>
+    <line x1="256.0" y1="248.0" x2="124.3" y2="313.3"/>
+    <line x1="354.0" y1="317.6" x2="99.8" y2="248.2"/>
+    <line x1="99.8" y1="248.2" x2="345.1" y2="170.2"/>
+    <line x1="345.1" y1="170.2" x2="243.6" y2="359.9"/>
+    <line x1="243.6" y1="359.9" x2="153.6" y2="134.4"/>
+    <line x1="153.6" y1="134.4" x2="386.7" y2="269.7"/>
+    <line x1="386.7" y1="269.7" x2="124.3" y2="313.3"/>
+    <line x1="124.3" y1="313.3" x2="354.0" y2="317.6"/>
+    <line x1="354.0" y1="317.6" x2="243.6" y2="359.9"/>
+    <line x1="243.6" y1="359.9" x2="124.3" y2="313.3"/>
+  </g>
+  <g stroke="rgba(232,121,249,0.34)" stroke-width="2.6" filter="url(#soft)" opacity="0.6">
+    <line x1="256.0" y1="248.0" x2="354.0" y2="317.6"/>
+    <line x1="256.0" y1="248.0" x2="99.8" y2="248.2"/>
+    <line x1="256.0" y1="248.0" x2="345.1" y2="170.2"/>
+    <line x1="256.0" y1="248.0" x2="243.6" y2="359.9"/>
+    <line x1="256.0" y1="248.0" x2="153.6" y2="134.4"/>
+    <line x1="256.0" y1="248.0" x2="386.7" y2="269.7"/>
+    <line x1="256.0" y1="248.0" x2="124.3" y2="313.3"/>
+    <line x1="354.0" y1="317.6" x2="99.8" y2="248.2"/>
+    <line x1="99.8" y1="248.2" x2="345.1" y2="170.2"/>
+    <line x1="345.1" y1="170.2" x2="243.6" y2="359.9"/>
+    <line x1="243.6" y1="359.9" x2="153.6" y2="134.4"/>
+    <line x1="153.6" y1="134.4" x2="386.7" y2="269.7"/>
+    <line x1="386.7" y1="269.7" x2="124.3" y2="313.3"/>
+    <line x1="124.3" y1="313.3" x2="354.0" y2="317.6"/>
+    <line x1="354.0" y1="317.6" x2="243.6" y2="359.9"/>
+    <line x1="243.6" y1="359.9" x2="124.3" y2="313.3"/>
+  </g>
+
+  <g filter="url(#soft)" opacity="0.7">
+    <circle cx="256.0" cy="248.0" r="34.0" fill="rgba(179,100,218,1)"/><circle cx="354.0" cy="317.6" r="19.7" fill="rgba(199,102,248,1)"/><circle cx="99.8" cy="248.2" r="23.4" fill="rgba(236,172,73,1)"/><circle cx="345.1" cy="170.2" r="12.4" fill="rgba(195,100,248,1)"/><circle cx="243.6" cy="359.9" r="16.1" fill="rgba(184,105,206,1)"/><circle cx="153.6" cy="134.4" r="19.7" fill="rgba(217,147,123,1)"/><circle cx="386.7" cy="269.7" r="23.4" fill="rgba(214,111,248,1)"/><circle cx="124.3" cy="313.3" r="12.4" fill="rgba(227,161,96,1)"/>
+  </g>
+  <g filter="url(#soft2)">
+    <circle cx="256.0" cy="248.0" r="34.0" fill="rgba(179,100,218,1)"/><circle cx="354.0" cy="317.6" r="19.7" fill="rgba(199,102,248,1)"/><circle cx="99.8" cy="248.2" r="23.4" fill="rgba(236,172,73,1)"/><circle cx="345.1" cy="170.2" r="12.4" fill="rgba(195,100,248,1)"/><circle cx="243.6" cy="359.9" r="16.1" fill="rgba(184,105,206,1)"/><circle cx="153.6" cy="134.4" r="19.7" fill="rgba(217,147,123,1)"/><circle cx="386.7" cy="269.7" r="23.4" fill="rgba(214,111,248,1)"/><circle cx="124.3" cy="313.3" r="12.4" fill="rgba(227,161,96,1)"/>
+  </g>
+  <circle cx="256.0" cy="240.5" r="14.3" fill="#fffdf2" opacity="0.85"/><circle cx="350.1" cy="312.9" r="5.9" fill="#fffaf0" opacity="0.7"/><circle cx="95.1" cy="242.6" r="7.0" fill="#fffaf0" opacity="0.7"/><circle cx="342.6" cy="167.2" r="3.7" fill="#fffaf0" opacity="0.7"/><circle cx="240.4" cy="356.0" r="4.8" fill="#fffaf0" opacity="0.7"/><circle cx="149.6" cy="129.6" r="5.9" fill="#fffaf0" opacity="0.7"/><circle cx="382.0" cy="264.1" r="7.0" fill="#fffaf0" opacity="0.7"/><circle cx="121.8" cy="310.3" r="3.7" fill="#fffaf0" opacity="0.7"/>
+  </g>
+</svg>
