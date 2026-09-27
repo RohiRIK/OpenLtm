@@ -1,4 +1,4 @@
-import { buildPrefillContext, deriveProjectFromCwd, learn } from "@rohirik/openltm-core";
+import { buildPrefillContext, deriveProjectFromCwd, learn, PREFILL_DEFAULTS } from "@rohirik/openltm-core";
 
 type PiAny = any;
 
@@ -12,7 +12,7 @@ export function registerHooks(pi: PiAny): void {
     try {
       const cwd = String(event?.cwd ?? process.cwd());
       const project = projectFromCwd(cwd);
-      const block = buildPrefillContext({ project, maxMemories: 10, maxLines: 18 });
+      const block = buildPrefillContext({ project, ...PREFILL_DEFAULTS });
       if (!block) return;
       const existing = String(event?.systemPrompt ?? "");
       const parts = existing ? [existing, block] : [block];

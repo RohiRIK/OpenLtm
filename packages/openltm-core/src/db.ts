@@ -6,6 +6,7 @@ import type { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import { normalizeKey } from "./dedup.js";
+import { isNearDuplicate } from "./similarity.js";
 import { normalizeAnchorPaths } from "./anchors.js";
 import { getDb, DB_PATH, configure as configureDb } from "./shared-db.js";
 import { enqueueEmbedding } from "./queue/index.js";
@@ -138,6 +139,32 @@ export function deriveTitle(content: string): string {
 
 function tryAudit(fn: () => void): void {
   try { fn(); } catch (e) { process.stderr.write(`[audit] write failed: ${e}\n`); }
+}
+
+function oneLineForLog(text: string): string {
+  const line = text.replace(/\s+/g, " ").trim();
+  return line.length > 80 ? `${line.slice(0, 77)}…` : line;
+}
+
+/**
+ * findNearDuplicate — locate an existing memory that says the same thing.
+ * Scoped to the same project scope (a global memory never absorbs a scoped one)
+ * and only considers recently active rows to keep the probe cheap.
+ */
+function findNearDuplicate(
+  db: Database,
+  content: string,
+  projectScope: string | null,
+  dedupKey: string,
+): Memory | null {
+  const rows = db.query<Memory, [string, string | null, string | null]>(
+    `SELECT * FROM memories
+      WHERE status='active' AND dedup_key<>?
+        AND (project_scope IS ? OR project_scope = ?)
+      ORDER BY decay_score DESC, id DESC
+      LIMIT 100`
+  ).all(dedupKey, projectScope, projectScope);
+  return rows.find((row) => isNearDuplicate(row.content, content)) ?? null;
 }
 
 function upsertTag(db: Database, name: string): number {
@@ -410,6 +437,123 @@ async function autoDetectRelations(
   }
 }
 
+// ── Recall ranking (Recall v2) ────────────────────────────────────────────────
+
+/** Weights for the composite relevance score. Kept in one place so the
+ *  explainer and the sort can never drift apart. */
+export const RANK_WEIGHTS = {
+  decay: 1.0,
+  importance: 0.6,
+  projectScope: 0.9,
+  recallFrequency: 0.25,
+  stalePenalty: 0.8,
+  duplicatePenalty: 0.5,
+} as const;
+
+/** Penalty applied to the k-th occurrence of a near-duplicate cluster. */
+const DUPLICATE_DECAY_FACTOR = 0.4;
+
+/**
+ * rankRecallResults — order recall candidates for relevance.
+ *
+ * Behaviour:
+ *   - explicit `sort_by` requests are honoured verbatim
+ *   - project-scoped memories outrank globals of otherwise equal strength
+ *   - stale (code-invalidated) memories are demoted but still returned
+ *   - near-duplicate clusters are demoted progressively, never dropped
+ *   - ties break on ascending id so identical inputs give identical output
+ */
+export function rankRecallResults(
+  candidates: Memory[],
+  opts: {
+    limit: number;
+    project?: string;
+    defaultSort?: boolean;
+    sortBy?: "relevance" | "created" | "last_recalled" | "recall_count";
+  },
+): Memory[] {
+  const rows = [...candidates];
+
+  // Explicit user-requested sorts stay literal.
+  if (opts.sortBy === "created") {
+    return rows
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime() || a.id - b.id)
+      .slice(0, opts.limit);
+  }
+  if (opts.sortBy === "last_recalled") {
+    return rows
+      .sort((a, b) => new Date(b.last_recalled_at ?? "1970").getTime() - new Date(a.last_recalled_at ?? "1970").getTime() || a.id - b.id)
+      .slice(0, opts.limit);
+  }
+  if (opts.sortBy === "recall_count") {
+    return rows
+      .sort((a, b) => (b.recall_count ?? 0) - (a.recall_count ?? 0) || a.id - b.id)
+      .slice(0, opts.limit);
+  }
+
+  const scored = rows.map((memory) => {
+    const decay = memory.decay_score ?? computeDecayScore(memory);
+    const importance = memory.importance / 5;
+    const projectScope = opts.project && memory.project_scope === opts.project ? 1 : 0;
+    const recallFrequency = Math.min(1, Math.log2((memory.recall_count ?? 0) + 1) / 4);
+    const stale = memory.stale_flagged_at ? RANK_WEIGHTS.stalePenalty : 0;
+    const score =
+      decay * RANK_WEIGHTS.decay +
+      importance * RANK_WEIGHTS.importance +
+      projectScope * RANK_WEIGHTS.projectScope +
+      recallFrequency * RANK_WEIGHTS.recallFrequency -
+      stale;
+    return { memory, score, decay, stale };
+  });
+
+  scored.sort((a, b) => b.score - a.score || b.decay - a.decay || a.memory.id - b.memory.id);
+
+  // Progressive near-duplicate demotion: first occurrence keeps its rank,
+  // later ones decay by a fixed factor each. Nothing is removed.
+  const seen: Memory[] = [];
+  const adjusted = scored.map((entry) => {
+    const clusterIndex = seen.findIndex((m) => isNearDuplicate(m.content, entry.memory.content));
+    if (clusterIndex === -1) {
+      seen.push(entry.memory);
+      return { ...entry, finalScore: entry.score };
+    }
+    const penalty = Math.min(1, entry.score * RANK_WEIGHTS.duplicatePenalty * Math.pow(DUPLICATE_DECAY_FACTOR, clusterIndex));
+    return { ...entry, finalScore: entry.score - penalty };
+  });
+
+  adjusted.sort((a, b) => b.finalScore - a.finalScore || b.decay - a.decay || a.memory.id - b.memory.id);
+  return adjusted.slice(0, opts.limit).map((entry) => entry.memory);
+}
+
+// ── Memory hygiene (hygiene v2) ───────────────────────────────────────────────
+
+/** Operational noise: runtime chatter, not durable knowledge. */
+const NOISE_PATTERNS: RegExp[] = [
+  /^\s*(?:ok|okay|done|thanks|thank you|sure|got it|understood|acknowledged)\b[.!]?\s*$/i,
+  /\b(?:running|running\.\.\.|in progress|queued|processing)\b\s*$/i,
+  /\btook \d+(?:\.\d+)?\s*m?s\b/i,
+  /\bexit(?:ed)?\s+(?:code|status)\s+\d+\b/i,
+  /\b(?:compacted|compaction)\b.{0,40}\b(?:reference only|summary only)\b/i,
+  /\b(?:background|async|delegation)\b.{0,30}\b(?:process|task|batch|job)?\b.*\b(?:complete|completed|done|finished)\b/i,
+  /\bnotification\b.{0,30}\b(?:background|completed)\b/i,
+  /^\s*[\[\(<{].{0,20}[\]\)>}].{0,40}$/,
+];
+
+/** Noise that is only noise when it carries no durable signal. */
+const DURABLE_SIGNAL_RE = /\b(must|never|always|avoid|prefer|require|constraint|gotcha|decision|instead of|do not|don't)\b/i;
+
+/**
+ * isOperationalNoise — true when text looks like runtime chatter.
+ * A message that still states a rule ("always use bun, not npm") is kept even
+ * if it matches, because the durable signal outweighs the shape.
+ */
+export function isOperationalNoise(content: string): boolean {
+  const text = content.trim();
+  if (text.length < 12) return true;
+  if (DURABLE_SIGNAL_RE.test(text)) return false;
+  return NOISE_PATTERNS.some((pattern) => pattern.test(text));
+}
+
 export function learn(input: LearnInput): LearnResult {
   const db = getDb();
 
@@ -420,10 +564,24 @@ export function learn(input: LearnInput): LearnResult {
   }
   const content = scrubbed;
 
+  // Hygiene: operational noise is downgraded rather than stored verbatim.
+  if (isOperationalNoise(content)) {
+    input = {
+      ...input,
+      importance: Math.min(input.importance ?? 3, 2),
+      category: (input.category ?? "pattern") as MemoryCategory,
+    };
+    if ((input.importance ?? 3) >= 4) {
+      process.stderr.write(`[learn] Downgraded operational-noise memory: "${oneLineForLog(content)}"\n`);
+    }
+  }
+
   const dedupKey = normalizeKey(content);
   const skipExport = input.skipExport ?? false;
 
-  const existing = db.query<Memory, [string]>(`SELECT * FROM memories WHERE dedup_key=?`).get(dedupKey);
+  const existing = db.query<Memory, [string]>(`SELECT * FROM memories WHERE dedup_key=?`).get(dedupKey)
+    // Near-duplicate reinforcement: same knowledge, different wording.
+    ?? findNearDuplicate(db, content, input.project_scope ?? null, dedupKey);
 
   const actor = input.actor ?? "mcp:ltm_learn";
 
@@ -636,37 +794,26 @@ export async function recall(input: RecallInput = {}): Promise<MemoryWithRelatio
   // default sort (no query): ORDER BY decay_score DESC pushed to SQL → O(log N)
   const defaultSqlSort = (!input.sort_by || input.sort_by === "relevance") && ids === null;
   const orderBy = defaultSqlSort ? "ORDER BY decay_score DESC" : "";
-  const rows = db.query<Memory, typeof params>(
-    `SELECT id, content, category, importance, confidence, source, project_scope, dedup_key,
-            created_at, last_confirmed_at, last_used_at, confirm_count, status,
-            first_recalled_at, last_recalled_at, recall_count, superseded_by, superseded_at,
-            workspace_id, agent_id, decay_score, stale_flagged_at, stale_reason
-     FROM memories ${where} ${orderBy} LIMIT ${limit}`
-  ).all(...params);
-
-  let sorted: typeof rows;
-  if (defaultSqlSort) {
-    sorted = rows; // already ordered by decay_score DESC in SQL
-  } else if (input.sort_by === "created") {
-    sorted = rows.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-  } else if (input.sort_by === "last_recalled") {
-    sorted = rows.sort((a, b) => new Date(b.last_recalled_at ?? "1970").getTime() - new Date(a.last_recalled_at ?? "1970").getTime());
-  } else if (input.sort_by === "recall_count") {
-    sorted = rows.sort((a, b) => (b.recall_count ?? 0) - (a.recall_count ?? 0));
-  } else {
-    // FTS/semantic path: small result set (≤50), JS sort is O(k log k) — negligible.
-    // Use materialised decay_score if available, fall back to computing it.
-    sorted = rows
-      .map(m => ({ m, score: m.decay_score ?? computeDecayScore(m) }))
-      .sort((a, b) => b.score - a.score)
-      .map(({ m }) => m);
-  }
-  // Downrank stale (code-invalidated) memories: stable partition pushes them
-  // after fresh ones at equal relevance — still returned, just demoted.
-  sorted = [
-    ...sorted.filter(m => !m.stale_flagged_at),
-    ...sorted.filter(m => m.stale_flagged_at),
-  ];
+  // Recall v2 ranking inputs need project scope + staleness, so both are
+  // selected up front even on the default sort path.
+  const rankSql = defaultSqlSort
+    ? `SELECT id, content, category, importance, confidence, source, project_scope, dedup_key,
+              created_at, last_confirmed_at, last_used_at, confirm_count, status,
+              first_recalled_at, last_recalled_at, recall_count, superseded_by, superseded_at,
+              workspace_id, agent_id, decay_score, stale_flagged_at, stale_reason
+         FROM memories ${where} ORDER BY decay_score DESC LIMIT ${limit * 3}`
+    : `SELECT id, content, category, importance, confidence, source, project_scope, dedup_key,
+              created_at, last_confirmed_at, last_used_at, confirm_count, status,
+              first_recalled_at, last_recalled_at, recall_count, superseded_by, superseded_at,
+              workspace_id, agent_id, decay_score, stale_flagged_at, stale_reason
+         FROM memories ${where} ${orderBy} LIMIT ${limit * 3}`;
+  const candidateRows = db.query<Memory, typeof params>(rankSql).all(...params);
+  const sorted = rankRecallResults(candidateRows, {
+    limit,
+    project: input.project,
+    defaultSort: defaultSqlSort,
+    sortBy: input.sort_by,
+  });
   if (sorted.length > 0) {
     const placeholders = sorted.map(() => "?").join(",");
     db.run(

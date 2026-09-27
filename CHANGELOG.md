@@ -1,5 +1,25 @@
 # Changelog
 
+## [2.13.0] — 2026-09-27
+
+### Added
+- **Recall v2 ranking** — `recall()` now scores candidates on decay, importance, exact project scope, and recall frequency, with a documented stale penalty and progressive near-duplicate demotion. Ties break deterministically on ascending id. Explicit `sort_by` requests are still honoured verbatim.
+- **Prefill v2** — session prefill applies per-category quotas, prioritises project-scoped memories over globals, and suppresses near-duplicate entries. Selection is deterministic and hard-capped by the shared host budget.
+- **`PREFILL_DEFAULTS`** — one exported budget (`maxMemories: 10`, `maxLines: 18`) now used by the Claude bunx hook, the OpenCode plugin, and the Pi extension, so the injected block cannot drift between hosts.
+- **Hygiene checks** — new `isOperationalNoise()` and `isNearDuplicate()` helpers, plus a `check:monthly --json` mode for machine-readable maintenance summaries.
+
+### Changed
+- **Installer target registry** — `openltm-core` now drives host installation from a shared `INSTALL_TARGETS` registry, reducing the work to add future agent hosts.
+- **Shared session prefill** — OpenCode, Pi hooks, and the portable Claude bunx hook path now use one core prefill builder, making the "already pre-filled" experience more consistent and honoring a tighter context budget.
+- **Portable Claude bunx hook** — `bunx @rohirik/openltm-core hook --name SessionStart` now emits a real Prior Knowledge block instead of only printing a stub warning; non-session-start hooks remain safe no-ops.
+- **Monthly maintenance command** — `bun run check:monthly` runs tests, typecheck, version sync, dependency audit, and optional local security scanners, then prints a pass/fail/skip summary; optional tools are reported as skipped, never as passed.
+- **Test scope hardening** — root `bun test` targets the explicit test directories so temporary scripts and Playwright e2e specs are never executed as accidental Bun tests.
+
+### Fixed
+- **Dependency audit floor** — bumped MCP SDK ranges and tightened root overrides for `hono`, `@hono/node-server`, `body-parser`, and `qs`; `bun audit` reports no vulnerabilities.
+- **Hook bundle freshness** — regenerated `hooks/GitCommit.bundle.mjs` so the bundle-drift workflow passes on tagged releases.
+- **Learn hygiene** — operational noise is stored at reduced importance, and an elaboration of an existing memory reinforces it instead of creating a near-duplicate row. The match rule is deliberately conservative (full token containment) so deliberate parallel memories are never silently merged.
+
 ## [2.12.3] — 2026-09-27
 
 ### Fixed

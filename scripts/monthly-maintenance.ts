@@ -3,7 +3,12 @@
  * monthly-maintenance.ts — one-command repo health check.
  *
  * Runs the recurring static checks and security scans we want on a monthly
- * cadence, while degrading cleanly when optional scanners are not installed.
+ * cadence, then prints a single pass/fail/skip summary. Optional scanners that
+ * are not installed are reported as skipped, never as passed.
+ *
+ * Usage:
+ *   bun run check:monthly
+ *   bun run check:monthly --json     # machine-readable summary on stdout
  */
 import { spawnSync } from "bun";
 
@@ -12,7 +17,27 @@ interface Step {
   command: string[];
   optional?: boolean;
   cwd?: string;
+  /** Extra bash precondition, e.g. a Python module that must be importable. */
+  requires?: string;
 }
+
+type Status = "pass" | "fail" | "skipped";
+
+interface StepResult {
+  label: string;
+  status: Status;
+  exitCode: number | null;
+  detail?: string;
+}
+
+interface Skipped {
+  label: string;
+  reason: string;
+}
+
+const argv = process.argv.slice(2);
+const asJson = argv.includes("--json");
+const quiet = asJson || argv.includes("--quiet");
 
 const steps: Step[] = [
   { label: "tests", command: ["bun", "test"] },
@@ -26,68 +51,88 @@ const steps: Step[] = [
     command: ["python3", "-m", "pytest", "-q"],
     cwd: "/tmp/openltm-plugin-test",
     optional: true,
+    requires: "python3 -m pytest --version",
   },
 ];
 
-function isCommandAvailable(command: string): boolean {
-  const result = spawnSync(["bash", "-lc", `command -v ${command}`], {
-    stdout: "ignore",
-    stderr: "ignore",
-  });
-  return result.exitCode === 0;
+function hasCommand(command: string): boolean {
+  return spawnSync(["bash", "-lc", `command -v ${command}`], { stdout: "ignore", stderr: "ignore" }).exitCode === 0;
 }
 
-function hasPythonPytest(): boolean {
-  const result = spawnSync(["python3", "-m", "pytest", "--version"], {
-    stdout: "ignore",
-    stderr: "ignore",
-  });
-  return result.exitCode === 0;
+function hasRequirement(requirement: string): boolean {
+  return spawnSync(["bash", "-lc", requirement], { stdout: "ignore", stderr: "ignore" }).exitCode === 0;
 }
 
-function printHeader(label: string): void {
-  process.stdout.write(`\n=== ${label} ===\n`);
+function header(label: string): void {
+  if (!quiet) process.stdout.write(`\n=== ${label} ===\n`);
 }
 
-let failed = false;
+const results: StepResult[] = [];
+const skipped: Skipped[] = [];
 
 for (const step of steps) {
   const executable = step.command[0]!;
-  if (step.label === "hermes-pytest" && !hasPythonPytest()) {
-    printHeader(step.label);
-    process.stdout.write("SKIPPED: python3 -m pytest not available\n");
+
+  if (step.requires && !hasRequirement(step.requires)) {
+    skipped.push({ label: step.label, reason: `${step.requires} unavailable` });
+    continue;
+  }
+  if (!hasCommand(executable)) {
+    const reason = `${executable} not installed`;
+    if (step.optional) {
+      skipped.push({ label: step.label, reason });
+      continue;
+    }
+    results.push({ label: step.label, status: "fail", exitCode: null, detail: reason });
     continue;
   }
 
-  if (step.optional && !isCommandAvailable(executable)) {
-    printHeader(step.label);
-    process.stdout.write(`SKIPPED: ${executable} not installed\n`);
-    continue;
-  }
-
+  // Hermes tests must run from a scratch copy, never the live plugin dir/DB.
   if (step.label === "hermes-pytest") {
     spawnSync(["bash", "-lc", "rm -rf /tmp/openltm-plugin-test && cp -r hermes/openltm_hermes /tmp/openltm-plugin-test"], {
-      stdout: "inherit",
+      stdout: quiet ? "ignore" : "inherit",
       stderr: "inherit",
     });
   }
 
-  printHeader(step.label);
-  const result = spawnSync(step.command, {
+  header(step.label);
+  const run = spawnSync(step.command, {
     cwd: step.cwd,
-    stdout: "inherit",
-    stderr: "inherit",
+    stdout: quiet ? "ignore" : "inherit",
+    stderr: quiet ? "ignore" : "inherit",
     env: process.env,
   });
 
-  if (result.exitCode !== 0) {
-    if (step.optional) {
-      process.stdout.write(`OPTIONAL CHECK FAILED: ${step.label} (exit ${result.exitCode})\n`);
-    } else {
-      failed = true;
-      process.stdout.write(`FAILED: ${step.label} (exit ${result.exitCode})\n`);
-    }
+  if (run.exitCode === 0) {
+    results.push({ label: step.label, status: "pass", exitCode: 0 });
+  } else if (step.optional) {
+    results.push({ label: step.label, status: "fail", exitCode: run.exitCode ?? null, detail: "optional check failed" });
+  } else {
+    results.push({ label: step.label, status: "fail", exitCode: run.exitCode ?? null, detail: "required check failed" });
   }
 }
 
-process.exit(failed ? 1 : 0);
+const required = results.filter((r) => r.status !== "pass");
+const optionalFailures = results.filter((r) => r.status === "fail" && r.detail === "optional check failed");
+const ok = required.length === 0;
+
+const summary = {
+  ok,
+  passed: results.filter((r) => r.status === "pass").map((r) => r.label),
+  failed: required.map((r) => ({ label: r.label, detail: r.detail, exitCode: r.exitCode })),
+  optionalFailed: optionalFailures.map((r) => r.label),
+  skipped: skipped.map((s) => ({ label: s.label, reason: s.reason })),
+};
+
+if (asJson) {
+  process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
+} else {
+  process.stdout.write("\n=== summary ===\n");
+  for (const label of summary.passed) process.stdout.write(`  PASS  ${label}\n`);
+  for (const item of summary.failed) process.stdout.write(`  FAIL  ${item.label} — ${item.detail}\n`);
+  for (const label of summary.optionalFailed) process.stdout.write(`  WARN  ${label} — optional check failed\n`);
+  for (const item of summary.skipped) process.stdout.write(`  SKIP  ${item.label} — ${item.reason}\n`);
+  process.stdout.write(`\n${ok ? "maintenance: OK" : "maintenance: FAILED"}\n`);
+}
+
+process.exit(ok ? 0 : 1);

@@ -5,7 +5,7 @@
  * openltm-core so users still get an "already pre-filled" experience without
  * the full Claude plugin checkout. Other hook events are safe no-ops.
  */
-import { buildPrefillContext, deriveProjectFromCwd } from "../prefill.js";
+import { buildPrefillContext, deriveProjectFromCwd, PREFILL_DEFAULTS } from "../prefill.js";
 
 function parseHookCwd(raw: string): string {
   if (!raw.trim()) return "";
@@ -27,7 +27,7 @@ export async function buildHookOutput(name: string, rawInput: string): Promise<s
       if (!cwd) return "";
       const project = deriveProjectFromCwd(cwd);
       if (!project) return "";
-      return buildPrefillContext({ project, maxMemories: 10, maxLines: 18 });
+      return buildPrefillContext({ project, ...PREFILL_DEFAULTS });
     }
     case "PreCompact":
     case "PostEditCheck":

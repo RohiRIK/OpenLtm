@@ -1,5 +1,5 @@
 import type { Hooks } from "@opencode-ai/plugin";
-import { buildPrefillContext, deriveProjectFromCwd, recall } from "@rohirik/openltm-core";
+import { buildPrefillContext, deriveProjectFromCwd, recall, PREFILL_DEFAULTS } from "@rohirik/openltm-core";
 
 function projectName(path: string): string {
   // Use last path segment as project scope (matching Claude Code convention)
@@ -12,7 +12,7 @@ export function buildSessionHooks(opts: { dbPath: string; project: string }): Pi
   return {
     "experimental.chat.system.transform": async (_ctx, output) => {
       try {
-        const block = buildPrefillContext({ project, maxMemories: 10, maxLines: 18 });
+        const block = buildPrefillContext({ project, ...PREFILL_DEFAULTS });
         if (block) output.system.push(block);
       } catch {
         // Non-fatal — session continues without LTM context

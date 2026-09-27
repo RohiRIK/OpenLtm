@@ -45,7 +45,15 @@ export type { MemoryTemperature, RecallExplainer, ExplainerInput } from "./recal
 
 // Session prefill helpers
 export { buildPrefillContext, deriveProjectFromCwd, selectPrefillMemories } from "./prefill.js";
-export type { PrefillOptions, PrefillSelection } from "./prefill.js";
+export type { PrefillOptions, PrefillSelection, PrefillCategory, PrefillQuotaReport } from "./prefill.js";
+export { PREFILL_DEFAULTS } from "./prefill.js";
+
+// Recall ranking
+export { rankRecallResults, isOperationalNoise } from "./db.js";
+export { RANK_WEIGHTS } from "./db.js";
+
+// Text similarity (prefill dedupe + learn hygiene)
+export { isNearDuplicate, jaccardSimilarity, tokenize, tokenizeAll } from "./similarity.js";
 
 // Embedding providers
 export * from "./providers/index.js";
