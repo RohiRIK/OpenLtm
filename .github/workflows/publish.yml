@@ -66,17 +66,10 @@ jobs:
         working-directory: packages/adapter-opencode
         run: npm publish --provenance
 
-      - name: Build pi extension
-        working-directory: packages/adapter-pi
-        run: bun run build
-
+      # adapter prepack builds the bundle and resolves workspace:* deps
       - name: Publish pi extension
         working-directory: packages/adapter-pi
         run: npm publish --provenance
-
-      - name: Build openclaw extension
-        working-directory: packages/adapter-openclaw
-        run: bun run build
 
       - name: Publish openclaw extension
         working-directory: packages/adapter-openclaw

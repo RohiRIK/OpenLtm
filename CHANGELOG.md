@@ -7,8 +7,15 @@
 - **OpenClaw manifest checker** — `bun run check:openclaw` validates the manifest against OpenClaw's real loader rules: `configSchema` is required, 1–3 categories from the published taxonomy, the `kind` enum, `uiHints`/`configGroups` cross-referenced against the schema, every `contracts.tools` entry actually registered (and nothing registered undeclared), write tools flagged `sideEffecting`, and `compat`/`minHostVersion`/peer ranges agreeing. Wired into `check:monthly`.
 - **OpenClaw adapter tests** — 10 tests drive the plugin's `register()` against a fake host API, covering tool registration, manifest/registration agreement, learn↔recall round-trip, unknown-category rejection, error surfacing, stale listing, and the auto-recall toggle.
 
+### Fixed
+- **Adapter tarballs were only publishable from CI.** `workspace:*` was rewritten by a `sed` step inside the release workflow, so `npm pack` anywhere else produced a tarball that failed to install with `EUNSUPPORTEDPROTOCOL`. All three adapters now resolve workspace deps in `prepack` and restore in `postpack`, so a tarball is always correct and the working tree stays clean.
+- **Adapter tarballs could ship a stale bundle.** `npm pack` does not run `prepublishOnly`, so a local pack shipped whatever `dist/` happened to be on disk. `prepack` now builds before packing, which also let the duplicated CI build steps be removed.
+
 ### Docs
-- `docs/11-publishing.md` updated with the OpenClaw integration: the target version, the verified SDK resolution route, the plugin shape chosen, and the exclusivity tradeoff.
+- `docs/11-publishing.md` updated with the OpenClaw integration: the target version, the verified SDK resolution route, the plugin shape chosen, the exclusivity tradeoff, and the host-verification result.
+
+### Verified
+- **The OpenClaw plugin loads in a real host.** Installed into `openclaw@2026.9.6` (Node 26.8.1) via `openclaw plugins install`; `openclaw plugins list --json` reports `openltm | status: loaded | version: 2.15.0`. Loading forced a design correction: OpenClaw runs on Node and `@rohirik/openltm-core` imports `bun:sqlite`, so a static import failed with `ERR_UNSUPPORTED_ESM_URL_SCHEME`. The adapter now never imports core and instead spawns the core MCP server as a Bun child over stdio JSON-RPC, mirroring the Pi adapter.
 
 ## [2.14.3] — 2026-09-27
 
