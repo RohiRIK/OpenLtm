@@ -8,12 +8,6 @@ It contains a condensed summary of patterns extracted from sessions.
 ## Recent Sessions
 
 - **2026-01-22** (342 msgs): Session e632f303...
-- **2026-03-24** (26 msgs): Session e823d125... (Errors: 0)
-- **2026-03-24** (13 msgs): Session f00b06af... (Errors: 0)
-- **2026-03-24** (14 msgs): Session 22b6a5d2... (Errors: 0)
-- **2026-03-24** (22 msgs): Session bd8c5154... (Errors: 0)
-- **2026-03-25** (62 msgs): Session d6aed6d6... (Errors: 3)
-- **2026-03-25** (6 msgs): Session 4bbf7204... (Errors: 0)
 - **2026-03-25** (20 msgs): Session cb7a3031... (Errors: 0)
 - **2026-03-25** (39 msgs): Session 126e9e3c... (Errors: 0)
 - **2026-03-25** (76 msgs): Session 5d97045f... (Errors: 0)
@@ -47,3 +41,9 @@ It contains a condensed summary of patterns extracted from sessions.
 - **2026-08-24** (53 msgs): Session bb336453... (Errors: 0)
 - **2026-08-24** (131 msgs): Session e5a6d031... (Errors: 0)
 - **2026-08-24** (88 msgs): Session 0d2c0a1d... (Errors: 1)
+- **2026-09-27** (94 msgs): Session 37608a07... (Errors: 0)
+- **2026-09-27** (1200 msgs): Session b2133439... (Errors: 12)
+- **2026-09-27** (121 msgs): Session 52b1dac6... (Errors: 0)
+- **2026-09-27** (64 msgs): Session fc88d9a4... (Errors: 0)
+- **2026-09-27** (330 msgs): Session d5be2dba... (Errors: 2)
+- **2026-09-27** (161 msgs): Session 7425b88d... (Errors: 2)

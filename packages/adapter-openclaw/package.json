@@ -1,6 +1,6 @@
 {
   "name": "@rohirik/openclaw-ltm",
-  "version": "2.15.0",
+  "version": "2.15.1",
   "description": "OpenLTM \u2014 long-term memory for OpenClaw agents, sharing one local SQLite database with the Claude Code, OpenCode, and Pi plugins",
   "type": "module",
   "license": "MIT",

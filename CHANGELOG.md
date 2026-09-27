@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.15.1] — 2026-09-27
+
+### Fixed
+- **ClawHub publish artifact** — the first ClawHub release was built from a git source whose `package.json` still carried `workspace:*`, and its `files` allowlist predated the OpenClaw README, so `openclaw plugins install clawhub:@rohirik/openclaw-ltm` would have failed to resolve `@rohirik/openltm-core`. ClawHub publishes from a folder, so the release now resolves the workspace dependency before upload, links the correct `main` commit, and ships the README.
+
 ## [2.15.0] — 2026-09-27
 
 ### Added
