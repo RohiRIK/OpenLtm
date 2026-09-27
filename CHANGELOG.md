@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.14.0] — 2026-09-27
+
+### Added
+- **Hermes auto-capture rule engine** — new `hermes/openltm_hermes/auto_capture.py` owns every automatic-capture decision: one ordered declarative rule table, named guards (`is_transient_operational`, `is_read_only_memory_request`), and one shared distiller. Two entry points, `evaluate_turn()` and `evaluate_session()`, return decisions and never touch the database.
+- **Testable extraction policy** — `hermes/openltm_hermes/test_auto_capture.py` (33 tests) runs on stdlib `unittest` with no third-party package and no Hermes runtime, so capture rules are verifiable anywhere. Wired into `bun run check:monthly` as `hermes-unittest`.
+- **Shared version registry** — `scripts/version-targets.ts` is now the single source of truth for version-bearing files, imported by both `bump-version.ts` and `verify-version-sync.ts` so the two cannot cover different sets again.
+
+### Changed
+- **One-step version bumps** — `bun run bump` now accepts `patch` / `minor` / `major` in addition to an explicit version, and rewrites all 9 version references across 8 files. Previously it touched 3 files and pointed at a path (`docs/ARCHITECTURE.md`) that no longer existed.
+- **Maintenance summary** — `check:monthly` reports a PASS/FAIL/SKIP summary; optional tools are always reported as skipped, never as passed.
+
+### Fixed
+- **Constraint misclassification (Hermes)** — "Always use Bun, never npm" contains "use ", so it was being filed as a soft preference (importance 3) rather than a constraint (importance 4). Constraints are now evaluated before preferences.
+- **Corrupted read-only guard regex** — a quantifier inside an f-string (`{0,2}`) was evaluated as a format expression, silently producing a broken pattern so one class of read-only request stopped being recognised. Braces are now escaped, and the previously hard-coded "the OpenLTM tool that reports memory statistics" sentence is a general pattern.
+- **Hermes session-end quality** — `on_session_end` stored raw truncated message text while `sync_turn` stored distilled facts. Both now use the same distiller, and session end picks up the full user rule set instead of a reduced copy.
+
 ## [2.13.0] — 2026-09-27
 
 ### Added

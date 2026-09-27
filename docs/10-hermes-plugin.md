@@ -11,6 +11,7 @@ extraction logic, and tests — lives under [`hermes/`](../hermes/README.md).
 |---|---|---|
 | Plugin location | untracked `~/.hermes/plugins/openltm_hermes` + separate `hermes-brain` repo | `hermes/openltm_hermes/` in this repo (source of truth) |
 | Schema | drift-prone inline SQL (25 objects) | `hermes/schema.sql` (canonical, column-terminal, folds migrations 007/011/013) |
+| Auto-capture | keyword lists duplicated in `sync_turn` and `on_session_end`, with one-off regexes patched on per incident | one ordered rule table + named guards + shared distiller in `hermes/openltm_hermes/auto_capture.py` |
 | Migration history | split across two repos | single canonical `migrations/` 001–025 in OpenLtm core |
 | CI | Security Scan 5 HIGH CVEs; bundle auto-push to protected main | Trivy 0/0; drift-gate workflow (no push) |
 | Publish | n/a | tokenless OIDC provenance on npm |
@@ -45,10 +46,14 @@ Then a `git pull` + gateway restart = live update with zero install drift.
 ## Update flow (this repo)
 
 1. Edit plugin sources under `hermes/openltm_hermes/`.
-2. Run the 38-test plugin suite from a scratch copy (never against the live dir/DB):
+2. Run the plugin tests from a scratch copy (never against the live dir/DB):
    ```bash
    rm -rf /tmp/openltm-plugin-test && cp -r hermes/openltm_hermes /tmp/openltm-plugin-test
    cd /tmp/openltm-plugin-test && python3 -m pytest -q
+   ```
+   Extraction policy alone needs no third-party package:
+   ```bash
+   cd /tmp/openltm-plugin-test && python3 -m unittest test_auto_capture
    ```
 3. OpenLtm core gates: `bun test && bun run typecheck` (unchanged by `hermes/`).
 4. Commit + bump + release per [`../CONTRIBUTING.md`](../CONTRIBUTING.md).

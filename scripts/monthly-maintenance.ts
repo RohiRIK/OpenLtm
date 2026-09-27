@@ -53,6 +53,14 @@ const steps: Step[] = [
     optional: true,
     requires: "python3 -m pytest --version",
   },
+  {
+    // Runs with stdlib only, so extraction policy is verified even on machines
+    // without pytest. Requires no Hermes runtime.
+    label: "hermes-unittest",
+    command: ["python3", "-m", "unittest", "test_auto_capture"],
+    cwd: "/tmp/openltm-plugin-test",
+    optional: true,
+  },
 ];
 
 function hasCommand(command: string): boolean {
@@ -88,7 +96,7 @@ for (const step of steps) {
   }
 
   // Hermes tests must run from a scratch copy, never the live plugin dir/DB.
-  if (step.label === "hermes-pytest") {
+  if (step.label === "hermes-pytest" || step.label === "hermes-unittest") {
     spawnSync(["bash", "-lc", "rm -rf /tmp/openltm-plugin-test && cp -r hermes/openltm_hermes /tmp/openltm-plugin-test"], {
       stdout: quiet ? "ignore" : "inherit",
       stderr: "inherit",

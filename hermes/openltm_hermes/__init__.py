@@ -26,73 +26,18 @@ from typing import Any, Dict, List, Optional
 
 from agent.memory_provider import MemoryProvider
 
+from .auto_capture import (
+    evaluate_session as _evaluate_session,
+)
+from .auto_capture import (
+    evaluate_turn as _evaluate_turn,
+)
+
 logger = logging.getLogger(__name__)
 
-# Transient runtime notifications that broad auto-store wrongly captured as
-# durable memories (templated → piled up as near-duplicate pollution). Matched
-# case-insensitively anywhere in the message; these are ops noise, not facts.
-_TRANSIENT_OPS_RE = re.compile(
-    r"async delegation batch complete"
-    r"|context compaction\s*[—\-–]\s*reference only"
-    r"|background process\s+\w+\s+completed"
-    r"|\[?important:\s*background process",
-    re.IGNORECASE,
-)
-_READ_ONLY_MEMORY_TOOL = r"openltm_(?:recall|context|graph|brain_stats)"
-_MARKDOWN_WRAPPED_READ_ONLY_TOOL_RE = re.compile(
-    rf"[`*_~]+({_READ_ONLY_MEMORY_TOOL})[`*_~]+",
-    re.IGNORECASE,
-)
-_READ_ONLY_MEMORY_CALL_RE = re.compile(
-    rf"(?:(?:can|could|would)\s+you\s+(?:please\s+)?|please\s+)?"
-    rf"(?:call|invoke|run|query|check|use)\s+(?:the\s+)?"
-    rf"{_READ_ONLY_MEMORY_TOOL}"
-    rf"(?:\s+(?:now|exactly\s+once))?"
-    rf"(?:\s*(?:,|and)\s*(?:report|return|show)\s+"
-    rf"(?:the\s+)?(?:status|result|results|stats|statistics|output))?",
-    re.IGNORECASE,
-)
-_DESCRIBED_BRAIN_STATS_CALL = (
-    "call the openltm tool that reports memory statistics exactly once, then "
-    "report the total memory count in one short sentence"
-)
-_OPERATIONAL_REPORT_RE = re.compile(
-    r"(?:report|return|show)\s+(?:the\s+)?"
-    r"(?:status|result|results|stats|statistics|output)",
-    re.IGNORECASE,
-)
-_NO_MEMORY_WRITE_RE = re.compile(
-    r"(?:do\s+not|don't|must\s+not)\s+"
-    r"(?:write|store|save|add|learn|delete|forget)(?:\s+(?:to|from))?"
-    r"(?:\s+or\s+(?:write|store|save|add|learn|delete|forget)"
-    r"(?:\s+(?:to|from))?)?\s+(?:any\s+)?memor(?:y|ies)",
-    re.IGNORECASE,
-)
-
-
-def _is_transient_operational(text: str) -> bool:
-    """True when ``text`` is a runtime notification, not durable knowledge."""
-    return bool(text) and _TRANSIENT_OPS_RE.search(text) is not None
-
-
-def _is_wholly_read_only_memory_operation(text: str) -> bool:
-    """True when every clause is part of one read-only OpenLTM request."""
-    if not text:
-        return False
-    normalized = _MARKDOWN_WRAPPED_READ_ONLY_TOOL_RE.sub(r"\1", text)
-    normalized = re.sub(r"\s+", " ", normalized).strip()
-    clauses = [part.strip() for part in re.split(r"[;.!?]+", normalized) if part.strip()]
-    first_clause = clauses[0] if clauses else ""
-    if (
-        _READ_ONLY_MEMORY_CALL_RE.fullmatch(first_clause) is None
-        and first_clause.casefold() != _DESCRIBED_BRAIN_STATS_CALL
-    ):
-        return False
-    return all(
-        _OPERATIONAL_REPORT_RE.fullmatch(clause) is not None
-        or _NO_MEMORY_WRITE_RE.fullmatch(clause) is not None
-        for clause in clauses[1:]
-    )
+# Extraction policy (rules, guards, distillation) lives in .auto_capture so
+# sync_turn() and on_session_end() cannot drift apart. This module only decides
+# what to do with a returned decision.
 
 # Lazy-import _db to avoid circular imports at module load time
 _db_module = None
@@ -455,121 +400,24 @@ class OpenLtmpMemoryProvider(MemoryProvider):
         """
         if not self._conn:
             return
-        # Lower the length gates — architecture/env facts are often short.
-        if len(user_content) < 8 or len(assistant_content) < 5:
-            return
-        # Reject transient operational notifications and messages composed only
-        # of a read-only OpenLTM request plus reporting/no-write guardrails. Mixed
-        # messages continue into extraction so durable constraints are retained.
-        if (
-            _is_transient_operational(user_content)
-            or _is_transient_operational(assistant_content)
-            or _is_wholly_read_only_memory_operation(user_content)
-        ):
-            return
 
-        db_mod = _get_db()
-        lower_user = user_content.lower()
-        lower_asst = assistant_content.lower()
-
+        # Policy lives in .auto_capture: guards, ordered rules, and distillation
+        # are shared with on_session_end so the two paths cannot diverge.
         try:
-            # ── USER-side: corrections / preferences / constraints / decisions ──
-            correction_kw = [
-                "wrong", "incorrect", "no,", "no.", "don't", "stop", "fix",
-                "error", "mistake", "that's not", "not right", "bad idea",
-            ]
-            if any(kw in lower_user for kw in correction_kw):
-                fact = self._distill(user_content, correction_kw)
-                db_mod.learn(self._conn, fact, category="gotcha", importance=4, embedder=self._embedder)
+            decision = _evaluate_turn(user_content or "", assistant_content or "")
+            if decision is None:
                 return
 
-            pref_kw = [
-                "prefer", "like", "want", "use ", "always use", "i need",
-                "i'd rather", "favorite", "wish", "hope", "expect",
-            ]
-            if any(kw in lower_user for kw in pref_kw):
-                fact = self._distill(user_content, pref_kw)
-                db_mod.learn(self._conn, fact, category="preference", importance=3, embedder=self._embedder)
-                return
-
-            constraint_kw = [
-                "never", "always", "must", "don't ever", "do not",
-                "should not", "can't", "cannot", "only if", "required",
-            ]
-            if any(kw in lower_user for kw in constraint_kw):
-                fact = self._distill(user_content, constraint_kw)
-                db_mod.learn(self._conn, fact, category="constraint", importance=4, embedder=self._embedder)
-                return
-
-            decision_kw = [
-                "let's", "we'll", "going with", "decided", "choose",
-                "use this", "settled on", "picked", "agreed",
-            ]
-            if any(kw in lower_user for kw in decision_kw):
-                fact = self._distill(user_content, decision_kw)
-                db_mod.learn(self._conn, fact, category="architecture", importance=3, embedder=self._embedder)
-                return
-
-            # ── ASSISTANT-side: agent-discovered facts worth keeping ──
-            discovery_kw = [
-                "found that", "discovered", "turns out", "the fix is",
-                "is configured as", "is set to", "the error was",
-                "the issue is", "root cause", "solution is", "works by",
-                "note that", "remember that", "key insight",
-            ]
-            if any(kw in lower_asst for kw in discovery_kw):
-                fact = self._distill(assistant_content, discovery_kw)
-                db_mod.learn(self._conn, fact, category="gotcha", importance=3, embedder=self._embedder)
-                return
-
+            db_mod = _get_db()
+            db_mod.learn(
+                self._conn,
+                decision.content,
+                category=decision.category,
+                importance=decision.importance,
+                embedder=self._embedder,
+            )
         except Exception as e:
             logger.debug("OpenLTM sync_turn extraction failed: %s", e)
-
-    @staticmethod
-    def _distill(text: str, trigger_kw: list[str]) -> str:
-        """Extract a clean declarative fact from a message containing a trigger.
-
-        Takes the sentence that contains the trigger keyword and returns it as
-        a capitalized, self-contained statement. We strip only generic
-        speech-marker prefixes that add no factual content ("I prefer ",
-        "We decided to ", "The fix is "), but we PRESERVE negation words
-        ("don't", "never") so meaning is not inverted. Falls back to the first
-        300 chars of the cleaned text if no sentence boundary is found.
-        """
-        import re
-        sentences = re.split(r'(?<=[.!?])\s+|\n+', text)
-        target = None
-        for s in sentences:
-            low = s.lower()
-            if any(kw in low for kw in trigger_kw):
-                target = s
-                break
-        if not target:
-            target = text[:300]
-
-        # Strip only pure speech-marker prefixes (no factual content).
-        # Negations (don't, never, must not) are kept to preserve meaning.
-        speech_markers = [
-            "i prefer ", "i'd rather ", "i like ", "i want ", "i need ",
-            "we'll ", "we decided ", "we chose ", "let's ", "going with ",
-            "settled on ", "picked ", "agreed ", "the fix is ",
-            "the solution is ", "the issue is ", "root cause ",
-            "i found that ", "i discovered ", "turns out ", "note that ",
-            "remember that ", "key insight ",
-        ]
-        low_target = target.lower()
-        for marker in speech_markers:
-            if low_target.startswith(marker):
-                target = target[len(marker):].strip()
-                break
-
-        target = target.strip()
-        if not target:
-            target = text[:300].strip()
-        # Capitalize first letter for a clean declarative fact
-        if target and target[0].isalpha():
-            target = target[0].upper() + target[1:]
-        return target[:500]
 
     def get_tool_schemas(self) -> List[Dict[str, Any]]:
         """Return all OpenLTM tools."""
@@ -728,86 +576,35 @@ class OpenLtmpMemoryProvider(MemoryProvider):
             self._conn = None
 
     def on_session_end(self, messages: List[Dict[str, Any]]) -> None:
-        """Extract session-level insights from the full conversation.
+        """Store session-level facts from the whole conversation.
 
-        Looks for:
-        1. Corrections (user corrects agent → gotcha)
-        2. Decisions made (user says "let's", "we'll" → architecture)
-        3. Preferences stated (user says "prefer", "like" → preference)
-        4. Constraints added (user says "never", "always" → constraint)
-        5. Patterns discovered (agent explains something complex → pattern)
-
-        Extracts 1-5 insights per session. Conservative.
+        Uses the same rules, guards, and distillation as `sync_turn` (see
+        `.auto_capture`), so a fact captured here is classified and phrased
+        identically to one captured per-turn. Conservative: at most
+        `SESSION_MAX_EXTRACT` facts, and a correction only counts when the agent
+        had just spoken.
         """
         if not self._conn or not messages:
             return
 
-        db_mod = _get_db()
-        extracted = 0
-        max_extract = 5
+        try:
+            decisions = _evaluate_session(messages)
+            if not decisions:
+                return
 
-        # Flatten content from message blocks
-        def _text(msg):
-            c = msg.get("content", "")
-            if isinstance(c, list):
-                return " ".join(p.get("text", "") for p in c if isinstance(p, dict) and p.get("type") == "text")
-            return c
-
-        for i, msg in enumerate(messages):
-            if extracted >= max_extract:
-                break
-            if msg.get("role") != "user":
-                continue
-
-            content = _text(msg)
-            # ``on_session_end`` receives synthetic runtime envelopes as
-            # role=user messages too, and may also revisit wholly operational
-            # read-only OpenLTM requests. Apply the same provenance guards used
-            # by sync_turn() before keyword extraction.
-            if (
-                _is_transient_operational(content)
-                or _is_wholly_read_only_memory_operation(content)
-            ):
-                continue
-            lower = content.lower()
-
-            # Corrections
-            if any(kw in lower for kw in ["wrong", "incorrect", "no,", "no.", "don't", "stop", "fix", "error", "mistake"]):
-                prev = messages[i - 1] if i > 0 else None
-                if prev and prev.get("role") == "assistant":
-                    try:
-                        db_mod.learn(self._conn, content[:300], category="gotcha", importance=4)
-                        extracted += 1
-                    except Exception:
-                        pass
-                continue
-
-            # Preferences
-            if any(kw in lower for kw in ["prefer", "like", "want", "use ", "always use", "i need"]):
+            db_mod = _get_db()
+            for decision in decisions:
                 try:
-                    db_mod.learn(self._conn, content[:300], category="preference", importance=3)
-                    extracted += 1
-                except Exception:
-                    pass
-                continue
-
-            # Constraints
-            if any(kw in lower for kw in ["never", "always", "must", "don't ever", "do not"]):
-                try:
-                    db_mod.learn(self._conn, content[:300], category="constraint", importance=4)
-                    extracted += 1
-                except Exception:
-                    pass
-                continue
-
-            # Decisions
-            if any(kw in lower for kw in ["let's", "we'll", "going with", "decided", "choose", "use this"]):
-                try:
-                    db_mod.learn(self._conn, content[:300], category="architecture", importance=3)
-                    extracted += 1
-                except Exception:
-                    pass
-                continue
+                    db_mod.learn(
+                        self._conn,
+                        decision.content,
+                        category=decision.category,
+                        importance=decision.importance,
+                    )
+                except Exception as e:
+                    logger.debug("OpenLTM session-end learn failed: %s", e)
+        except Exception as e:
+            logger.debug("OpenLTM session-end extraction failed: %s", e)
 
     def on_memory_write(
         self,
