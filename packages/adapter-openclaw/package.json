@@ -69,5 +69,8 @@
       "bundleRuntimeDependencies": false,
       "publishToNpm": true
     }
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

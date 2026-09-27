@@ -6,7 +6,7 @@
 
 ### You explained your auth layer once. Why does Claude ask again tomorrow?
 
-**Long-Term Memory for AI coding agents** — Claude Code, OpenCode, and Pi
+**Long-Term Memory for AI coding agents** — Claude Code, OpenCode, Pi, and OpenClaw
 
 [![Version](https://img.shields.io/badge/version-2.15.0-blue?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
@@ -21,63 +21,96 @@ Persistent semantic memory that survives every session, every update, every comp
 
 ---
 
-## 📣 Now open source
+## Now open source
 
-**OpenLTM was born as a private memory layer for Claude Code. Today it's fully open source under MIT.**
+**OpenLTM began as a private memory layer for one agent. It is now MIT licensed, and the whole engine is on your disk to read, fork, and break.**
 
-Same engine — automatic capture, semantic recall, importance-weighted decay, a queryable memory graph — now yours to read, fork, and extend. What started as one developer's "stop re-explaining my codebase" plugin is now an open foundation for **agent memory** across Claude Code, OpenCode, and Pi.
-
-- 🔓 **MIT licensed** — no cloud, no account, no telemetry. Your memory lives in a local SQLite DB you own.
-- 🧩 **Provider-agnostic** — one core (`@rohirik/openltm-core`), thin adapters per host.
-- 🛠 **Hackable** — hooks, skills, janitor providers, and the graph visualizer are all in the open.
+- **One engine, four hosts.** `@rohirik/openltm-core` holds the memory logic; each host gets a thin adapter.
+- **You own the file.** A local SQLite database. No account, no dashboard, no vendor copy.
+- **Everything is hackable.** Hooks, skills, janitor providers, the graph visualizer. All of it in the open.
 
 > Migrating from an earlier install? The marketplace is now [`RohiRIK/OpenLtm`](https://github.com/RohiRIK/OpenLtm) and the plugin is `openltm`. Your existing memory database carries over.
 
 ---
 
+## Read this before you store anything
+
+**The database is local. The embedding provider is not, by default.**
+
+Semantic search needs vectors, and the default embedding provider is **Google Gemini** (`packages/openltm-core/src/embeddings.ts:47`). Memory text is sent there to be turned into numbers. The janitor's LLM providers — Anthropic, Cohere, Gemini — receive memory content for the same reason.
+
+There is no telemetry and no analytics in any configuration. That part is unconditional. But "no cloud" is not a claim this project makes, and an earlier version of this README made it.
+
+Two environment variables put everything back on your machine:
+
+```bash
+export LTM_EMBED_PROVIDER=ollama     # embeddings stay local
+export LTM_LLM_PROVIDER=ollama       # janitor summaries stay local
+```
+
+Full detail, including which write paths scrub secrets and which don't: [Security notes](#security-notes).
+
+---
+
 ## The philosophy
 
-Four ideas. No exceptions.
+**Memory should be automatic.** Hooks do the work. The session-end hook extracts patterns, the session-start hook injects them back. You shouldn't have to remember to remember.
 
-- **Memory should be automatic.** Hooks do the work. The session end hook extracts patterns, the session start hook injects them back. You shouldn't have to remember to remember.
-- **Decay is a feature, not a bug.** A gotcha from six months ago that you never revisited probably no longer applies. Set `importance: 5` to make something permanent — everything else ages out naturally.
-- **Semantic over keyword.** FTS5 full-text search runs first; if it returns nothing, vector embeddings kick in. You search by meaning, not exact words — *"how we handle async errors"* finds the right memory even if you never wrote those exact words.
-- **Zero config, zero lock-in.** Install once, works everywhere. Every setting has a sane default. The DB lives outside the plugin directory so it survives every update. No cloud, no telemetry, no account.
+**Decay is a feature, not a bug.** A gotcha from six months ago that you never revisited probably no longer applies. Set `importance: 5` and a memory never ages out. Everything else fades at a rate set by how confident you were and how often it proved true (`janitor/decay.ts`).
+
+**Semantic over keyword.** FTS5 full-text search runs first. If it returns nothing, vector embeddings kick in. You search by meaning — *"how we handle async errors"* finds the memory even if you never wrote those words.
+
+**Own your data.** A file on your disk. When you leave the project, so does everything you taught it.
 
 ---
 
 ## What you get
 
-| | |
-|---|---|
-| 🔍 **Recall** | Past decisions, patterns, and gotchas — before you start work |
-| 🧠 **Learn** | Every session, automatically — no manual note-taking |
-| 💉 **Inject** | Top context at session start so Claude picks up where it left off |
-| ⏳ **Decay** | Stale memories fade while critical knowledge lives forever |
-| 🕸 **Graph** | Traverse relationships between memories for reasoning chains |
-| 🗺 **Visualize** | See your entire memory network in a browser-based explorer |
-| ⚡ **Vec Recall** | Semantic vector (KNN) recall via sqlite-vec; degrades to JS-cosine when unavailable |
-| 🔌 **Extensions** | sqlite-vec + Honker (queue/cron/pub-sub) loaded dynamically; graceful fallback without system libsqlite3 |
+| Capability | What it actually does | Where it lives |
+|---|---|---|
+| Recall | FTS5 first, vector KNN as fallback — search by meaning, not exact words | `openltm-core/src/recall/` · `src/vec/index.ts` |
+| Learn | Stores a memory with category, importance, and confidence; scrubs secrets on this path | `openltm-core/src/db.ts:561` |
+| Inject | Renders the top-ranked memories as context at session start | `openltm-core/src/context.ts:49` |
+| Decay | Ages memories by importance × confidence; `importance: 5` is permanent | `openltm-core/src/janitor/decay.ts` |
+| Graph | Traverses relations between memories and builds a reasoning chain | `openltm-core/src/graph.ts:69` |
+| Visualize | A browser explorer over the live database, with janitor controls | `src/graph-server.ts` · `graph-app/` |
+| Extensions | sqlite-vec and Honker loaded from disk, with a working fallback when absent | `openltm-core/src/extensions.ts:160` |
+| Deduplicate | Merges memories the janitor judges to be the same thing | `openltm-core/src/janitor/dedup.ts` |
+
+---
+
+## Four hosts, one database
+
+The engine is one package. Each host gets an adapter, and all of them open the same `openltm.db` — so a gotcha learned in Claude Code is already there when you open OpenCode.
+
+| Host | Adapter | Install |
+|---|---|---|
+| Claude Code | `.claude-plugin/` | `claude plugin install openltm` |
+| OpenCode | `@rohirik/opencode-ltm` | `bunx @rohirik/openltm-core --opencode` |
+| Pi | `@rohirik/pi-ltm` | `bunx @rohirik/openltm-core --pi` |
+| OpenClaw | `@rohirik/openclaw-ltm` | see [`docs/11-publishing.md`](docs/11-publishing.md) |
+
+Plus a native Python plugin for [Hermes](https://github.com/NousResearch/hermes) — separate implementation, same database, same schema.
 
 ---
 
 ## Install
 
-### Marketplace (recommended)
+### Marketplace (recommended for Claude Code)
 
 ```bash
 claude plugin marketplace add https://github.com/RohiRIK/OpenLtm
 claude plugin install openltm
 ```
 
-Restart Claude Code. That's it. Four Claude Code hooks + one git post-commit hook auto-wire, four commands load, five skills activate, and your `openltm.db` migrates or creates itself.
+Restart Claude Code. Five hooks auto-wire, six commands load, seven skills activate, and your `openltm.db` migrates or creates itself.
 
 ### bunx (no clone)
 
 ```bash
-bunx @rohirik/openltm-core          # auto-detect Claude Code, OpenCode
-bunx @rohirik/openltm-core --pi     # experimental Pi adapter
-bunx @rohirik/openltm-core --dry-run --claude  # preview without writing
+bunx @rohirik/openltm-core                        # auto-detect installed hosts
+bunx @rohirik/openltm-core --pi                   # experimental Pi adapter
+bunx @rohirik/openltm-core --dry-run --claude     # show me everything you'd write, write nothing
 ```
 
 ### Dev / git clone
@@ -87,31 +120,13 @@ git clone https://github.com/RohiRIK/OpenLtm ~/Projects/OpenLtm
 cd ~/Projects/OpenLtm && bash install.sh
 ```
 
----
-
-## Hermes memory plugin
-
-Hermes (the Nous Research agent runtime) uses the same memory engine through a native
-Python plugin. The plugin, its canonical schema, and its extraction logic live in
-[`hermes/`](hermes/README.md) — one source of truth for the Hermes integration:
-
-```bash
-hermes plugins install RohiRIK/OpenLtm/hermes/openltm_hermes
-```
-
-- Store: local SQLite at `~/.hermes/openltm.db` (no server, no network)
-- Provider: `memory.provider: openltm_hermes` in `~/.hermes/config.yaml`
-- Schema: [`hermes/schema.sql`](hermes/schema.sql) — column-terminal, folds migrations
-  007/011/013 so fresh installs never crash the plugin's learn/janitor paths
-- Tests: 38 plugin tests; run from a scratch copy (`hermes/README.md` has the command)
+**What that installer does outside this repo.** It writes `~/.claude.json`, creates `~/.claude/settings.json` if it isn't there, and adds `mcp__plugin_openltm_memory` to the `permissions.allow` list so the memory tools stop prompting for approval. That's a deliberate widening of your agent's tool permissions, and it's the kind of thing an installer should tell you about. Read [`scripts/install-wiring.ts`](scripts/install-wiring.ts) first if you'd rather look before running.
 
 ---
 
-## Quick Start
+## Quick start
 
 Start a new session. Context is injected at the top automatically.
-
-Then try:
 
 ```
 /openltm:memory recall auth       — what do we know about auth in this project?
@@ -120,11 +135,9 @@ Then try:
 /openltm:project init             — set a goal for the current project
 ```
 
-That's it. The rest is hooks doing the work.
+### For headless agents
 
-### CLI access for headless agents
-
-Slash commands and the `ltm_*` plugin tools only exist inside an agent TUI. From a plain shell — scripts, cron jobs, CI, or a CLI agent running outside the TUI — use the `memory` subcommand:
+Slash commands and the `ltm_*` tools only exist inside an agent TUI. From a plain shell — scripts, cron, CI:
 
 ```bash
 bunx @rohirik/openltm-core memory learn --text "Docker Hub rate limits unauthenticated pulls" \
@@ -132,52 +145,29 @@ bunx @rohirik/openltm-core memory learn --text "Docker Hub rate limits unauthent
 bunx @rohirik/openltm-core memory recall --query "docker rate limit" --json
 bunx @rohirik/openltm-core memory forget --id 42 --reason "outdated"
 bunx @rohirik/openltm-core memory context --project homelab
-bunx @rohirik/openltm-core memory --help
 ```
 
-`--json` emits machine-readable output. The DB resolves via `LTM_DB_PATH` (falls back to the plugin data dir). Writes go through the same secret-scrubbing path as the MCP server.
-
-Any MCP-capable host can also run the full server directly:
+Any MCP-capable host can run the full server directly:
 
 ```bash
-bunx @rohirik/openltm-core mcp-serve   # stdio MCP server: recall, learn, relate, forget, …
+bunx @rohirik/openltm-core mcp-serve
 ```
 
 ---
 
-## The shape of memory
+## Security notes
 
-```
-Claude Code
-   │
-   ├── 4 Commands  ──┐
-   ├── 5 Skills    ──┼──▶  openltm MCP server ──▶  openltm.db
-   └── 5 Hooks     ──┘                        (memories, tags,
-                                                context_items,
-                                                memory_relations,
-                                                memories_fts)
-```
+Three things worth knowing before this holds anything you care about.
 
-Full deep-dive — schema, hook architecture, decay formula, ADRs — in [How It Works](docs/02-how-it-works.md) and [Architecture](docs/03-architecture.md).
+**Secret scrubbing is not applied on every write path.** `learn()` scrubs before storing (`packages/openltm-core/src/db.ts:561`). The janitor's promote and dedup paths, and context capture, write to `memories` and `context_items` without it. The scrubber also fails open — on an internal error it returns the original text unchanged (`secretsScrubber.ts:101`) — and it is a pattern denylist, not a guarantee. Stored memory is not the same as redacted memory.
 
-> **SQLite Extensions:** The plugin loads sqlite-vec (vec0 / KNN vector search) and Honker (async embedding queue, leader-elected cron, pub-sub) when a system extension-enabled libsqlite3 is available. Both degrade gracefully — missing binary or library leaves the capability off and falls back to JS-cosine, file-watch polling, or in-process cron. Controlled with `LTM_DISABLE_VEC`, `LTM_DISABLE_HONKER`, `LTM_SQLITE_LIB`, and `LTM_HONKER_EXT` env vars.
+**`LTM_SQLITE_LIB` and `LTM_HONKER_EXT` load native code.** Both are filesystem paths handed to a SQLite extension loader (`extensions.ts:132,144`). There is no allowlist and no signature check. Set them only to paths you trust, or turn the loaders off with `LTM_DISABLE_VEC=1` and `LTM_DISABLE_HONKER=1`.
 
----
-
-## Verify
-
-```bash
-/openltm:health                    # plugin health + hooks + decay
-/openltm:memory recall test        # returns results (or "no results" on fresh install)
-```
-
-Start a new session — you should see context injected at the top. If not, run `/openltm:health` to diagnose.
+**npm publishing is tokenless.** Releases authenticate through GitHub OIDC trusted publishing with provenance. No `NPM_TOKEN` is stored in this repository.
 
 ---
 
 ## Go deeper
-
-Full documentation index: [`docs/`](docs/README.md).
 
 | I want to… | Read |
 |---|---|
@@ -187,20 +177,28 @@ Full documentation index: [`docs/`](docs/README.md).
 | Tune decay, injection, embedding behavior | [Configuration](docs/04-configuration.md) |
 | See how it works under the hood | [How It Works](docs/02-how-it-works.md) · [Architecture](docs/03-architecture.md) |
 | Understand the schema and data model | [DB Spec](docs/internal/DB-SPEC.md) |
-| **Compare against other memory tools** | **[Comparison](docs/12-comparison.md)** |
 | See all hooks, skills, and MCP tools | [Hooks](docs/06-hooks.md) · [Skills](docs/07-skills.md) · [MCP Tools](docs/08-mcp-tools.md) |
+| Publish a release | [Publishing](docs/11-publishing.md) |
 | Fix a problem | [Troubleshooting](docs/09-troubleshooting.md) |
-| See the product vision and where it's going | [PRD](docs/internal/PRD.md) · [Roadmap](docs/internal/ROADMAP.md) |
+| See where it's going | [PRD](docs/internal/PRD.md) · [Roadmap](docs/internal/ROADMAP.md) |
 | Contribute a change | [Contributing](CONTRIBUTING.md) |
 | Check what changed | [Changelog](CHANGELOG.md) |
 
 ---
 
-## Contributing
+## Environment variables
 
-Open an issue first to discuss the change, then send a PR. The full workflow — setup, tests, the version-bump rule, and release steps — is in [CONTRIBUTING.md](CONTRIBUTING.md).
-
-[Report a Bug](https://github.com/RohiRIK/OpenLtm/issues)
+| Variable | Purpose |
+|---|---|
+| `LTM_DB_PATH` | Where the SQLite file lives. Overrides the default location. |
+| `LTM_EMBED_PROVIDER` | Embedding provider. `gemini` by default; set `ollama` to stay local. |
+| `LTM_LLM_PROVIDER` | Provider for janitor summaries. |
+| `LTM_DISABLE_VEC` | Turn off the sqlite-vec loader; falls back to JS-cosine. |
+| `LTM_DISABLE_HONKER` | Turn off the Honker loader. |
+| `LTM_SQLITE_LIB` | Explicit path to a SQLite library. Loads native code. |
+| `LTM_HONKER_EXT` | Explicit path to the Honker extension. Loads native code. |
+| `LTM_CHANNEL` | Honker pub-sub channel. |
+| `LTM_BACKUP_RETENTION` | How many rotated backups to keep. |
 
 ---
 
@@ -212,8 +210,6 @@ MIT — [RohiRIK](https://github.com/RohiRIK)
 
 <div align="center">
 
-**Built for [Claude Code](https://docs.anthropic.com/en/docs/claude-code)**
-
-*Powered by caffeine, SQLite, and the persistent belief that context shouldn't die at the end of a session.*
+*Built for agents that forget, and shouldn't.*
 
 </div>
