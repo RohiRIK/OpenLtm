@@ -86,6 +86,32 @@ if (checked < VERSION_OCCURRENCE_COUNT) {
   console.log(`Only ${checked}/${VERSION_OCCURRENCE_COUNT} version references were reachable.`);
 }
 
+// The Release workflow extracts notes with
+//   awk "/^## \[<version>\]/{flag=1; next} /^## \[/{flag=0} flag" CHANGELOG.md
+// so a version bump with no matching section silently ships an EMPTY release.
+// Checked separately because only the first heading is meaningful.
+let changelogVersion: string | null = null;
+try {
+  const changelog = readFileSync(join(root, "CHANGELOG.md"), "utf-8");
+  changelogVersion = /^## \[(\d+\.\d+\.\d+)\]/m.exec(changelog)?.[1] ?? null;
+} catch {
+  changelogVersion = null;
+}
+
+if (changelogVersion === null) {
+  console.log(`FAIL  CHANGELOG.md → no "## [X.Y.Z]" heading (release notes would be empty)`);
+  failed++;
+} else if (changelogVersion === expected) {
+  console.log(`  OK  CHANGELOG.md → ${changelogVersion} (release notes present)`);
+} else {
+  console.log(
+    `FAIL  CHANGELOG.md → top section is ${changelogVersion}, expected ${expected} — tagging v${expected} would ship empty release notes`,
+  );
+  failed++;
+}
+
+console.log();
+
 if (failed > 0) {
   console.log(`${failed} check(s) failed. Run \`bun run bump <version>\` to realign.`);
   process.exit(1);

@@ -1,0 +1,72 @@
+{
+  "name": "@rohirik/openclaw-ltm",
+  "version": "2.15.0",
+  "description": "OpenLTM \u2014 long-term memory for OpenClaw agents, sharing one local SQLite database with the Claude Code, OpenCode, and Pi plugins",
+  "type": "module",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "src",
+    "openclaw.plugin.json",
+    "assets"
+  ],
+  "keywords": [
+    "openclaw",
+    "openclaw-plugin",
+    "ltm",
+    "long-term-memory",
+    "sqlite",
+    "memory"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/RohiRIK/OpenLtm"
+  },
+  "scripts": {
+    "build": "bunx esbuild src/index.ts --bundle --platform=node --format=esm --target=esnext --outfile=dist/index.js --external:openclaw --external:@rohirik/openltm-core --external:bun:sqlite --minify",
+    "prepublishOnly": "bun run build",
+    "typecheck": "bunx tsc --noEmit",
+    "test": "bun test",
+    "prepack": "bun run build && bun run ../../scripts/resolve-workspace-deps.ts rewrite package.json",
+    "postpack": "bun run ../../scripts/resolve-workspace-deps.ts restore package.json"
+  },
+  "dependencies": {
+    "@rohirik/openltm-core": "workspace:*",
+    "typebox": "^1.3.34"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.9.6"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "openclaw": {
+    "extensions": [
+      "./dist/index.js"
+    ],
+    "install": {
+      "npmSpec": "@rohirik/openclaw-ltm",
+      "defaultChoice": "npm",
+      "minHostVersion": ">=2026.9.6"
+    },
+    "compat": {
+      "pluginApi": ">=2026.9.6"
+    },
+    "build": {
+      "openclawVersion": "2026.9.6"
+    },
+    "release": {
+      "bundleRuntimeDependencies": false,
+      "publishToNpm": true
+    }
+  }
+}

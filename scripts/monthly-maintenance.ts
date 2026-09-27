@@ -44,6 +44,8 @@ const steps: Step[] = [
   { label: "typecheck", command: ["bun", "run", "typecheck"] },
   { label: "verify-version", command: ["bun", "run", "verify-version"] },
   { label: "dependency-audit", command: ["bun", "audit"] },
+  { label: "catalog-entry", command: ["bun", "run", "catalog:check"] },
+  { label: "openclaw-manifest", command: ["bun", "run", "check:openclaw"] },
   { label: "trivy", command: ["trivy", "fs", "--scanners", "vuln", "--severity", "HIGH,CRITICAL", "."], optional: true },
   { label: "trufflehog", command: ["trufflehog", "filesystem", "--exclude-paths", ".trufflehogignore", "."], optional: true },
   {
