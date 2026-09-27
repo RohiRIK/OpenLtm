@@ -270,6 +270,50 @@ Files:     6 files (122.0 KB)
 Tags:      latest
 ```
 
+### Publishing to ClawHub: two traps
+
+**1. ClawHub builds the artifact itself — your `prepack` is not run.** The
+ClawHub Inspector reported `PASS`, but the uploaded tarball still contained
+`"@rohirik/openltm-core": "workspace:*"`, which fails at install time with
+`EUNSUPPORTEDPROTOCOL`. The file list matched the `files` allowlist exactly
+(icon included, README absent) — so ClawHub copies the listed files and does
+**not** execute npm lifecycle scripts. The same `files` list also predated the
+README, which is how a stale artifact surfaced at all.
+
+Fix, and the shape every ClawHub release should use:
+
+```bash
+bun run scripts/resolve-workspace-deps.ts rewrite packages/adapter-openclaw/package.json
+clawhub package publish packages/adapter-openclaw \
+  --source-repo RohiRIK/OpenLtm --source-commit "$(git rev-parse HEAD)" \
+  --source-ref main --source-path packages/adapter-openclaw
+bun run scripts/resolve-workspace-deps.ts restore packages/adapter-openclaw/package.json
+```
+
+Pass the source coordinates explicitly. ClawHub inferred a stale
+`Source Ref: feat/…` and an old commit, which linked the release to code that
+was not what shipped.
+
+**2. Publishing is two-phase.** The response is
+`Update submitted … pending security scans before it becomes public.` A version
+is not `latest` — and `clawhub package inspect` keeps showing the previous
+version — until the scan completes. That is not a failure; do not re-publish.
+
+Always verify the artifact rather than trusting the inspector:
+
+```bash
+clawhub package download @rohirik/openclaw-ltm
+tar tzf ~/.openclaw/workspace/rohirik-openclaw-ltm-*.tgz          # expected files
+tar xzf ~/.openclaw/workspace/rohirik-openclaw-ltm-*.tgz package/package.json -O \
+  | python3 -c "import json,sys; print(json.load(sys.stdin)['dependencies'])"
+```
+
+**3. First publishes can fail server-side and still register a version.** One
+attempt died with a Convex backend OOM (`512 MB`) and printed nothing useful; the
+retry answered `Version 2.15.0 already exists`. The version had been created
+before the error. Re-publish as a new version rather than assuming nothing
+happened, and inspect before concluding either way.
+
 ### Bootstrapping a brand-new npm package
 
 OIDC trusted publishing is configured **per package**, so a package that does not
