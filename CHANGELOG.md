@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.12.3] — 2026-09-27
+
+### Fixed
+- **Hook bundle freshness** — regenerated `hooks/GitCommit.bundle.mjs` so the `Verify hook bundle freshness` workflow passes on tagged releases.
+
 ## [2.12.2] — 2026-09-27
 
 ### Changed
