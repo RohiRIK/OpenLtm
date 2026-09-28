@@ -24,9 +24,9 @@ hermes gateway restart   # plugin loads only at startup
 ```
 
 This clones the repo (depth 1), installs the plugin subdir into
-`~/.hermes/plugins/openltm_hermes/`, and Hermes loads it because the plugin's
-`__init__.py` exposes `OpenLtmMemoryProvider` (resolves by **directory name** —
-must stay `openltm_hermes`).
+`~/.hermes/plugins/openltm/` (the manifest `name`), and Hermes loads it through the
+plugin's `register(ctx)` → `ctx.register_memory_provider(...)`; select it with
+`hermes config set memory.provider openltm`.
 
 ## Live machine (Rohi's homelab gateway) — symlink wiring
 

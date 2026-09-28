@@ -30,12 +30,16 @@ A Hermes memory provider plugin that wraps [OpenLTM](https://github.com/RohiRIK/
 
 1. Enable the provider:
    ```bash
-   hermes config set memory.provider openltm_hermes
+   hermes config set memory.provider openltm
    ```
 
 2. Start a new session (`/reset`)
 
 3. The provider auto-creates `~/.hermes/openltm.db` on first use
+
+4. Vector search uses local Ollama by default. To use Gemini or OpenAI embeddings instead
+   (memory text is sent to that API), pick it explicitly with `hermes memory setup openltm`
+   (`embedder: gemini|openai|ollama|none` in `~/.hermes/openltm.json`).
 
 ## How it works
 

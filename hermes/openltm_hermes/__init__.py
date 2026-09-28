@@ -233,6 +233,14 @@ STALE_SCHEMA = {
 
 # ─── Provider ────────────────────────────────────────────────────────────────
 
+def _load_config(hermes_home: str) -> Dict[str, Any]:
+    """Read openltm.json ({} when missing or unreadable)."""
+    try:
+        return json.loads((Path(hermes_home) / "openltm.json").read_text())
+    except Exception:
+        return {}
+
+
 class OpenLtmpMemoryProvider(MemoryProvider):
     """OpenLTM memory provider — local SQLite with FTS5 + vector search."""
 
@@ -294,10 +302,10 @@ class OpenLtmpMemoryProvider(MemoryProvider):
             self._project_scope = None
             logger.warning("OpenLTM project-memory initialization failed: %s", e)
 
-        # Load embedding provider (lazy, non-blocking)
+        # Load the embedding provider selected in openltm.json (default: local Ollama)
         try:
             from ._providers import detect_provider
-            self._embedder = detect_provider(hermes_home)
+            self._embedder = detect_provider(_load_config(hermes_home).get("embedder") or "ollama")
         except Exception as e:
             logger.debug("Embedding provider not available: %s", e)
 
@@ -645,17 +653,18 @@ class OpenLtmpMemoryProvider(MemoryProvider):
                 "description": "User identifier for memory scoping",
                 "default": "hermes-user",
             },
+            {
+                "key": "embedder",
+                "description": "Embedding backend for vector search (gemini/openai send memory text to that API)",
+                "default": "ollama",
+                "choices": ["ollama", "gemini", "openai", "none"],
+            },
         ]
 
     def save_config(self, values: Dict[str, Any], hermes_home: str) -> None:
         """Save config to openltm.json."""
         config_path = Path(hermes_home) / "openltm.json"
-        existing = {}
-        if config_path.exists():
-            try:
-                existing = json.loads(config_path.read_text())
-            except Exception:
-                pass
+        existing = _load_config(hermes_home)
         existing.update(values)
         config_path.write_text(json.dumps(existing, indent=2))
 
@@ -664,3 +673,8 @@ class OpenLtmpMemoryProvider(MemoryProvider):
         if self._db_path and self._db_path.exists():
             return [str(self._db_path)]
         return []
+
+
+def register(ctx) -> None:
+    """Register OpenLTM as a Hermes memory provider."""
+    ctx.register_memory_provider(OpenLtmpMemoryProvider())
