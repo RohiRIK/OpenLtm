@@ -9,8 +9,12 @@ the others. No cloud, no telemetry, no account.
 ## Install
 
 ```bash
-openclaw plugins install @rohirik/openclaw-ltm
+openclaw plugins install clawhub:@rohirik/openclaw-ltm   # from ClawHub
+openclaw plugins install @rohirik/openclaw-ltm           # or straight from npm
 ```
+
+Both are published on every release tag. A new ClawHub version becomes
+installable once ClawHub's security scan finishes.
 
 Requires **OpenClaw `>= 2026.9.6`** and the **Bun** runtime on `PATH`
 (OpenClaw runs on Node; the memory engine is Bun code, so the plugin spawns it as

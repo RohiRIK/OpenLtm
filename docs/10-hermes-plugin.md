@@ -18,12 +18,22 @@ extraction logic, and tests — lives under [`hermes/`](../hermes/README.md).
 
 ## Install (any Hermes machine)
 
+OpenLTM is in the [Hermes Plugin Catalog](https://hermes-agent.nousresearch.com/docs/plugins/openltm)
+(entry: [`plugin-catalog/openltm.yaml`](https://github.com/NousResearch/hermes-agent/blob/main/plugin-catalog/openltm.yaml)),
+so it installs by name at the reviewed, pinned commit:
+
 ```bash
-hermes plugins install RohiRIK/OpenLtm/hermes/openltm_hermes
+hermes plugins install openltm
 hermes gateway restart   # plugin loads only at startup
 ```
 
-This clones the repo (depth 1), installs the plugin subdir into
+To run the tip of `main` instead of the catalog pin:
+
+```bash
+hermes plugins install RohiRIK/OpenLtm/hermes/openltm_hermes
+```
+
+Either path clones the repo (depth 1), installs the plugin subdir into
 `~/.hermes/plugins/openltm/` (the manifest `name`), and Hermes loads it through the
 plugin's `register(ctx)` → `ctx.register_memory_provider(...)`; select it with
 `hermes config set memory.provider openltm`.
@@ -35,7 +45,7 @@ update is a symlink (verified against `plugins/memory/__init__.py` discovery —
 scanner follows links):
 
 ```bash
-ln -s /home/rohi/projects/OpenLtm/hermes/openltm_hermes ~/.hermes/plugins/openltm_hermes
+ln -s /home/rohi/projects/OpenLtm/hermes/openltm_hermes ~/.hermes/plugins/openltm
 # then: hermes gateway restart
 ```
 

@@ -86,7 +86,8 @@ Both must pass before a PR is reviewable. E2E tests for the graph app live under
 1. `bun run bump <version>` and add a `CHANGELOG.md` entry under `## [<version>]`.
 2. Commit and push to `main`.
 3. Tag and push: `git tag v<version> && git push origin v<version>`.
-4. The **Release** workflow creates the GitHub Release from the changelog; the **Publish** workflow then publishes the `@rohirik/*` packages to npm.
+4. The **Release** workflow creates the GitHub Release from the changelog; the **Publish** workflow then publishes the `@rohirik/*` packages to npm, and its `clawhub` job publishes `@rohirik/openclaw-ltm` to ClawHub. Both use OIDC — no stored tokens.
+5. **Hermes Plugin Catalog** is not automatic: run `bun run catalog:sync && bun run catalog:check` and open a re-pin PR against `NousResearch/hermes-agent` (see [`docs/11-publishing.md`](docs/11-publishing.md#3-hermes-plugin-catalog--live)).
 
 ---
 

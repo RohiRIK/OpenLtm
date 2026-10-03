@@ -11,7 +11,7 @@ OpenLTM installs in three ways. Pick one. All of them produce the same thing: a 
 | | |
 |---|---|
 | **Runtime** | [Bun](https://bun.sh) (the plugin detects it automatically; `npm`/`node` are not used at runtime) |
-| **Host** | Claude Code, OpenCode, or Pi |
+| **Host** | Claude Code, OpenCode, Pi, OpenClaw, or Hermes |
 | **OS** | macOS, Linux, or WSL |
 | **System SQLite** (optional) | Homebrew-installed sqlite on macOS (`brew install sqlite`) or a system `libsqlite3.so` on Linux — required for sqlite-vec vector recall and Honker queue/cron/pub-sub. Without it, the plugin runs on Bun's built-in SQLite (FTS5, JS-cosine) with no feature loss, just software fallbacks. |
 
@@ -76,6 +76,10 @@ OpenLTM is one core (`@rohirik/openltm-core`) with thin per-host adapters:
 | Claude Code | built in | stable |
 | OpenCode | `@rohirik/opencode-ltm` | stable |
 | Pi | `@rohirik/pi-ltm` | experimental |
+| OpenClaw | `@rohirik/openclaw-ltm` | `openclaw plugins install clawhub:@rohirik/openclaw-ltm` (or `@rohirik/openclaw-ltm` from npm) — see [its README](../packages/adapter-openclaw/README.md) |
+| Hermes | native Python plugin | `hermes plugins install openltm` — see [Hermes Integration](10-hermes-plugin.md) |
+
+Every channel and where it is published: [External Distribution](11-publishing.md).
 
 ---
 

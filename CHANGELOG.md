@@ -5,6 +5,10 @@
 ### Added
 - **ClawHub publishing on every release** — the Publish workflow now has a `clawhub` job that runs after npm and publishes `@rohirik/openclaw-ltm` to ClawHub through GitHub OIDC trusted publishing (no stored token). `scripts/clawhub-publish-if-needed.sh` does what `prepack`/`postpack` do for npm, since ClawHub does not run lifecycle scripts: it builds `dist/`, resolves `workspace:*`, publishes with explicit source coordinates, waits for the security scan, and restores `package.json`. A version already on ClawHub (or registered by an earlier attempt that errored) is skipped, so the job can be re-run safely.
 
+### Docs
+- **Distribution status brought up to date** — the README has a "Where to get it" table listing every channel with links (Claude Code marketplace, the four npm packages, ClawHub, the Hermes Plugin Catalog) plus install snippets for Hermes and OpenClaw; `docs/11-publishing.md` opens with an at-a-glance status table and records the Hermes catalog listing (merged 2026-10-02, pinned to 2.15.1) instead of "needs a PR"; installation, quickstart, CONTRIBUTING, CLAUDE.md and AGENTS.md describe the ClawHub job and the Hermes re-pin step.
+- **Hermes docs use the plugin's current name** — install dir and `memory.provider` are `openltm` (renamed in #15), not `openltm_hermes`; the plugin README that the catalog page renders now has the install step and all eight tools.
+
 ## [2.15.1] — 2026-09-27
 
 ### Fixed
