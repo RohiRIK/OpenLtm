@@ -31,6 +31,7 @@ const PROVIDERS: ProviderMeta[] = [
   { id: "cohere", label: "Cohere", supportsEmbed: true, supportsLLM: true, apiKeyLabel: "Cohere API Key", apiKeyKey: "ltm.cohere.apiKey", embedModelKey: "ltm.cohere.embedModel", llmModelKey: "ltm.cohere.llmModel" },
   { id: "openrouter", label: "OpenRouter", supportsEmbed: true, supportsLLM: true, apiKeyLabel: "OpenRouter API Key", apiKeyKey: "ltm.openrouter.apiKey", embedModelKey: "ltm.openrouter.embedModel", llmModelKey: "ltm.openrouter.llmModel" },
   { id: "ollama", label: "Ollama (Local)", supportsEmbed: true, supportsLLM: true, apiKeyLabel: "Base URL", apiKeyKey: null, baseUrlKey: "ltm.ollama.baseUrl", embedModelKey: "ltm.ollama.embedModel", llmModelKey: "ltm.ollama.llmModel" },
+  { id: "llamacpp", label: "llama.cpp (Local)", supportsEmbed: true, supportsLLM: false, apiKeyLabel: "Server URL", apiKeyKey: null, baseUrlKey: "ltm.llamacpp.baseUrl", embedModelKey: "ltm.llamacpp.embedModel" },
 ];
 
 function VerifyStatus({ state }: { state: KeyState }) {
@@ -98,7 +99,7 @@ function ProviderCard({
   onChange: (key: string, value: string) => void;
   onVerify: () => void;
 }) {
-  const isOllama = meta.id === "ollama";
+  const isOllama = meta.id === "ollama" || meta.id === "llamacpp";
   const verified = keyState === "valid" || isOllama;
   const keyFieldKey = isOllama ? meta.baseUrlKey! : meta.apiKeyKey!;
   const keyValue = draft[keyFieldKey] ?? "";
@@ -133,7 +134,7 @@ function ProviderCard({
           onPaste={() => {
             if (!isOllama) setTimeout(onVerify, 50);
           }}
-          placeholder={isOllama ? "http://localhost:11434" : "Paste key to verify…"}
+          placeholder={meta.id === "llamacpp" ? "http://127.0.0.1:8080" : isOllama ? "http://localhost:11434" : "Paste key to verify…"}
           className="w-full font-mono bg-transparent border-b border-[var(--text-primary)] rounded-[0px] px-3 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none transition-colors"
         />
         {keyState === "idle" && !isOllama && keyValue.length > 0 && (

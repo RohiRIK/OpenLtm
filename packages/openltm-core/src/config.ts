@@ -15,7 +15,7 @@ function getConfigPath(): string {
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface EmbeddingsConfig {
-  provider: "gemini" | "openai" | "ollama" | "disabled";
+  provider: "llamacpp" | "gemini" | "openai" | "ollama" | "disabled";
   apiKey?: string;
   model?: string;
   baseUrl?: string;
@@ -57,7 +57,7 @@ export interface Config {
 // ── Defaults ───────────────────────────────────────────────────────────────────
 
 const DEFAULT_EMBEDDINGS: EmbeddingsConfig = {
-  provider: "disabled",
+  provider: "llamacpp",
   confidenceThreshold: 0.6,
 };
 
@@ -130,10 +130,19 @@ export async function loadConfig(): Promise<Config> {
   const emb = (raw["embeddings"] ?? {}) as Partial<EmbeddingsConfig>;
 
   // Resolve apiKey from env when not set in config
+  const envProvider = process.env["LTM_EMBED_PROVIDER"]?.trim().toLowerCase();
+  const provider = (envProvider === "llamacpp" || envProvider === "gemini" || envProvider === "openai" || envProvider === "ollama" || envProvider === "disabled")
+    ? envProvider
+    : (emb.provider ?? DEFAULT_EMBEDDINGS.provider);
+
   const resolvedApiKey = emb.apiKey
-    ?? (emb.provider === "gemini" ? process.env["GEMINI_API_KEY"] : undefined)
-    ?? (emb.provider === "openai" ? process.env["OPENAI_API_KEY"] : undefined)
-    ?? (emb.provider === "ollama" ? process.env["OLLAMA_API_KEY"] : undefined);
+    ?? (provider === "gemini" ? process.env["GEMINI_API_KEY"] : undefined)
+    ?? (provider === "openai" ? process.env["OPENAI_API_KEY"] : undefined)
+    ?? (provider === "ollama" ? process.env["OLLAMA_API_KEY"] : undefined);
+  const resolvedBaseUrl = emb.baseUrl
+    ?? (provider === "llamacpp" ? process.env["LTM_LLAMA_CPP_URL"] : undefined);
+  const resolvedModel = emb.model
+    ?? (provider === "llamacpp" ? process.env["LTM_EMBED_MODEL"] : undefined);
 
   return {
     ltm: {
@@ -153,10 +162,10 @@ export async function loadConfig(): Promise<Config> {
     server: { apiPort: server.apiPort ?? DEFAULTS.server.apiPort, uiPort: server.uiPort ?? DEFAULTS.server.uiPort },
     sync: { enabled: sync.enabled ?? DEFAULTS.sync.enabled, provider: sync.provider ?? DEFAULTS.sync.provider },
     embeddings: {
-      provider: emb.provider ?? DEFAULT_EMBEDDINGS.provider,
+      provider,
       apiKey: resolvedApiKey,
-      model: emb.model,
-      baseUrl: emb.baseUrl,
+      model: resolvedModel,
+      baseUrl: resolvedBaseUrl,
       confidenceThreshold: emb.confidenceThreshold ?? DEFAULT_EMBEDDINGS.confidenceThreshold,
     },
   };

@@ -6,11 +6,11 @@
  */
 import type { Database } from "bun:sqlite";
 import type { EmbeddingProvider } from "./providers/embeddingProvider.js";
-import { setEmbedding, listMemoryIdsMissingEmbedding } from "./dao/embeddings.js";
+import { setEmbedding, listMemoryIdsNeedingEmbedding } from "./dao/embeddings.js";
 
 // --- Provider config (retained for LLM/auto-relate path) ---
 
-type EmbedProvider = "gemini" | "openai" | "openrouter" | "cohere" | "ollama";
+type EmbedProvider = "llamacpp" | "gemini" | "openai" | "openrouter" | "cohere" | "ollama";
 
 interface ProviderConfig {
   provider: EmbedProvider;
@@ -44,9 +44,12 @@ function loadConfig(type: "embed" | "llm"): ProviderConfig | null {
     const s = Object.fromEntries(rows.map(r => [r.key, r.value])) as Record<string, string | undefined>;
 
     const envProvider = t === "embed" ? process.env.LTM_EMBED_PROVIDER : process.env.LTM_LLM_PROVIDER;
-    const provider = (envProvider ?? s[`ltm.${t}.provider`] ?? "gemini") as EmbedProvider;
+    // Embed default is local llama.cpp. LLM classification stays on Gemini unless pinned.
+    const fallback = t === "embed" ? "llamacpp" : "gemini";
+    const provider = (envProvider ?? s[`ltm.${t}.provider`] ?? fallback) as EmbedProvider;
 
     const DEFAULTS: Record<EmbedProvider, { model: string }> = {
+      llamacpp:   { model: t === "embed" ? "bge-m3" : "llama3.2" },
       gemini:     { model: t === "embed" ? "gemini-embedding-2-preview" : "gemini-2.0-flash-lite" },
       openai:     { model: t === "embed" ? "text-embedding-3-small" : "gpt-4o-mini" },
       openrouter: { model: t === "embed" ? "openai/text-embedding-3-large" : "google/gemini-2.0-flash-001" },
@@ -55,6 +58,8 @@ function loadConfig(type: "embed" | "llm"): ProviderConfig | null {
     };
 
     switch (provider) {
+      case "llamacpp":
+        return { provider, model: s["ltm.llamacpp.embedModel"] ?? process.env.LTM_EMBED_MODEL ?? DEFAULTS.llamacpp.model, baseUrl: s["ltm.llamacpp.baseUrl"] ?? process.env.LTM_LLAMA_CPP_URL ?? "http://127.0.0.1:8080" };
       case "gemini":
         return { provider, apiKey: process.env.GEMINI_API_KEY ?? s["ltm.gemini.apiKey"], model: s[`ltm.gemini.${t}Model`] ?? DEFAULTS.gemini.model };
       case "openai":
@@ -119,6 +124,10 @@ export function blobToVec(b: Buffer): Float32Array {
 }
 
 // --- Provider-specific embed implementations ---
+// Unused by embedText/embedMemory/backfill. Those go through
+// providers/embeddingProvider.ts (LlamaCppProvider by default). Kept for the
+// LLM classify path's historical siblings; do not add a new default here.
+
 
 // Cached Gemini client + the key it was initialized with
 interface GeminiGenerativeModel {
@@ -227,8 +236,8 @@ export async function backfill(db: Database): Promise<void> {
     return;
   }
 
-  const ids = listMemoryIdsMissingEmbedding(db, 1000);
-  process.stderr.write(`[embeddings] Back-filling ${ids.length} memories...\n`);
+  const ids = listMemoryIdsNeedingEmbedding(db, provider.model, provider.dim, 1000);
+  process.stderr.write(`[embeddings] Back-filling ${ids.length} memories (model=${provider.model} dim=${provider.dim})...\n`);
 
   const BATCH = 20;
   let done = 0;
@@ -249,6 +258,10 @@ export async function backfill(db: Database): Promise<void> {
     if (i + BATCH < ids.length) await Bun.sleep(200);
   }
   process.stderr.write(`[embeddings] Back-fill complete: ${done}/${ids.length} embedded\n`);
+  if (done > 0) {
+    const { rebuildVecIndex } = await import("./vec/index.js");
+    rebuildVecIndex(db, { model: provider.model, dim: provider.dim });
+  }
 }
 
 // --- Semantic similarity search ---
@@ -261,9 +274,12 @@ export type SimilarMemory = { id: number; content: string; similarity: number };
 export async function getSimilarMemories(text: string, topN = 5, threshold = 0.5): Promise<SimilarMemory[]> {
   const vec = await embedText(text);
   if (!vec) return [];
+  const provider = await getEmbeddingProvider();
 
   const { getDb } = await import("./shared-db.js");
   const db = getDb();
+  const model = provider.model;
+  const dim = vec.length;
 
   // Fast path: sqlite-vec vec0 KNN. Over-fetch so post-filtering on status and
   // threshold still yields topN. Falls through to brute force when the index is
@@ -276,23 +292,27 @@ export async function getSimilarMemories(text: string, topN = 5, threshold = 0.5
       const byId = new Map(hits.map(h => [h.id, h.similarity]));
       const ids = hits.map(h => h.id);
       const placeholders = ids.map(() => "?").join(",");
-      const rows = db.query<{ id: number; content: string }, number[]>(
-        `SELECT id, content FROM memories WHERE status='active' AND id IN (${placeholders})`
-      ).all(...ids);
-      return rows
-        .map(row => ({ id: row.id, content: row.content, similarity: byId.get(row.id) ?? 0 }))
-        .filter(r => r.similarity >= threshold)
-        .sort((a, b) => b.similarity - a.similarity)
-        .slice(0, topN);
+      const rows = db.query<{ id: number; content: string }, Array<number | string>>(
+        `SELECT m.id, m.content FROM memories m
+         JOIN memory_embeddings e ON e.memory_id = m.id
+         WHERE m.status='active' AND m.id IN (${placeholders}) AND e.model = ? AND e.dim = ?`
+      ).all(...ids, model, dim);
+      if (rows.length > 0) {
+        return rows
+          .map(row => ({ id: row.id, content: row.content, similarity: byId.get(row.id) ?? 0 }))
+          .filter(r => r.similarity >= threshold)
+          .sort((a, b) => b.similarity - a.similarity)
+          .slice(0, topN);
+      }
     }
   }
 
   // Brute-force JS cosine fallback.
-  const rows = db.query<{ id: number; content: string; embedding: Buffer }, []>(
+  const rows = db.query<{ id: number; content: string; embedding: Buffer }, [string, number]>(
     `SELECT m.id, m.content, e.embedding
      FROM memories m JOIN memory_embeddings e ON e.memory_id = m.id
-     WHERE m.status = 'active'`
-  ).all();
+     WHERE m.status = 'active' AND e.model = ? AND e.dim = ?`
+  ).all(model, dim);
 
   return rows
     .map(row => ({ id: row.id, content: row.content, similarity: cosineSimilarity(vec, blobToVec(row.embedding)) }))

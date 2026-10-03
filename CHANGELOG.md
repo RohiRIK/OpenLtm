@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- **Local embeddings by default** — unset `LTM_EMBED_PROVIDER` now resolves to llama.cpp (`llama-server` OpenAI `/v1/embeddings`, model `bge-m3`) instead of Gemini. A down server stays on FTS5; Gemini, OpenAI, and Ollama remain opt-in. Recall ignores vectors stamped for another model or dim, and backfill re-embeds them.
+
+### Added
+- `LlamaCppProvider` and janitor `llamacpp` adapter. `LTM_LLAMA_CPP_URL`, `LTM_EMBED_MODEL`.
+
+
 ## [2.15.2] — 2026-10-03
 
 ### Added
