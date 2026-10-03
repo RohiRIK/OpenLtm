@@ -12,7 +12,7 @@ import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mc
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { learn, recall, relate, forget, revalidate, getContextMerge, type Memory } from "../db.js";
-import { getDb } from "../shared-db.js";
+import { getDb, waitForInit } from "../shared-db.js";
 import { queryAudit } from "../dao/provenanceAudit.js";
 import { getItems } from "../context.js";
 import { traverseGraph, buildReasoningContext } from "../graph.js";
@@ -441,6 +441,11 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
     process.stderr.write("[ltm-mcp] mcp.enabled=false — server disabled\n");
     process.exit(0);
   }
+
+  // Finish schema + migrations before accepting a request. Otherwise the first
+  // calls on a brand-new database (an OpenClaw or Pi user with no Claude Code
+  // install) hit the bare schema and fail with "no such column: decay_score".
+  await waitForInit();
 
   const server = buildMcpServer(options);
   const transport = new StdioServerTransport();

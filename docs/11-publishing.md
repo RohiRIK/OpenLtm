@@ -176,10 +176,14 @@ Verified: `bun run check:openclaw` (17 checks against their real loader rules),
 `openclaw` and `@rohirik/openltm-core` external (a bundled copy of core would mean
 a second DB singleton).
 
-**Not verified:** the plugin has never been loaded by a real OpenClaw host —
-installing OpenClaw is an owner decision. The manifest is validated against
-OpenClaw's actual loader source, and the registration logic is tested, but
-end-to-end host loading is untested.
+**Verified on a real host (2026-10-03, OpenClaw 2026.9.8, Node 24):** the
+published 2.15.1 installed and loaded but **every tool failed** — Node enforces
+core's `exports` map, so resolving `@rohirik/openltm-core/package.json` threw
+`ERR_PACKAGE_PATH_NOT_EXPORTED` (Bun, which runs the tests, does not). Fixed in
+2.15.2 along with a fresh-database migration race, a recall that reported "No
+memories found." when the engine was missing, and a Prior Knowledge block that
+was never injected. With the fixes: install, `inspect --runtime` (loaded, 8
+tools, no diagnostics), learn → recall on a new database, and prefill all work.
 
 ### 4c. Hosted marketplace feed
 
@@ -203,8 +207,8 @@ should not rely on it; route 4b is the supported path.
 ### Host-level verification
 
 ```bash
-openclaw plugins install @rohirik/openclaw-ltm
-openclaw plugins list --json
+openclaw plugins install @rohirik/openclaw-ltm --force --accept-capabilities
+openclaw plugins inspect openltm --runtime --json   # status: loaded, 8 tools
 # then exercise recall/learn inside a live OpenClaw session
 ```
 

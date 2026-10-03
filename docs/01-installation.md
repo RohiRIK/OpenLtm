@@ -76,7 +76,7 @@ OpenLTM is one core (`@rohirik/openltm-core`) with thin per-host adapters:
 | Claude Code | built in | stable |
 | OpenCode | `@rohirik/opencode-ltm` | stable |
 | Pi | `@rohirik/pi-ltm` | experimental |
-| OpenClaw | `@rohirik/openclaw-ltm` | `openclaw plugins install clawhub:@rohirik/openclaw-ltm` (or `@rohirik/openclaw-ltm` from npm) — see [its README](../packages/adapter-openclaw/README.md) |
+| OpenClaw | `@rohirik/openclaw-ltm` | `openclaw plugins install clawhub:@rohirik/openclaw-ltm --accept-capabilities` (from npm: `@rohirik/openclaw-ltm --force --accept-capabilities`) — see [its README](../packages/adapter-openclaw/README.md) |
 | Hermes | native Python plugin | `hermes plugins install openltm` — see [Hermes Integration](10-hermes-plugin.md) |
 
 Every channel and where it is published: [External Distribution](11-publishing.md).

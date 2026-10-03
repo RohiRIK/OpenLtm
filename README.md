@@ -143,11 +143,11 @@ Installs the reviewed commit pinned in the [Hermes Plugin Catalog](https://herme
 ### OpenClaw
 
 ```bash
-openclaw plugins install clawhub:@rohirik/openclaw-ltm   # from ClawHub
-openclaw plugins install @rohirik/openclaw-ltm           # or straight from npm
+openclaw plugins install clawhub:@rohirik/openclaw-ltm --accept-capabilities   # from ClawHub
+openclaw plugins install @rohirik/openclaw-ltm --force --accept-capabilities   # or straight from npm
 ```
 
-Requires OpenClaw `>= 2026.9.6` and Bun on `PATH`. Details: [`packages/adapter-openclaw/README.md`](packages/adapter-openclaw/README.md).
+Requires OpenClaw `>= 2026.9.6`, Node 24 (the host's own requirement), and Bun on `PATH`. `--accept-capabilities` consents to the plugin registering its memory tools; `--force` is how OpenClaw makes you acknowledge that an npm install is outside ClawHub review (verified on OpenClaw 2026.9.8). Details: [`packages/adapter-openclaw/README.md`](packages/adapter-openclaw/README.md).
 
 ### Dev / git clone
 

@@ -9,9 +9,18 @@ the others. No cloud, no telemetry, no account.
 ## Install
 
 ```bash
-openclaw plugins install clawhub:@rohirik/openclaw-ltm   # from ClawHub
-openclaw plugins install @rohirik/openclaw-ltm           # or straight from npm
+openclaw plugins install clawhub:@rohirik/openclaw-ltm --accept-capabilities   # from ClawHub
+openclaw plugins install @rohirik/openclaw-ltm --force --accept-capabilities   # or straight from npm
 ```
+
+- `--accept-capabilities` consents to the plugin registering its eight memory
+  tools. Without it OpenClaw stops with "requires capability consent".
+- `--force` is only for the npm route: OpenClaw refuses npm installs that are
+  outside ClawHub review until you acknowledge it.
+
+Verified end to end on OpenClaw 2026.9.8 (Node 24): install, runtime load with
+all eight tools, learn → recall on a brand-new database, and the Prior
+Knowledge block.
 
 Both are published on every release tag. A new ClawHub version becomes
 installable once ClawHub's security scan finishes.
