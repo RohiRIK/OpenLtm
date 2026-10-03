@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.15.2] — 2026-10-03
+
+### Added
+- **ClawHub publishing on every release** — the Publish workflow now has a `clawhub` job that runs after npm and publishes `@rohirik/openclaw-ltm` to ClawHub through GitHub OIDC trusted publishing (no stored token). `scripts/clawhub-publish-if-needed.sh` does what `prepack`/`postpack` do for npm, since ClawHub does not run lifecycle scripts: it builds `dist/`, resolves `workspace:*`, publishes with explicit source coordinates, waits for the security scan, and restores `package.json`. A version already on ClawHub (or registered by an earlier attempt that errored) is skipped, so the job can be re-run safely.
+
 ## [2.15.1] — 2026-09-27
 
 ### Fixed

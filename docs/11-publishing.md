@@ -270,7 +270,27 @@ Files:     6 files (122.0 KB)
 Tags:      latest
 ```
 
-### Publishing to ClawHub: two traps
+### Publishing to ClawHub — automated on every tag
+
+The `clawhub` job in `.github/workflows/publish.yml` runs after the npm job and
+calls `scripts/clawhub-publish-if-needed.sh`, which handles the traps below
+(build, resolve `workspace:*`, explicit source coordinates, `--wait` for the
+scan, skip a version that already exists). Auth is GitHub OIDC — no token is
+stored. It needs a **one-time** trusted-publisher setup by the owner:
+
+```bash
+clawhub login
+clawhub package trusted-publisher set @rohirik/openclaw-ltm \
+  --repository RohiRIK/OpenLtm --workflow-filename publish.yml
+clawhub package trusted-publisher get @rohirik/openclaw-ltm   # confirm
+```
+
+The package must already exist on ClawHub for this (it does since 2.15.0).
+Then re-run the release with `gh workflow run publish.yml --ref main`, or push
+the next tag. Without the trusted publisher the job fails at auth and npm is
+unaffected.
+
+### Publishing to ClawHub by hand: two traps
 
 **1. ClawHub builds the artifact itself — your `prepack` is not run.** The
 ClawHub Inspector reported `PASS`, but the uploaded tarball still contained
