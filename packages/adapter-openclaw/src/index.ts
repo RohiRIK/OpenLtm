@@ -47,13 +47,18 @@ function findBun(): string | null {
 
 /** Locate the core CLI entry that can run `mcp-serve`. */
 function findMcpServer(): { script: string; args: string[] } | null {
+  let entry: string;
   try {
-    const req = createRequire(import.meta.url);
-    const pkgJson = req.resolve("@rohirik/openltm-core/package.json");
-    const script = resolve(dirname(pkgJson), "src", "cli", "bin.ts");
-    if (existsSync(script)) return { script, args: ["mcp-serve"] };
+    // Resolve the package's main entry, not `@rohirik/openltm-core/package.json`:
+    // core has an `exports` map, and Node (unlike Bun) refuses any subpath it
+    // does not list (ERR_PACKAGE_PATH_NOT_EXPORTED).
+    entry = createRequire(import.meta.url).resolve("@rohirik/openltm-core");
   } catch {
-    // not resolvable from here
+    return null;
+  }
+  for (let dir = dirname(entry); dir !== dirname(dir); dir = dirname(dir)) {
+    const script = resolve(dir, "src", "cli", "bin.ts");
+    if (existsSync(script)) return { script, args: ["mcp-serve"] };
   }
   return null;
 }
@@ -246,12 +251,13 @@ export default definePluginEntry({
       return bridge;
     };
 
-    const run = async <T>(fn: (b: LtmBridge) => Promise<T>, fallback: T): Promise<T> => {
+    // A missing engine is reported, never papered over: an empty fallback made
+    // recall answer "No memories found." when nothing could be searched at all.
+    const run = async <T>(fn: (b: LtmBridge) => Promise<T>): Promise<T> => {
       try {
         return await fn(getBridge());
       } catch (err) {
-        if (bridgeError) return fallback;
-        api.logger.warn(`openltm: ${String(err)}`);
+        if (!bridgeError) api.logger.warn(`openltm: ${String(err)}`);
         throw err;
       }
     };
@@ -285,22 +291,43 @@ export default definePluginEntry({
     };
 
     // ── Auto-recall ────────────────────────────────────────────────────────
-    const supplement = api.registerMemoryPromptSupplement?.bind(api);
-    if (supplement) {
-      supplement(() => {
-        try {
-          const cfg = readConfig();
-          if (cfg.autoRecall === false) return [];
-          const bridgeNow = getBridge();
-          const project = projectOf(undefined);
-          // Synchronous hook: the bridge handshake is async, so return nothing on
-          // the first turns rather than blocking the prompt build.
-          if (!(bridgeNow as unknown as { ready: Promise<void> | null }).ready) return [];
-          return [];
-        } catch (err) {
-          api.logger.warn(`openltm: prefill unavailable: ${String(err)}`);
-          return [];
-        }
+    const prefill = async (): Promise<string[]> => {
+      const cfg = readConfig();
+      if (cfg.autoRecall === false) return [];
+      const budget = Math.max(4, Math.min(200, cfg.prefillLines ?? 18));
+      const hits = await getBridge().callJson<MemoryHit[]>("recall", {
+        project: projectOf(undefined),
+        limit: Math.min(50, budget - 1),
+      });
+      if (hits.length === 0) return [];
+      return [
+        "## Prior Knowledge (LTM)",
+        ...hits.slice(0, budget - 1).map((m) => `- (${m.category}) ${m.content.replace(/\s+/g, " ").slice(0, 200)}`),
+      ];
+    };
+    const prefillOrNothing = async (): Promise<string[]> => {
+      try {
+        return await prefill();
+      } catch (err) {
+        api.logger.warn(`openltm: prefill unavailable: ${String(err)}`);
+        return [];
+      }
+    };
+
+    if (api.registerMemoryPromptPreparation) {
+      // The host awaits preparations before building the prompt, so the block
+      // is current on every turn, including the first.
+      api.registerMemoryPromptPreparation(prefillOrNothing);
+    } else if (api.registerMemoryPromptSupplement) {
+      // Older hosts only offer a synchronous builder: serve the last prepared
+      // block and refresh it in the background for the next turn.
+      let cached: string[] = [];
+      api.registerMemoryPromptSupplement(() => {
+        if (readConfig().autoRecall === false) return [];
+        void prefillOrNothing().then((lines) => {
+          cached = lines;
+        });
+        return cached;
       });
     }
 
@@ -327,7 +354,6 @@ export default definePluginEntry({
               category: params["category"],
               limit: params["limit"],
             }),
-          [] as MemoryHit[],
         );
         if (results.length === 0) return textResult("No memories found.");
         return textResult(
@@ -361,7 +387,6 @@ export default definePluginEntry({
                 project: params["project"],
               }),
             ),
-          textResult("openltm: memory engine unavailable"),
         ),
     );
 
@@ -376,7 +401,6 @@ export default definePluginEntry({
       async (params) =>
         run(
           async (b) => textResult(await b.call("forget", { id: params["id"], reason: params["reason"] })),
-          textResult("openltm: memory engine unavailable"),
         ),
     );
 
@@ -387,8 +411,7 @@ export default definePluginEntry({
       Type.Object({ project: Type.Optional(Type.String({ description: "Project name; defaults to the working directory" })) }),
       async (params) =>
         run(
-          (b) => b.call("context", { project: projectOf(params["project"]) }),
-          textResult("openltm: memory engine unavailable"),
+          async (b) => textResult(await b.call("context", { project: projectOf(params["project"]) })),
         ),
     );
 
@@ -415,7 +438,6 @@ export default definePluginEntry({
                 relationship_type: params["relationship_type"],
               }),
             ),
-          textResult("openltm: memory engine unavailable"),
         ),
     );
 
@@ -431,7 +453,6 @@ export default definePluginEntry({
         run(
           async (b) =>
             textResult(await b.call("graph", { memory_ids: [params["memory_id"]], depth: params["depth"] ?? 2 })),
-          textResult("openltm: memory engine unavailable"),
         ),
     );
 
@@ -451,7 +472,7 @@ export default definePluginEntry({
               byCategory: Object.fromEntries(byCategory),
             }),
           );
-        }, textResult("openltm: memory engine unavailable")),
+        }),
     );
 
     tool(
@@ -480,7 +501,6 @@ export default definePluginEntry({
             const stale = hits.filter((h) => h.stale);
             return textResult(stale.length === 0 ? "No stale memories." : JSON.stringify(stale));
           },
-          textResult("openltm: memory engine unavailable"),
         ),
     );
 

@@ -15,6 +15,8 @@ claude plugin install openltm
 
 Restart Claude Code. On first launch the hooks auto-wire and `openltm.db` is created (or your existing database migrates) under `~/.claude/plugins/data/OpenLtm-openltm/`.
 
+> On another agent? OpenCode, Pi, OpenClaw (`openclaw plugins install clawhub:@rohirik/openclaw-ltm --accept-capabilities`) and Hermes (`hermes plugins install openltm`) are covered in [Installation → Other hosts](01-installation.md#other-hosts).
+
 ---
 
 ## 2. Confirm it's alive

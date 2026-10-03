@@ -25,8 +25,19 @@ A Hermes memory provider plugin that wraps [OpenLTM](https://github.com/RohiRIK/
 | `openltm_learn` | Store insights, patterns, decisions |
 | `openltm_forget` | Delete a memory by ID |
 | `openltm_context` | Get project context (goals, decisions, gotchas) |
+| `openltm_relate` | Link two memories with a typed relationship |
+| `openltm_graph` | Traverse the memory graph from a memory |
+| `openltm_brain_stats` | Totals, categories, importance distribution, relations, stale count |
+| `openltm_stale` | List memories flagged as stale, or flag/revalidate one |
 
 ## Setup
+
+0. Install from the [Hermes Plugin Catalog](https://hermes-agent.nousresearch.com/docs/plugins/openltm)
+   and restart the gateway (plugins load only at startup):
+   ```bash
+   hermes plugins install openltm
+   hermes gateway restart
+   ```
 
 1. Enable the provider:
    ```bash

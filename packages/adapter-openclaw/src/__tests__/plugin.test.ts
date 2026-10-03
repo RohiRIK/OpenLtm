@@ -7,12 +7,10 @@
  * against a real database, and stub only the host API.
  */
 import { afterAll, beforeAll, describe, expect, it, mock } from "bun:test";
-import { Database } from "bun:sqlite";
 import { readFileSync, unlinkSync } from "fs";
 import { join } from "path";
 
 const dbPath = `/tmp/test-openclaw-ltm-${process.pid}-${Date.now()}.db`;
-const SCHEMA_PATH = join(import.meta.dir, "..", "..", "..", "openltm-core", "src", "schema.sql");
 const PKG_DIR = join(import.meta.dir, "..", "..");
 const MANIFEST_PATH = join(PKG_DIR, "openclaw.plugin.json");
 
@@ -33,16 +31,20 @@ interface FakeApi {
   pluginConfig: unknown;
   registerTool: (tool: Tool) => void;
   registerMemoryPromptSupplement: (b: () => string[]) => void;
+  registerMemoryPromptPreparation?: (p: () => Promise<readonly string[]>) => void;
   tools: Tool[];
   supplements: Array<() => string[]>;
+  preparations: Array<() => Promise<readonly string[]>>;
 }
 
-function createFakeApi(pluginConfig: unknown = {}): FakeApi {
+/** `withPreparation: false` models hosts older than 2026.9.8 (sync supplement only). */
+function createFakeApi(pluginConfig: unknown = {}, withPreparation = true): FakeApi {
   const api: FakeApi = {
     logger: { info: () => {}, warn: () => {}, error: () => {} },
     pluginConfig,
     tools: [],
     supplements: [],
+    preparations: [],
     registerTool(tool: Tool) {
       api.tools.push(tool);
     },
@@ -50,14 +52,19 @@ function createFakeApi(pluginConfig: unknown = {}): FakeApi {
       api.supplements.push(builder);
     },
   };
+  if (withPreparation) {
+    api.registerMemoryPromptPreparation = (prepare) => {
+      api.preparations.push(prepare);
+    };
+  }
   return api;
 }
 
-async function register(pluginConfig: unknown = {}) {
+async function register(pluginConfig: unknown = {}, withPreparation = true) {
   const { default: entry } = (await import("../index.js")) as never as {
     default: { register: (api: FakeApi) => void };
   };
-  const api = createFakeApi(pluginConfig);
+  const api = createFakeApi(pluginConfig, withPreparation);
   entry.register(api);
   return api;
 }
@@ -65,15 +72,10 @@ async function register(pluginConfig: unknown = {}) {
 const text = async (tool: Tool, id: string, params: Record<string, unknown>) =>
   (await tool.execute(id, params)).content[0]!.text;
 
-beforeAll(async () => {
-  // Seed a database the bridge will open, so recall has something to find.
-  const { runPendingMigrations } = await import("@rohirik/openltm-core");
-  const db = new Database(dbPath, { create: true });
-  db.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
-  db.exec(readFileSync(SCHEMA_PATH, "utf-8"));
-  await runPendingMigrations(db);
-  db.close();
-
+beforeAll(() => {
+  // Deliberately NOT pre-created or migrated: a first-time OpenClaw user has no
+  // database, and the bridge must bring one up fully migrated before serving.
+  // Pre-seeding here is what hid "no such column: decay_score" in 2.15.1.
   process.env["LTM_DB_PATH"] = dbPath;
 });
 
@@ -111,6 +113,13 @@ describe("OpenClaw adapter — registration", () => {
     const manifest = JSON.parse(readFileSync(MANIFEST_PATH, "utf-8"));
     const api = await register();
     expect([...manifest.contracts.tools].sort()).toEqual(api.tools.map((t) => t.name).sort());
+  });
+
+  it("never resolves a core subpath that core's exports map hides from Node", () => {
+    // Bun ignores `exports` for this lookup; Node throws ERR_PACKAGE_PATH_NOT_EXPORTED.
+    // This passed every Bun test and broke every real OpenClaw install (2.15.1).
+    const source = readFileSync(join(PKG_DIR, "src", "index.ts"), "utf-8");
+    expect(source).not.toMatch(/resolve\(\s*["']@rohirik\/openltm-core\/package\.json/);
   });
 
   it("does not import the Bun-only core package at module load", () => {
@@ -158,14 +167,42 @@ describe("OpenClaw adapter — behaviour over the real bridge", () => {
     expect(out).not.toContain("unavailable");
   });
 
-  it("auto-recall returns a (possibly empty) section list and never throws", async () => {
+  it("context returns a tool result, not a bare string", async () => {
     const api = await register();
+    const context = api.tools.find((t) => t.name === "openltm_context")!;
+    const out = await context.execute("t5", { project: "openclaw-ltm" });
+    expect(Array.isArray(out.content)).toBe(true);
+    expect(out.content[0]!.text).not.toContain("unavailable");
+  });
+
+  it("auto-recall injects a Prior Knowledge block through the async preparation", async () => {
+    const api = await register();
+    expect(api.preparations).toHaveLength(1);
+    expect(api.supplements).toHaveLength(0);
+    const lines = await api.preparations[0]!();
+    expect(lines[0]).toBe("## Prior Knowledge (LTM)");
+    expect(lines.join("\n")).toContain("pin the host version");
+  });
+
+  it("auto-recall respects the line budget", async () => {
+    const api = await register({ prefillLines: 4 });
+    expect((await api.preparations[0]!()).length).toBeLessThanOrEqual(4);
+  });
+
+  it("auto-recall falls back to a cached synchronous supplement on older hosts", async () => {
+    const api = await register({}, false);
     expect(api.supplements).toHaveLength(1);
-    expect(Array.isArray(api.supplements[0]!())).toBe(true);
+    expect(api.supplements[0]!()).toEqual([]); // first turn: nothing cached yet
+    for (let i = 0; i < 50 && api.supplements[0]!().length === 0; i++) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    expect(api.supplements[0]!()[0]).toBe("## Prior Knowledge (LTM)");
   });
 
   it("auto-recall yields nothing when disabled", async () => {
     const api = await register({ autoRecall: false });
-    expect(api.supplements[0]!()).toEqual([]);
+    expect(await api.preparations[0]!()).toEqual([]);
+    const legacy = await register({ autoRecall: false }, false);
+    expect(legacy.supplements[0]!()).toEqual([]);
   });
 });

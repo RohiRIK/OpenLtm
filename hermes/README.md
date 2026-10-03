@@ -19,7 +19,7 @@ hermes/
     ├── _providers.py           # embedding providers (Gemini / OpenAI / Ollama)
     ├── _secrets_scrubber.py    # PII/secret redaction
     ├── _project_memory.py      # project-scoped memory helpers
-    ├── plugin.yaml             # name: openltm_hermes  (must match dir name + config memory.provider)
+    ├── plugin.yaml             # name: openltm  (install dir + config memory.provider)
     ├── README.md               # plugin-specific docs
     └── test_*.py               # tests
 ```
@@ -55,15 +55,25 @@ tuple. To harden a guard: edit the named function. Nothing needs touching in
 
 ## Install
 
-Hermes supports the native install path `hermes plugins install <owner>/<repo>/<subdir>`:
+OpenLTM is listed in the [Hermes Plugin Catalog](https://hermes-agent.nousresearch.com/docs/plugins/openltm)
+([entry](https://github.com/NousResearch/hermes-agent/blob/main/plugin-catalog/openltm.yaml)),
+so it installs by name at a reviewed, pinned commit:
+
+```bash
+hermes plugins install openltm
+hermes config set memory.provider openltm
+hermes gateway restart
+```
+
+To track `main` instead of the catalog pin, install from the repo path:
 
 ```bash
 hermes plugins install RohiRIK/OpenLtm/hermes/openltm_hermes
 ```
 
-This clones the repo (depth-1), installs the plugin subdir into
-`~/.hermes/plugins/openltm_hermes/`, then Hermes loads it because the plugin's
-`__init__.py` exposes `OpenLtmMemoryProvider`.
+Either way the plugin lands in `~/.hermes/plugins/openltm/` (the manifest `name`)
+and Hermes loads it through the module-level `register(ctx)` →
+`ctx.register_memory_provider(...)`.
 
 ## Where the DB lives
 
@@ -74,17 +84,18 @@ The plugin stores everything in a single local SQLite database:
 ```
 
 There is no server, no network dependency, and no separate DB — the plugin is a
-direct-SQLite provider. `memory.provider: openltm_hermes` in `~/.hermes/config.yaml`
+direct-SQLite provider. `memory.provider: openltm` in `~/.hermes/config.yaml`
 points Hermes at it.
 
 ## Update flow
 
-1. Pull the latest `main` of OpenLtm.
-2. Reinstall the plugin to refresh `~/.hermes/plugins/openltm_hermes`:
-   ```bash
-   hermes plugins install RohiRIK/OpenLtm/hermes/openltm_hermes
-   ```
-3. Restart the Hermes gateway (the plugin is only loaded at startup).
+- **Catalog install:** `hermes plugins update openltm` picks up a new pin once
+  the catalog PR for it is merged (`hermes plugins list --json` reports
+  `update_available`).
+- **Repo install:** pull the latest `main` of OpenLtm, then reinstall with
+  `hermes plugins install RohiRIK/OpenLtm/hermes/openltm_hermes`.
+
+Restart the Hermes gateway afterwards (the plugin is only loaded at startup).
 
 > The live plugin dir is a generated/installed copy — never edit it directly; edit
 > this repo and reinstall. The migration history lives in OpenLtm's `migrations/`
@@ -93,7 +104,7 @@ points Hermes at it.
 ## Tests
 
 Run the plugin test suite from a SCRATCH copy — never run against the
-live `~/.hermes/plugins/openltm_hermes` dir or the live DB:
+live `~/.hermes/plugins/openltm` dir or the live DB:
 
 ```bash
 rm -rf /tmp/openltm-plugin-test && cp -r hermes/openltm_hermes /tmp/openltm-plugin-test
