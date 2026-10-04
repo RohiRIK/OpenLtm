@@ -8,7 +8,7 @@
 
 **Long-Term Memory for AI coding agents** — Claude Code, OpenCode, Pi, OpenClaw, and Hermes
 
-[![Version](https://img.shields.io/badge/version-2.15.2-blue?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.16.0-blue?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Runtime](https://img.shields.io/badge/runtime-Bun-f472b6?style=flat-square&logo=bun)](https://bun.sh)
 [![Database](https://img.shields.io/badge/database-SQLite-003B57?style=flat-square&logo=sqlite)](https://sqlite.org)
@@ -110,7 +110,7 @@ Hermes gets a native Python plugin rather than an adapter: a separate implementa
 | npm | `@rohirik/opencode-ltm` | [npmjs.com/package/@rohirik/opencode-ltm](https://www.npmjs.com/package/@rohirik/opencode-ltm) | automatic on every tag |
 | npm | `@rohirik/pi-ltm` | [npmjs.com/package/@rohirik/pi-ltm](https://www.npmjs.com/package/@rohirik/pi-ltm) | automatic on every tag |
 | npm | `@rohirik/openclaw-ltm` | [npmjs.com/package/@rohirik/openclaw-ltm](https://www.npmjs.com/package/@rohirik/openclaw-ltm) | automatic on every tag |
-| ClawHub (OpenClaw) | `@rohirik/openclaw-ltm` | `openclaw plugins install clawhub:@rohirik/openclaw-ltm` | automatic on every tag, after ClawHub's security scan |
+| ClawHub (OpenClaw) | `@rohirik/openclaw-ltm` | `openclaw plugins install clawhub:@rohirik/openclaw-ltm` | on every tag once the `clawhub` job is in `publish.yml` ([status](docs/11-publishing.md#publishing-to-clawhub--automated-on-every-tag-once-the-job-is-added)); until then by hand |
 | Hermes Plugin Catalog | `openltm` | [`plugin-catalog/openltm.yaml`](https://github.com/NousResearch/hermes-agent/blob/main/plugin-catalog/openltm.yaml) · [catalog page](https://hermes-agent.nousresearch.com/docs/plugins/openltm) | pinned to a commit; each update is a reviewed PR to NousResearch |
 
 How each channel is published, and what to do when one breaks: [`docs/11-publishing.md`](docs/11-publishing.md).

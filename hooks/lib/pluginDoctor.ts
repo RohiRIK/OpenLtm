@@ -3,7 +3,7 @@
  * pluginDoctor.ts — Unified LTM plugin health check.
  * Checks every aspect of the plugin and outputs a pass/fail report.
  *
- * Usage: bun ${CLAUDE_PLUGIN_ROOT}/hooks/lib/pluginDoctor.ts
+ * Usage: bun "${CLAUDE_PLUGIN_ROOT}/hooks/lib/pluginDoctor.ts"
  */
 
 import { existsSync, readFileSync, readdirSync, statSync, accessSync, openSync, readSync, closeSync, constants } from "fs";

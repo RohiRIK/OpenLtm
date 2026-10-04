@@ -10,7 +10,7 @@ project's own documentation.
 | npm | `@rohirik/openltm-core`, `opencode-ltm`, `pi-ltm`, `openclaw-ltm` | live | automatic on every `v*` tag (OIDC) | [npmjs.com/~rohirik](https://www.npmjs.com/~rohirik) |
 | Claude Code marketplace | `openltm` plugin | live | automatic — the repo is the marketplace | [`RohiRIK/OpenLtm`](https://github.com/RohiRIK/OpenLtm) |
 | Hermes Plugin Catalog | `openltm` (Python provider) | live since 2026-10-02, pinned to 2.15.1 | a reviewed re-pin PR to NousResearch per release | [entry](https://github.com/NousResearch/hermes-agent/blob/main/plugin-catalog/openltm.yaml) · [page](https://hermes-agent.nousresearch.com/docs/plugins/openltm) |
-| ClawHub (OpenClaw) | `@rohirik/openclaw-ltm` | published by hand through 2.15.1; automated from 2.15.2 | automatic on every tag (OIDC), after a one-time trusted-publisher setup | `openclaw plugins install clawhub:@rohirik/openclaw-ltm` |
+| ClawHub (OpenClaw) | `@rohirik/openclaw-ltm` | published by hand through 2.15.1; **2.15.2 was not published** — the `clawhub` job is not in `publish.yml` yet | automatic on every tag (OIDC), after a one-time trusted-publisher setup | `openclaw plugins install clawhub:@rohirik/openclaw-ltm` |
 | OpenClaw self-serve marketplace | — | not set up (needs its own `marketplace.json`) | — | §4c below |
 
 ---
@@ -293,7 +293,29 @@ Files:     6 files (122.0 KB)
 Tags:      latest
 ```
 
-### Publishing to ClawHub — automated on every tag
+### Publishing to ClawHub — automated on every tag (once the job is added)
+
+> **Status:** the job below is **not yet in `publish.yml`** — workflow files
+> cannot be pushed by the tooling that wrote it, so it has to be added by hand.
+> Until then, publish a release manually from a logged-in machine with
+> `scripts/clawhub-publish-if-needed.sh` (same steps, same skip-if-present).
+>
+> ```yaml
+>   clawhub:
+>     name: Publish @rohirik/openclaw-ltm to ClawHub
+>     needs: publish
+>     runs-on: ubuntu-latest
+>     steps:
+>       - uses: actions/checkout@v4
+>       - uses: oven-sh/setup-bun@v2
+>         with:
+>           bun-version: latest
+>       - uses: actions/setup-node@v4
+>         with:
+>           node-version: "24"
+>       - run: bun install --frozen-lockfile
+>       - run: scripts/clawhub-publish-if-needed.sh
+> ```
 
 The `clawhub` job in `.github/workflows/publish.yml` runs after the npm job and
 calls `scripts/clawhub-publish-if-needed.sh`, which handles the traps below

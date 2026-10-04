@@ -1,18 +1,26 @@
 # Changelog
 
-## [Unreleased]
+## [2.16.0] — 2026-10-04
 
 ### Changed
 - **Local embeddings by default** — unset `LTM_EMBED_PROVIDER` now resolves to llama.cpp (`llama-server` OpenAI `/v1/embeddings`, model `bge-m3`) instead of Gemini. A down server stays on FTS5; Gemini, OpenAI, and Ollama remain opt-in. Recall ignores vectors stamped for another model or dim, and backfill re-embeds them.
 
 ### Added
 - `LlamaCppProvider` and janitor `llamacpp` adapter. `LTM_LLAMA_CPP_URL`, `LTM_EMBED_MODEL`.
+- `.github/CODEOWNERS` — `* @RohiRIK`, so with "Require review from Code Owners" on `main` every outside PR needs the owner's approval.
+
+### Fixed
+- **Pi plugin registered nothing for users without Claude Code** — the Pi adapter had the same `@rohirik/openltm-core/package.json` lookup. Pi first tries the Claude Code plugin cache, so Claude Code users were unaffected; a Pi-only user fell through to the broken lookup and got zero tools and no Prior Knowledge, silently. Both adapters now share the same lookup in `src/find-core.ts`.
+- **Core now exports `./package.json`** — so adapters already published (2.15.1, which depend on `^2.15.1`) start working as soon as this core is installed, without an adapter update. Verified with the published Pi 2.15.1 bundle against the new core.
+- **Adapters are now tested under Node** — `src/__tests__/adapters-under-node.test.ts` bundles each adapter's core lookup and runs it with `node` against a core whose `exports` hide `package.json`, as 2.15.1's did. With the old lookup put back, it fails.
+- **Hooks broke when the plugin path contained a space** — `hooks.json` ran `${CLAUDE_PLUGIN_ROOT}/hooks/bin/run-hook.sh ${CLAUDE_PLUGIN_ROOT}/…` unquoted, so a path such as `/Users/Jane Doe/…` split into several words and every hook failed with "not found" (exit 127). Both placeholders are now quoted.
+- **Hooks died on common shell profiles** — when bun is not in a well-known location, `run-hook.sh` sources the user's `.zprofile`/`.bash_profile`/`.profile`, but did so under `set -u`, so any profile that reads an unset variable aborted the hook ("parameter not set"), and anything a profile printed leaked into the hook's stdout (for SessionStart, into the session). Profiles are now sourced with `set +u` and their output discarded.
 
 
 ## [2.15.2] — 2026-10-03
 
 ### Added
-- **ClawHub publishing on every release** — the Publish workflow now has a `clawhub` job that runs after npm and publishes `@rohirik/openclaw-ltm` to ClawHub through GitHub OIDC trusted publishing (no stored token). `scripts/clawhub-publish-if-needed.sh` does what `prepack`/`postpack` do for npm, since ClawHub does not run lifecycle scripts: it builds `dist/`, resolves `workspace:*`, publishes with explicit source coordinates, waits for the security scan, and restores `package.json`. A version already on ClawHub (or registered by an earlier attempt that errored) is skipped, so the job can be re-run safely.
+- **ClawHub publishing script** — `scripts/clawhub-publish-if-needed.sh`, meant to run as a `clawhub` job after npm (the job itself must be added to `publish.yml` by hand and was not in the 2.15.2 release; see `docs/11-publishing.md`). It publishes `@rohirik/openclaw-ltm` to ClawHub through GitHub OIDC trusted publishing (no stored token). `scripts/clawhub-publish-if-needed.sh` does what `prepack`/`postpack` do for npm, since ClawHub does not run lifecycle scripts: it builds `dist/`, resolves `workspace:*`, publishes with explicit source coordinates, waits for the security scan, and restores `package.json`. A version already on ClawHub (or registered by an earlier attempt that errored) is skipped, so the job can be re-run safely.
 
 ### Fixed
 - **OpenClaw plugin could not reach its memory engine on a real host** — the adapter resolved `@rohirik/openltm-core/package.json`, which core's `exports` map does not list. Bun (the test runner) allows that; Node, which OpenClaw runs on, throws `ERR_PACKAGE_PATH_NOT_EXPORTED`, so on every OpenClaw install all eight tools answered "memory engine unavailable". The adapter now resolves core's main entry and walks up to the package root. Found by installing 2.15.1 into OpenClaw 2026.9.8.

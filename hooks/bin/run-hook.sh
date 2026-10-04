@@ -22,9 +22,13 @@ do
 done
 
 # ── Slow path: source shell profile and retry ─────────────────────────────────
-[ -f "$HOME/.zprofile" ]      && . "$HOME/.zprofile"
-[ -f "$HOME/.bash_profile" ]  && . "$HOME/.bash_profile"
-[ -f "$HOME/.profile" ]       && . "$HOME/.profile"
+# Profiles are the user's code, not ours: `set -u` would abort this hook on any
+# unset variable they read, and anything they print would land in the hook's
+# stdout (which SessionStart injects into the session). Relax and silence them.
+set +u
+[ -f "$HOME/.zprofile" ]      && . "$HOME/.zprofile" >/dev/null 2>&1
+[ -f "$HOME/.bash_profile" ]  && . "$HOME/.bash_profile" >/dev/null 2>&1
+[ -f "$HOME/.profile" ]       && . "$HOME/.profile" >/dev/null 2>&1
 
 BUN=$(command -v bun 2>/dev/null)
 if [ -n "$BUN" ]; then
