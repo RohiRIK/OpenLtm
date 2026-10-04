@@ -1,8 +1,13 @@
-# Hermes Plugin Catalog — submission
+# Hermes Plugin Catalog — entry
 
 This directory holds the catalog entry for OpenLTM's Hermes memory provider.
 It is **not** consumed by Hermes at runtime — it is the file you open a pull
 request with, against [`NousResearch/hermes-agent`](https://github.com/NousResearch/hermes-agent).
+
+**Status: listed.** Merged on 2026-10-02 as
+[`plugin-catalog/openltm.yaml`](https://github.com/NousResearch/hermes-agent/blob/main/plugin-catalog/openltm.yaml),
+pinned to v2.15.1. Catalog page: <https://hermes-agent.nousresearch.com/docs/plugins/openltm>.
+Each later release needs a re-pin PR — see [Updating the pin later](#updating-the-pin-later).
 
 ## How the catalog works
 
@@ -18,7 +23,7 @@ Because the pin is a commit and this file lives in the repo it describes, the
 pinned `sha` always trails the commit that carries the entry by one commit. That
 is expected — re-run `bun run catalog:sync` after merging to re-pin.
 
-## Submitting
+## Submitting (done — kept for re-pin PRs)
 
 1. Fork `NousResearch/hermes-agent` and create a branch.
 2. Copy `hermes/plugin-catalog/openltm.yaml` from this repo to

@@ -6,9 +6,9 @@
 
 ### You explained your auth layer once. Why does Claude ask again tomorrow?
 
-**Long-Term Memory for AI coding agents** — Claude Code, OpenCode, Pi, and OpenClaw
+**Long-Term Memory for AI coding agents** — Claude Code, OpenCode, Pi, OpenClaw, and Hermes
 
-[![Version](https://img.shields.io/badge/version-2.15.1-blue?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.15.2-blue?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Runtime](https://img.shields.io/badge/runtime-Bun-f472b6?style=flat-square&logo=bun)](https://bun.sh)
 [![Database](https://img.shields.io/badge/database-SQLite-003B57?style=flat-square&logo=sqlite)](https://sqlite.org)
@@ -25,7 +25,7 @@ Persistent semantic memory that survives every session, every update, every comp
 
 **OpenLTM began as a private memory layer for one agent. It is now MIT licensed, and the whole engine is on your disk to read, fork, and break.**
 
-- **One engine, four hosts.** `@rohirik/openltm-core` holds the memory logic; each host gets a thin adapter.
+- **One engine, five hosts.** `@rohirik/openltm-core` holds the memory logic; each host gets a thin adapter (Hermes gets a native Python plugin over the same database).
 - **You own the file.** A local SQLite database. No account, no dashboard, no vendor copy.
 - **Everything is hackable.** Hooks, skills, janitor providers, the graph visualizer. All of it in the open.
 
@@ -79,7 +79,7 @@ Full detail, including which write paths scrub secrets and which don't: [Securit
 
 ---
 
-## Four hosts, one database
+## Five hosts, one database
 
 The engine is one package. Each host gets an adapter, and all of them open the same `openltm.db` — so a gotcha learned in Claude Code is already there when you open OpenCode.
 
@@ -88,9 +88,26 @@ The engine is one package. Each host gets an adapter, and all of them open the s
 | Claude Code | `.claude-plugin/` | `claude plugin install openltm` |
 | OpenCode | `@rohirik/opencode-ltm` | `bunx @rohirik/openltm-core --opencode` |
 | Pi | `@rohirik/pi-ltm` | `bunx @rohirik/openltm-core --pi` |
-| OpenClaw | `@rohirik/openclaw-ltm` | see [`docs/11-publishing.md`](docs/11-publishing.md) |
+| OpenClaw | `@rohirik/openclaw-ltm` | `openclaw plugins install clawhub:@rohirik/openclaw-ltm` |
+| Hermes | `hermes/openltm_hermes` (Python) | `hermes plugins install openltm` |
 
-Plus a native Python plugin for [Hermes](https://github.com/NousResearch/hermes) — separate implementation, same database, same schema.
+Hermes gets a native Python plugin rather than an adapter: a separate implementation over the same database and the same schema.
+
+---
+
+## Where to get it
+
+| Channel | What ships there | Link | Updates |
+|---|---|---|---|
+| Claude Code marketplace | the `openltm` plugin | [`RohiRIK/OpenLtm`](https://github.com/RohiRIK/OpenLtm) (the repo is the marketplace) | automatic on every tag |
+| npm | `@rohirik/openltm-core` | [npmjs.com/package/@rohirik/openltm-core](https://www.npmjs.com/package/@rohirik/openltm-core) | automatic on every tag |
+| npm | `@rohirik/opencode-ltm` | [npmjs.com/package/@rohirik/opencode-ltm](https://www.npmjs.com/package/@rohirik/opencode-ltm) | automatic on every tag |
+| npm | `@rohirik/pi-ltm` | [npmjs.com/package/@rohirik/pi-ltm](https://www.npmjs.com/package/@rohirik/pi-ltm) | automatic on every tag |
+| npm | `@rohirik/openclaw-ltm` | [npmjs.com/package/@rohirik/openclaw-ltm](https://www.npmjs.com/package/@rohirik/openclaw-ltm) | automatic on every tag |
+| ClawHub (OpenClaw) | `@rohirik/openclaw-ltm` | `openclaw plugins install clawhub:@rohirik/openclaw-ltm` | automatic on every tag, after ClawHub's security scan |
+| Hermes Plugin Catalog | `openltm` | [`plugin-catalog/openltm.yaml`](https://github.com/NousResearch/hermes-agent/blob/main/plugin-catalog/openltm.yaml) · [catalog page](https://hermes-agent.nousresearch.com/docs/plugins/openltm) | pinned to a commit; each update is a reviewed PR to NousResearch |
+
+How each channel is published, and what to do when one breaks: [`docs/11-publishing.md`](docs/11-publishing.md).
 
 ---
 
@@ -112,6 +129,25 @@ bunx @rohirik/openltm-core                        # auto-detect installed hosts
 bunx @rohirik/openltm-core --pi                   # experimental Pi adapter
 bunx @rohirik/openltm-core --dry-run --claude     # show me everything you'd write, write nothing
 ```
+
+### Hermes
+
+```bash
+hermes plugins install openltm
+hermes config set memory.provider openltm
+hermes gateway restart          # plugins load only at startup
+```
+
+Installs the reviewed commit pinned in the [Hermes Plugin Catalog](https://hermes-agent.nousresearch.com/docs/plugins/openltm). Details: [`docs/10-hermes-plugin.md`](docs/10-hermes-plugin.md).
+
+### OpenClaw
+
+```bash
+openclaw plugins install clawhub:@rohirik/openclaw-ltm --accept-capabilities   # from ClawHub
+openclaw plugins install @rohirik/openclaw-ltm --force --accept-capabilities   # or straight from npm
+```
+
+Requires OpenClaw `>= 2026.9.6`, Node 24 (the host's own requirement), and Bun on `PATH`. `--accept-capabilities` consents to the plugin registering its memory tools; `--force` is how OpenClaw makes you acknowledge that an npm install is outside ClawHub review (verified on OpenClaw 2026.9.8). Details: [`packages/adapter-openclaw/README.md`](packages/adapter-openclaw/README.md).
 
 ### Dev / git clone
 

@@ -43,8 +43,10 @@ declare module "openclaw/plugin-sdk/plugin-entry" {
     pluginConfig?: unknown;
     registerTool: (tool: unknown, opts?: unknown) => void;
     registerHook?: (events: string | string[], handler: unknown, opts?: unknown) => void;
-    registerMemoryPromptSupplement?: (
-      builder: (params: MemoryPromptSectionParams) => string[] | Promise<string[]>,
+    registerMemoryPromptSupplement?: (builder: (params: MemoryPromptSectionParams) => string[]) => void;
+    /** Async, awaited by the host before the prompt is built (openclaw >= 2026.9.8). */
+    registerMemoryPromptPreparation?: (
+      prepare: (params: MemoryPromptSectionParams) => Promise<readonly string[]>,
     ) => void;
   }
 

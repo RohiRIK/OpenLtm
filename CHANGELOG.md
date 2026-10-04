@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.15.2] — 2026-10-03
+
+### Added
+- **ClawHub publishing on every release** — the Publish workflow now has a `clawhub` job that runs after npm and publishes `@rohirik/openclaw-ltm` to ClawHub through GitHub OIDC trusted publishing (no stored token). `scripts/clawhub-publish-if-needed.sh` does what `prepack`/`postpack` do for npm, since ClawHub does not run lifecycle scripts: it builds `dist/`, resolves `workspace:*`, publishes with explicit source coordinates, waits for the security scan, and restores `package.json`. A version already on ClawHub (or registered by an earlier attempt that errored) is skipped, so the job can be re-run safely.
+
+### Fixed
+- **OpenClaw plugin could not reach its memory engine on a real host** — the adapter resolved `@rohirik/openltm-core/package.json`, which core's `exports` map does not list. Bun (the test runner) allows that; Node, which OpenClaw runs on, throws `ERR_PACKAGE_PATH_NOT_EXPORTED`, so on every OpenClaw install all eight tools answered "memory engine unavailable". The adapter now resolves core's main entry and walks up to the package root. Found by installing 2.15.1 into OpenClaw 2026.9.8.
+- **First calls on a brand-new database failed** — `mcp-serve` started answering before schema migrations finished, so a first-time user (OpenClaw or Pi with no Claude Code install) got `no such column: decay_score`. `startMcpServer` now awaits `waitForInit()` before connecting. The OpenClaw tests no longer pre-migrate their database, so this is covered.
+- **OpenClaw recall hid failures** — with the engine unavailable, `openltm_recall` returned "No memories found."; every tool now reports the actual error.
+- **OpenClaw Prior Knowledge block was never injected** — the prompt supplement returned an empty list unconditionally. It now uses the host's async `registerMemoryPromptPreparation` (awaited before each prompt) and falls back to a cached synchronous supplement on older hosts, honouring `autoRecall` and `prefillLines`.
+- **`openltm_context` (OpenClaw) returned a bare string** instead of a tool result.
+
+### Docs
+- **OpenClaw install flags** — OpenClaw 2026.9.8 requires `--accept-capabilities` for this plugin, and `--force` for any npm (non-ClawHub) install; every install snippet now includes them.
+- **Distribution status brought up to date** — the README has a "Where to get it" table listing every channel with links (Claude Code marketplace, the four npm packages, ClawHub, the Hermes Plugin Catalog) plus install snippets for Hermes and OpenClaw; `docs/11-publishing.md` opens with an at-a-glance status table and records the Hermes catalog listing (merged 2026-10-02, pinned to 2.15.1) instead of "needs a PR"; installation, quickstart, CONTRIBUTING, CLAUDE.md and AGENTS.md describe the ClawHub job and the Hermes re-pin step.
+- **Hermes docs use the plugin's current name** — install dir and `memory.provider` are `openltm` (renamed in #15), not `openltm_hermes`; the plugin README that the catalog page renders now has the install step and all eight tools.
+
 ## [2.15.1] — 2026-09-27
 
 ### Fixed

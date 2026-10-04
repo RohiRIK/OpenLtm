@@ -25,7 +25,7 @@ Installing OpenLTM into OpenCode (`bunx @rohirik/openltm-core --opencode`) does 
 
 ## Releasing
 
-Tag-driven and tokenless: bump versions, add a `CHANGELOG.md` entry, then `git tag vX.Y.Z && git push origin main vX.Y.Z`. The tag fires the Release and Publish workflows; npm packages publish via OIDC trusted publishing with provenance — no stored token. Full detail in `CONTRIBUTING.md`.
+Tag-driven and tokenless: bump versions, add a `CHANGELOG.md` entry, then `git tag vX.Y.Z && git push origin main vX.Y.Z`. The tag fires the Release and Publish workflows; npm packages (and the OpenClaw package on ClawHub) publish via OIDC trusted publishing — no stored token. The Hermes catalog pin is a separate re-pin PR to NousResearch. Full detail in `CONTRIBUTING.md`.
 
 ## Docs
 

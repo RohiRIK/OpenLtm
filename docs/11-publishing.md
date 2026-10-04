@@ -3,12 +3,22 @@
 Status of each external channel, and what is left to do. Verified against each
 project's own documentation.
 
+## At a glance
+
+| Channel | Ships | Status | How it updates | Link |
+|---|---|---|---|---|
+| npm | `@rohirik/openltm-core`, `opencode-ltm`, `pi-ltm`, `openclaw-ltm` | live | automatic on every `v*` tag (OIDC) | [npmjs.com/~rohirik](https://www.npmjs.com/~rohirik) |
+| Claude Code marketplace | `openltm` plugin | live | automatic — the repo is the marketplace | [`RohiRIK/OpenLtm`](https://github.com/RohiRIK/OpenLtm) |
+| Hermes Plugin Catalog | `openltm` (Python provider) | live since 2026-10-02, pinned to 2.15.1 | a reviewed re-pin PR to NousResearch per release | [entry](https://github.com/NousResearch/hermes-agent/blob/main/plugin-catalog/openltm.yaml) · [page](https://hermes-agent.nousresearch.com/docs/plugins/openltm) |
+| ClawHub (OpenClaw) | `@rohirik/openclaw-ltm` | published by hand through 2.15.1; automated from 2.15.2 | automatic on every tag (OIDC), after a one-time trusted-publisher setup | `openclaw plugins install clawhub:@rohirik/openclaw-ltm` |
+| OpenClaw self-serve marketplace | — | not set up (needs its own `marketplace.json`) | — | §4c below |
+
 ---
 
 ## 1. npm — live, automatic
 
-`@rohirik/openltm-core`, `@rohirik/opencode-ltm`, and `@rohirik/pi-ltm` are
-published by `.github/workflows/publish.yml` on every `v*` tag, using npm OIDC
+`@rohirik/openltm-core`, `@rohirik/opencode-ltm`, `@rohirik/pi-ltm`, and
+`@rohirik/openclaw-ltm` are published by `.github/workflows/publish.yml` on every `v*` tag, using npm OIDC
 trusted publishing (no stored token).
 
 Nothing to submit. This is also the channel OpenClaw can install from directly.
@@ -32,7 +42,18 @@ claude plugin install openltm
 
 ---
 
-## 3. Hermes Plugin Catalog — entry prepared, needs a PR to *their* repo
+## 3. Hermes Plugin Catalog — live
+
+**Listed.** The entry was merged into `NousResearch/hermes-agent` on 2026-10-02
+([`plugin-catalog/openltm.yaml`](https://github.com/NousResearch/hermes-agent/blob/main/plugin-catalog/openltm.yaml)),
+pinned to `6105051` (v2.15.1). Users install it with `hermes plugins install openltm`;
+the page is <https://hermes-agent.nousresearch.com/docs/plugins/openltm>, and the
+site rebuilds on every catalog merge.
+
+**Every release after that is a new PR to their repo** — the pin does not move by
+itself. Run `bun run catalog:sync` + `bun run catalog:check` here, copy the
+updated `openltm.yaml` into a fork, and open the re-pin PR. The rest of this
+section is the original submission record.
 
 Catalog: <https://hermes-agent.nousresearch.com/docs/user-guide/features/plugin-catalog>
 
@@ -57,14 +78,14 @@ Requirements and our status:
 | Validation green (schema, SHA format, reachability) | `bun run catalog:check` |
 | Not self-updating | yes — `catalog:sync` only rewrites a pin for a new PR |
 
-**Prepared:** [`hermes/plugin-catalog/openltm.yaml`](openltm.yaml),
+**Prepared:** [`hermes/plugin-catalog/openltm.yaml`](../hermes/plugin-catalog/openltm.yaml),
 modelled on the closest existing entry (`entropicmem`, also a native Python
 memory provider). It declares all 8 `openltm_*` tools and the 7 hooks the
 provider actually implements.
 
 **Submit:** copy that file to `plugin-catalog/openltm.yaml` in a fork of
 `NousResearch/hermes-agent`, run `bun run catalog:check`, and open the PR. Full
-walkthrough in [`hermes/plugin-catalog/README.md`](README.md).
+walkthrough in [`hermes/plugin-catalog/README.md`](../hermes/plugin-catalog/README.md).
 
 **Keep it fresh:** the pin trails the code by one commit by construction.
 
@@ -74,17 +95,17 @@ bun run catalog:sync     # repoint sha + version
 bun run catalog:drift    # fail if stale
 ```
 
-Until this lands, users can still install directly by git URL:
+Users who want `main` rather than the pin can still install directly by git URL:
 
 ```bash
 hermes plugins install https://github.com/RohiRIK/OpenLtm/hermes/openltm_hermes
 ```
 
-That path works today but bypasses review and takes the branch tip, not a pin.
+That path bypasses review and takes the branch tip, not a pin.
 
 ---
 
-## 4. OpenClaw — researched, not yet built
+## 4. OpenClaw — native plugin, on npm and ClawHub
 
 Docs: <https://docs.openclaw.ai> · source: <https://github.com/openclaw/openclaw>
 
@@ -155,12 +176,16 @@ Verified: `bun run check:openclaw` (17 checks against their real loader rules),
 `openclaw` and `@rohirik/openltm-core` external (a bundled copy of core would mean
 a second DB singleton).
 
-**Not verified:** the plugin has never been loaded by a real OpenClaw host —
-installing OpenClaw is an owner decision. The manifest is validated against
-OpenClaw's actual loader source, and the registration logic is tested, but
-end-to-end host loading is untested.
+**Verified on a real host (2026-10-03, OpenClaw 2026.9.8, Node 24):** the
+published 2.15.1 installed and loaded but **every tool failed** — Node enforces
+core's `exports` map, so resolving `@rohirik/openltm-core/package.json` threw
+`ERR_PACKAGE_PATH_NOT_EXPORTED` (Bun, which runs the tests, does not). Fixed in
+2.15.2 along with a fresh-database migration race, a recall that reported "No
+memories found." when the engine was missing, and a Prior Knowledge block that
+was never injected. With the fixes: install, `inspect --runtime` (loaded, 8
+tools, no diagnostics), learn → recall on a new database, and prefill all work.
 
-### 4c. Hosted marketplace feed (later)
+### 4c. Hosted marketplace feed
 
 The marketplace is a DSSE-signed hosted feed (`clawhub-public` profile), not a
 PR-to-a-repo model:
@@ -179,18 +204,15 @@ reading bundle metadata — the docs explicitly say such bundles are *not*
 validated against the `openclaw.plugin.json` schema. For a memory provider we
 should not rely on it; route 4b is the supported path.
 
-### Recommended next step
-
-The adapter is built and packaged, and loads in a real host. Host-level
-verification:
+### Host-level verification
 
 ```bash
-openclaw plugins install @rohirik/openclaw-ltm
-openclaw plugins list --json
+openclaw plugins install @rohirik/openclaw-ltm --force --accept-capabilities
+openclaw plugins inspect openltm --runtime --json   # status: loaded, 8 tools
 # then exercise recall/learn inside a live OpenClaw session
 ```
 
-### 4c. Two distinct marketplaces
+### 4d. Two distinct marketplaces
 
 OpenClaw has two separate things people call "the marketplace". They are not the
 same, and only one is self-serve.
@@ -243,8 +265,9 @@ openclaw plugins install openltm@openltm
 
 ### Applying for ClawHub
 
-**Status: the package validates and the dry-run is clean. Only authentication
-remains, and that is a human account action.**
+**Status: done.** Versions 2.15.0 and 2.15.1 were published by hand with the
+commands below; from 2.15.2 the Publish workflow does it (next section). Kept as
+the record of the first publish.
 
 ```bash
 npm install -g clawhub          # or run it locally
@@ -270,7 +293,27 @@ Files:     6 files (122.0 KB)
 Tags:      latest
 ```
 
-### Publishing to ClawHub: two traps
+### Publishing to ClawHub — automated on every tag
+
+The `clawhub` job in `.github/workflows/publish.yml` runs after the npm job and
+calls `scripts/clawhub-publish-if-needed.sh`, which handles the traps below
+(build, resolve `workspace:*`, explicit source coordinates, `--wait` for the
+scan, skip a version that already exists). Auth is GitHub OIDC — no token is
+stored. It needs a **one-time** trusted-publisher setup by the owner:
+
+```bash
+clawhub login
+clawhub package trusted-publisher set @rohirik/openclaw-ltm \
+  --repository RohiRIK/OpenLtm --workflow-filename publish.yml
+clawhub package trusted-publisher get @rohirik/openclaw-ltm   # confirm
+```
+
+The package must already exist on ClawHub for this (it does since 2.15.0).
+Then re-run the release with `gh workflow run publish.yml --ref main`, or push
+the next tag. Without the trusted publisher the job fails at auth and npm is
+unaffected.
+
+### Publishing to ClawHub by hand: two traps
 
 **1. ClawHub builds the artifact itself — your `prepack` is not run.** The
 ClawHub Inspector reported `PASS`, but the uploaded tarball still contained
