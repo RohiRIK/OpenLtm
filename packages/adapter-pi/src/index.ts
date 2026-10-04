@@ -8,10 +8,10 @@
  * Pattern adapted from context-mode's Pi adapter (MIT).
  */
 import { spawn, execSync } from "node:child_process";
-import { createRequire } from "node:module";
-import { resolve, dirname, join } from "node:path";
+import { join } from "node:path";
 import { homedir } from "node:os";
 import { existsSync, readdirSync } from "node:fs";
+import { findCoreCli } from "./find-core.js";
 
 // ── Fork-bomb prevention ──────────────────────────────────────────────────────
 
@@ -60,15 +60,7 @@ function findMcpServer(): { script: string; args: string[] } | null {
     }
   }
   // 2. openltm-core package — run the packaged CLI entrypoint with mcp-serve
-  try {
-    const req = createRequire(import.meta.url);
-    const pkgJson = req.resolve("@rohirik/openltm-core/package.json");
-    const script = resolve(dirname(pkgJson), "src", "cli", "bin.ts");
-    if (existsSync(script)) return { script, args: ["mcp-serve"] };
-  } catch {
-    // not available
-  }
-  return null;
+  return findCoreCli(import.meta.url);
 }
 
 // ── Minimal MCP stdio client ──────────────────────────────────────────────────
