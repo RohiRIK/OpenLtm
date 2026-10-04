@@ -22,7 +22,7 @@ Verified end to end on OpenClaw 2026.9.8 (Node 24): install, runtime load with
 all eight tools, learn → recall on a brand-new database, and the Prior
 Knowledge block.
 
-Both are published on every release tag. A new ClawHub version becomes
+npm gets every release tag; ClawHub gets a release once it is published there (see the repo's `docs/11-publishing.md`). A new ClawHub version becomes
 installable once ClawHub's security scan finishes.
 
 Requires **OpenClaw `>= 2026.9.6`** and the **Bun** runtime on `PATH`

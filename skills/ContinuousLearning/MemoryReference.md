@@ -40,7 +40,7 @@ const memId = promote(itemId); // returns new memory id, or null if not promotab
 - `gotcha` → category `gotcha`, importance 4
 - Dedup-safe: calling `promote()` on the same item twice reinforces the memory rather than duplicating it
 
-**Bulk backfill:** Run `bun $CLAUDE_PLUGIN_ROOT/scripts/backfill-promote.ts` to promote all existing unpromoted decision/gotcha items.
+**Bulk backfill:** Run `bun "$CLAUDE_PLUGIN_ROOT/scripts/backfill-promote.ts"` to promote all existing unpromoted decision/gotcha items.
 
 ---
 
