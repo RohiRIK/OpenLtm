@@ -101,6 +101,29 @@ describe("Pi LTM extension — registerHooks()", () => {
     expect(result?.systemPrompt).toContain("Prior Knowledge");
   });
 
+  it("session_compact records the summary as one progress item per session, not a memory", async () => {
+    const { listByProject, deriveProjectFromCwd, getDb } = await import("@rohirik/openltm-core");
+    const { registerHooks } = await import("../hooks.js");
+    const pi = createMockPi();
+    registerHooks(pi);
+
+    const cwd = "/tmp/pi-compact-proj";
+    const project = deriveProjectFromCwd(cwd);
+    const memoriesBefore = getDb().query<{ n: number }, []>("SELECT COUNT(*) AS n FROM memories").get()!.n;
+    const summary = (n: number) => `Compaction ${n}: refactored the session store, added retries to the sync client, and fixed flaky tests.`;
+
+    await pi.handlers["session_compact"]![0]!({ cwd, summary: summary(1), sessionId: "pi-sess-1" });
+    await pi.handlers["session_compact"]![0]!({ cwd, summary: summary(2), sessionId: "pi-sess-1" });
+    await pi.handlers["session_compact"]![0]!({ cwd, summary: "too short", sessionId: "pi-sess-2" });
+
+    const rows = listByProject(project, "progress");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.session_id).toBe("pi-sess-1");
+    expect(rows[0]!.content).toContain("Compaction 2:");
+    const memoriesAfter = getDb().query<{ n: number }, []>("SELECT COUNT(*) AS n FROM memories").get()!.n;
+    expect(memoriesAfter).toBe(memoriesBefore);
+  });
+
   it("before_agent_start returns undefined when no memories for project", async () => {
     const { registerHooks } = await import("../hooks.js");
     const pi = createMockPi();

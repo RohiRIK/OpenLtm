@@ -1,4 +1,4 @@
-import { buildPrefillContext, deriveProjectFromCwd, learn, PREFILL_DEFAULTS } from "@rohirik/openltm-core";
+import { appendProgress, buildPrefillContext, deriveProjectFromCwd, PREFILL_DEFAULTS } from "@rohirik/openltm-core";
 
 type PiAny = any;
 
@@ -22,22 +22,17 @@ export function registerHooks(pi: PiAny): void {
     }
   });
 
-  // Learn from session summary after compact
-  pi.on("session_compact", (event: PiAny) => {
+  // Record the compaction summary as this session's progress item. Raw summaries
+  // are too noisy to store as memories; progress is one row per session.
+  pi.on("session_compact", async (event: PiAny) => {
     try {
       const cwd = String(event?.cwd ?? process.cwd());
-      const project = projectFromCwd(cwd);
-      const summary = String(event?.summary ?? "");
-      if (summary.trim().length > 50) {
-        learn({
-          content: summary.slice(0, 500),
-          category: "pattern",
-          importance: 2,
-          project_scope: project,
-          actor: "pi:compact",
-          skipExport: true,
-        });
-      }
+      const summary = String(event?.summary ?? "").replace(/\s+/g, " ").trim();
+      if (summary.length <= 50) return;
+      const rawSessionId = event?.sessionId ?? event?.session_id;
+      const sessionId = typeof rawSessionId === "string" && rawSessionId ? rawSessionId : undefined;
+      const today = new Date().toISOString().split("T")[0];
+      await appendProgress(projectFromCwd(cwd), `✓ [${today}] Compacted: ${summary.slice(0, 300)}`, sessionId);
     } catch {
       // Non-fatal
     }

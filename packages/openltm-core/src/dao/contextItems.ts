@@ -2,6 +2,7 @@
  * dao/contextItems.ts — DAO for context_items table.
  * Hooks use these functions instead of raw SQL.
  */
+import type { Database } from "bun:sqlite";
 import { getDb } from "../shared-db.js";
 import { writeQueue } from "../lib/writeQueue.js";
 import type { ContextItemRow, ContextItemType } from "./types.js";
@@ -33,22 +34,47 @@ export function upsertGoal(project: string, content: string): void {
   });
 }
 
-export function appendProgress(project: string, content: string, sessionId?: string): void {
-  writeQueue.enqueue(() => {
+const MAX_PROGRESS_ROWS = 20;
+
+function deleteIds(db: Database, ids: number[]): void {
+  if (ids.length === 0) return;
+  db.run(`DELETE FROM context_items WHERE id IN (${ids.map(() => "?").join(",")})`, ids);
+}
+
+/**
+ * Record a progress line for a project.
+ *
+ * With a sessionId this is an upsert keyed on (project, session_id): a later call
+ * for the same session rewrites that row's content and timestamp instead of adding
+ * a row, so the 20-row cap counts sessions, not calls (the Stop hook calls this
+ * every turn). Without a sessionId every call inserts.
+ *
+ * Resolves once the write has run, so callers can await it to catch DB errors.
+ */
+export function appendProgress(project: string, content: string, sessionId?: string): Promise<void> {
+  return writeQueue.enqueue(() => {
     const db = getDb();
-    // Trim to 20 most recent progress entries
-    const existing = db.query<{ id: number }, [string]>(
-      `SELECT id FROM context_items WHERE project_name=? AND type='progress' ORDER BY created_at DESC`
-    ).all(project);
-    if (existing.length >= 20) {
-      const toDelete = existing.slice(19).map(r => r.id);
-      const placeholders = toDelete.map(() => "?").join(",");
-      db.run(`DELETE FROM context_items WHERE id IN (${placeholders})`, toDelete);
-    }
-    db.run(
-      `INSERT INTO context_items (project_name, type, content, session_id, permanent) VALUES (?, 'progress', ?, ?, 0)`,
-      [project, content, sessionId ?? null]
-    );
+    db.transaction(() => {
+      if (sessionId) {
+        const rows = db.query<{ id: number }, [string, string]>(
+          `SELECT id FROM context_items WHERE project_name=? AND type='progress' AND session_id=? ORDER BY id DESC`
+        ).all(project, sessionId);
+        const [keep, ...duplicates] = rows;
+        if (keep) {
+          db.run(`UPDATE context_items SET content=?, created_at=datetime('now') WHERE id=?`, [content, keep.id]);
+          deleteIds(db, duplicates.map(r => r.id));
+          return;
+        }
+      }
+      const existing = db.query<{ id: number }, [string]>(
+        `SELECT id FROM context_items WHERE project_name=? AND type='progress' ORDER BY created_at DESC, id DESC`
+      ).all(project);
+      deleteIds(db, existing.slice(MAX_PROGRESS_ROWS - 1).map(r => r.id));
+      db.run(
+        `INSERT INTO context_items (project_name, type, content, session_id, permanent) VALUES (?, 'progress', ?, ?, 0)`,
+        [project, content, sessionId ?? null]
+      );
+    })();
   });
 }
 
