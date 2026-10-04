@@ -74,3 +74,27 @@ jobs:
       - name: Publish openclaw extension
         working-directory: packages/adapter-openclaw
         run: ../../scripts/npm-publish-if-needed.sh @rohirik/openclaw-ltm
+
+  # ClawHub resolves @rohirik/openltm-core from npm at install time, so it runs
+  # only after the npm job. Auth is GitHub OIDC (trusted publisher configured
+  # once on ClawHub for this repo + publish.yml) — no stored token.
+  clawhub:
+    name: Publish @rohirik/openclaw-ltm to ClawHub
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Publish to ClawHub
+        run: scripts/clawhub-publish-if-needed.sh
