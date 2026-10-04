@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.16.2] — 2026-10-04
+
+### Fixed
+- Fixed Pi package-gallery discovery by adding required pi-package npm keyword; Hermes native plugin manifest synchronized 2.16.2 for catalog re-pin.
+
 ## [2.16.1] — 2026-10-04
 
 ### Fixed

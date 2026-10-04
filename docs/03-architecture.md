@@ -1,6 +1,6 @@
 # ARCHITECTURE — OpenLTM Plugin
 
-* **Version:** 1.4 (against plugin v2.16.1)
+* **Version:** 1.4 (against plugin v2.16.2)
 * **Owner:** Rohi Rikman
 * **Status:** Baseline architecture spec; companion to `docs/internal/PRD.md`
 * **Last updated:** 2026-06-08
