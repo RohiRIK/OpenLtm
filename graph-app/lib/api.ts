@@ -30,6 +30,10 @@ import type {
 
 const BASE = "/api";
 
+// The API server rejects mutating requests that are not application/json (415),
+// so every POST/PUT/DELETE sends it — even without a body.
+const JSON_HEADERS = { "Content-Type": "application/json" };
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`);
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
@@ -39,7 +43,7 @@ async function get<T>(path: string): Promise<T> {
 async function post<T>(path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",
-    headers: body ? { "Content-Type": "application/json" } : {},
+    headers: JSON_HEADERS,
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
@@ -49,7 +53,7 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
 async function put<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: JSON_HEADERS,
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
@@ -57,7 +61,7 @@ async function put<T>(path: string, body: unknown): Promise<T> {
 }
 
 async function del<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { method: "DELETE" });
+  const res = await fetch(`${BASE}${path}`, { method: "DELETE", headers: JSON_HEADERS });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return res.json() as Promise<T>;
 }
@@ -88,12 +92,12 @@ export const api = {
   project: (name: string): Promise<ProjectDetail> =>
     get(`/project/${encodeURIComponent(name)}`),
   reload: async (): Promise<void> => {
-    await fetch(`${BASE}/reload`, { method: "POST" });
+    await fetch(`${BASE}/reload`, { method: "POST", headers: JSON_HEADERS });
   },
   reveal: async (path?: string): Promise<{ ok: boolean; path?: string; error?: string }> => {
     const res = await fetch(`${BASE}/reveal`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: JSON_HEADERS,
       body: JSON.stringify(path ? { path } : {}),
     });
     return res.json();
