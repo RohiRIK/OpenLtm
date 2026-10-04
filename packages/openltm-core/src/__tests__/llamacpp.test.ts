@@ -50,6 +50,21 @@ describe("llamacpp embedding provider", () => {
     expect(await provider.generate("hello")).toBeNull();
   });
 
+  it("unset LTM_EMBED_PROVIDER defaults to llamacpp and a down server never calls Gemini", async () => {
+    const urls: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      urls.push(String(input));
+      throw new Error("offline");
+    }) as typeof fetch;
+    const provider = await loadProvider(undefined);
+    expect(provider.name).toBe("llamacpp");
+    expect(provider.model).toBe("bge-m3");
+    expect(await provider.generate("fresh memory without gemini")).toBeNull();
+    expect(urls.length).toBeGreaterThan(0);
+    expect(urls.every((u) => u.startsWith("http://127.0.0.1:8080/"))).toBe(true);
+    expect(urls.some((u) => /googleapis|generativelanguage|gemini/i.test(u))).toBe(false);
+  });
+
   it("generate() parses the OpenAI embeddings payload and records actual dim", async () => {
     globalThis.fetch = (async (input: RequestInfo | URL) => {
       const url = String(input);
