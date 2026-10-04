@@ -14,9 +14,9 @@
 import { spawn, execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve, dirname } from "node:path";
-import { createRequire } from "node:module";
+import { join } from "node:path";
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
+import { findCoreCli } from "./find-core.js";
 import { Type } from "typebox";
 
 const BRIDGE_DEPTH_ENV = "LTM_BRIDGE_DEPTH";
@@ -41,24 +41,6 @@ function findBun(): string | null {
     } catch {
       // try the next probe
     }
-  }
-  return null;
-}
-
-/** Locate the core CLI entry that can run `mcp-serve`. */
-function findMcpServer(): { script: string; args: string[] } | null {
-  let entry: string;
-  try {
-    // Resolve the package's main entry, not `@rohirik/openltm-core/package.json`:
-    // core has an `exports` map, and Node (unlike Bun) refuses any subpath it
-    // does not list (ERR_PACKAGE_PATH_NOT_EXPORTED).
-    entry = createRequire(import.meta.url).resolve("@rohirik/openltm-core");
-  } catch {
-    return null;
-  }
-  for (let dir = dirname(entry); dir !== dirname(dir); dir = dirname(dir)) {
-    const script = resolve(dir, "src", "cli", "bin.ts");
-    if (existsSync(script)) return { script, args: ["mcp-serve"] };
   }
   return null;
 }
@@ -238,7 +220,7 @@ export default definePluginEntry({
       if (bridge) return bridge;
       const dbPath = readConfig().dbPath;
       const runtime = findBun();
-      const server = findMcpServer();
+      const server = findCoreCli(import.meta.url);
       if (!runtime) {
         bridgeError = "Bun was not found on PATH. OpenLTM stores memory in a local SQLite database and needs the Bun runtime; install Bun from https://bun.sh";
         throw new Error(bridgeError);

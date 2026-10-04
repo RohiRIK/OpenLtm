@@ -52,3 +52,6 @@ r2-split-harness/canonical-check/
 packages/*/reports/
 # locally packed tarballs
 *.tgz
+
+# adapter-under-Node test builds (src/__tests__/adapters-under-node.test.ts)
+packages/*/.node-test/

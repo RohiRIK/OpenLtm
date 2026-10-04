@@ -7,7 +7,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./cli": "./src/cli/index.ts",
-    "./mcp": "./src/mcp/server.ts"
+    "./mcp": "./src/mcp/server.ts",
+    "./package.json": "./package.json"
   },
   "bin": {
     "ltm": "src/cli/bin.ts",
