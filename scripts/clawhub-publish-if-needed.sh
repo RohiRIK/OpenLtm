@@ -40,7 +40,7 @@ set +e
 OUTPUT="$($CLAWHUB package publish "$PKG_DIR" \
   --source-repo RohiRIK/OpenLtm \
   --source-commit "$(git rev-parse HEAD)" \
-  --source-ref "${GITHUB_REF_NAME:-main}" \
+  --source-ref "${GITHUB_REF:-main}" \
   --source-path "$PKG_DIR" \
   --wait --wait-timeout 1800 2>&1)"
 STATUS=$?
