@@ -18,16 +18,20 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/bin/run-hook.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/src/UpdateContext.ts\""
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/bin/run-hook.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/src/UpdateContext.ts\"",
+            "timeout": 10
           }
         ]
-      },
+      }
+    ],
+    "SessionEnd": [
       {
         "matcher": "",
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/bin/run-hook.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/src/EvaluateSession.ts\""
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/bin/run-hook.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/src/EvaluateSession.ts\"",
+            "timeout": 60
           }
         ]
       }
