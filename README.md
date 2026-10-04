@@ -105,13 +105,16 @@ Hermes gets a native Python plugin rather than an adapter: a separate implementa
 
 | Channel | What ships there | Link | Updates |
 |---|---|---|---|
-| Claude Code marketplace | the `openltm` plugin | [`RohiRIK/OpenLtm`](https://github.com/RohiRIK/OpenLtm) (the repo is the marketplace) | automatic on every tag |
+| Claude Code (own marketplace) | the `openltm` plugin | [OpenLTM marketplace repository](https://github.com/RohiRIK/OpenLtm) — not Anthropic’s official directory | repository-backed |
 | npm | `@rohirik/openltm-core` | [npmjs.com/package/@rohirik/openltm-core](https://www.npmjs.com/package/@rohirik/openltm-core) | automatic on every tag |
 | npm | `@rohirik/opencode-ltm` | [npmjs.com/package/@rohirik/opencode-ltm](https://www.npmjs.com/package/@rohirik/opencode-ltm) | automatic on every tag |
 | npm | `@rohirik/pi-ltm` | [npmjs.com/package/@rohirik/pi-ltm](https://www.npmjs.com/package/@rohirik/pi-ltm) | automatic on every tag |
 | npm | `@rohirik/openclaw-ltm` | [npmjs.com/package/@rohirik/openclaw-ltm](https://www.npmjs.com/package/@rohirik/openclaw-ltm) | automatic on every tag |
-| ClawHub (OpenClaw) | `@rohirik/openclaw-ltm` | `openclaw plugins install clawhub:@rohirik/openclaw-ltm` | dispatch `publish.yml` at the release tag after npm succeeds ([procedure](docs/11-publishing.md#publishing-to-clawhub--dispatch-after-npm)) |
+| Pi Package Catalog | `@rohirik/pi-ltm` extension | [Pi marketplace listing](https://pi.dev/packages/@rohirik/pi-ltm) · [catalog search](https://pi.dev/packages?name=%40rohirik%2Fpi-ltm) | indexed from npm via the `pi-package` keyword |
+| ClawHub (OpenClaw) | `@rohirik/openclaw-ltm` | [OpenLTM Memory on ClawHub](https://clawhub.ai/rohirik/plugins/openclaw-ltm) | dispatch `publish.yml` at the release tag after npm succeeds ([procedure](docs/11-publishing.md#publishing-to-clawhub--dispatch-after-npm)) |
 | Hermes Plugin Catalog | `openltm` | [`plugin-catalog/openltm.yaml`](https://github.com/NousResearch/hermes-agent/blob/main/plugin-catalog/openltm.yaml) · [catalog page](https://hermes-agent.nousresearch.com/docs/plugins/openltm) | pinned to a commit; each update is a reviewed PR to NousResearch |
+
+The Hermes Plugin Catalog remains pinned to 2.15.1 until Nous maintainers merge the [2.16.2 catalog update](https://github.com/NousResearch/hermes-agent/pull/132746). The current OpenLTM release is 2.16.2; the catalog’s exact commit pin, not the latest repository tag, determines what catalog installs receive.
 
 How each channel is published, and what to do when one breaks: [`docs/11-publishing.md`](docs/11-publishing.md).
 
