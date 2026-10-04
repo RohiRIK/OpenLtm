@@ -20,5 +20,6 @@ describe("ClawHub trusted publishing contract", () => {
     expect(publish).toBeGreaterThan(script.indexOf('resolve-workspace-deps.ts rewrite'));
     expect(script).toContain('resolve-workspace-deps.ts restore');
     expect(script).not.toContain("--manual-override-reason");
+    expect(script).toContain('--source-ref "${GITHUB_REF:-main}"');
   });
 });
