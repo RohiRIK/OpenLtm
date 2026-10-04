@@ -10,7 +10,7 @@ project's own documentation.
 | npm | `@rohirik/openltm-core`, `opencode-ltm`, `pi-ltm`, `openclaw-ltm` | live | automatic on every `v*` tag (OIDC) | [npmjs.com/~rohirik](https://www.npmjs.com/~rohirik) |
 | Claude Code marketplace | `openltm` plugin | live | automatic — the repo is the marketplace | [`RohiRIK/OpenLtm`](https://github.com/RohiRIK/OpenLtm) |
 | Hermes Plugin Catalog | `openltm` (Python provider) | live since 2026-10-02, pinned to 2.15.1 | a reviewed re-pin PR to NousResearch per release | [entry](https://github.com/NousResearch/hermes-agent/blob/main/plugin-catalog/openltm.yaml) · [page](https://hermes-agent.nousresearch.com/docs/plugins/openltm) |
-| ClawHub (OpenClaw) | `@rohirik/openclaw-ltm` | published by hand through 2.15.1; **2.15.2 was not published** — the `clawhub` job is not in `publish.yml` yet | automatic on every tag (OIDC), after a one-time trusted-publisher setup | `openclaw plugins install clawhub:@rohirik/openclaw-ltm` |
+| ClawHub (OpenClaw) | `@rohirik/openclaw-ltm` | 2.16.1 recovery release; malformed ClawHub-only 2.16.0 is superseded | dispatch `publish.yml` at the release tag after npm succeeds (OIDC) | `openclaw plugins install clawhub:@rohirik/openclaw-ltm` |
 | OpenClaw self-serve marketplace | — | not set up (needs its own `marketplace.json`) | — | §4c below |
 
 ---
@@ -293,29 +293,15 @@ Files:     6 files (122.0 KB)
 Tags:      latest
 ```
 
-### Publishing to ClawHub — automated on every tag (once the job is added)
+### Publishing to ClawHub — dispatch after npm
 
-> **Status:** the job below is **not yet in `publish.yml`** — workflow files
-> cannot be pushed by the tooling that wrote it, so it has to be added by hand.
-> Until then, publish a release manually from a logged-in machine with
-> `scripts/clawhub-publish-if-needed.sh` (same steps, same skip-if-present).
->
-> ```yaml
->   clawhub:
->     name: Publish @rohirik/openclaw-ltm to ClawHub
->     needs: publish
->     runs-on: ubuntu-latest
->     steps:
->       - uses: actions/checkout@v4
->       - uses: oven-sh/setup-bun@v2
->         with:
->           bun-version: latest
->       - uses: actions/setup-node@v4
->         with:
->           node-version: "24"
->       - run: bun install --frozen-lockfile
->       - run: scripts/clawhub-publish-if-needed.sh
-> ```
+The job is installed and runs only on `workflow_dispatch`. ClawHub rejects secretless OIDC on tag-push events; npm still publishes on version-tag pushes. After npm succeeds, dispatch the same workflow at the immutable release tag:
+
+```bash
+gh workflow run publish.yml --repo RohiRIK/OpenLtm --ref v2.16.1
+```
+
+Verify the resulting ClawHub artifact includes `dist/index.js` and a concrete core dependency; an existing version is not proof of a usable artifact.
 
 The `clawhub` job in `.github/workflows/publish.yml` runs after the npm job and
 calls `scripts/clawhub-publish-if-needed.sh`, which handles the traps below
@@ -331,9 +317,9 @@ clawhub package trusted-publisher get @rohirik/openclaw-ltm   # confirm
 ```
 
 The package must already exist on ClawHub for this (it does since 2.15.0).
-Then re-run the release with `gh workflow run publish.yml --ref main`, or push
-the next tag. Without the trusted publisher the job fails at auth and npm is
-unaffected.
+Dispatch `publish.yml` at each release tag after its npm run succeeds. A tag
+push alone deliberately skips ClawHub. Without the trusted publisher the dispatched
+ClawHub job fails at auth; already-published npm packages are unaffected.
 
 ### Publishing to ClawHub by hand: two traps
 
@@ -348,6 +334,7 @@ README, which is how a stale artifact surfaced at all.
 Fix, and the shape every ClawHub release should use:
 
 ```bash
+bun run --cwd packages/adapter-openclaw build
 bun run scripts/resolve-workspace-deps.ts rewrite packages/adapter-openclaw/package.json
 clawhub package publish packages/adapter-openclaw \
   --source-repo RohiRIK/OpenLtm --source-commit "$(git rev-parse HEAD)" \

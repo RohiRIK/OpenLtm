@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.16.1] — 2026-10-04
+
+### Fixed
+- **ClawHub secretless publishing trigger** — the ClawHub job now runs only on `workflow_dispatch`, which ClawHub accepts for GitHub OIDC trusted publishing. Version-tag pushes still publish npm packages; dispatch `publish.yml` at the release tag afterward to publish ClawHub without a stored token or manual authentication override.
+- **ClawHub artifact recovery** — supersedes the malformed ClawHub-only 2.16.0 upload, which omitted `dist/index.js` and retained `workspace:*`. The publishing script builds the adapter and resolves its dependency before upload. npm's valid 2.16.0 packages are unaffected.
+
 ## [2.16.0] — 2026-10-04
 
 ### Changed
