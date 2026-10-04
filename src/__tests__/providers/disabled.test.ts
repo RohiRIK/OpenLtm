@@ -31,13 +31,29 @@ describe("loadProvider()", () => {
     expect(await p.generate("test")).toBeNull();
   });
 
-  it("returns DisabledProvider when config is undefined", async () => {
-    const p = await loadProvider(undefined);
-    expect(p.name).toBe("disabled");
+  it("defaults to llamacpp when config is undefined and LTM_EMBED_PROVIDER is unset", async () => {
+    const prev = process.env.LTM_EMBED_PROVIDER;
+    delete process.env.LTM_EMBED_PROVIDER;
+    try {
+      const p = await loadProvider(undefined);
+      expect(p.name).toBe("llamacpp");
+      expect(p.model).toBe("bge-m3");
+    } finally {
+      if (prev === undefined) delete process.env.LTM_EMBED_PROVIDER;
+      else process.env.LTM_EMBED_PROVIDER = prev;
+    }
   });
 
-  it("returns DisabledProvider when config has no provider field", async () => {
-    const p = await loadProvider({ confidenceThreshold: 0.6 });
-    expect(p.name).toBe("disabled");
+  it("defaults to llamacpp when config has no provider field", async () => {
+    const prev = process.env.LTM_EMBED_PROVIDER;
+    delete process.env.LTM_EMBED_PROVIDER;
+    try {
+      const p = await loadProvider({ confidenceThreshold: 0.6 });
+      expect(p.name).toBe("llamacpp");
+      expect(p.model).toBe("bge-m3");
+    } finally {
+      if (prev === undefined) delete process.env.LTM_EMBED_PROVIDER;
+      else process.env.LTM_EMBED_PROVIDER = prev;
+    }
   });
 });

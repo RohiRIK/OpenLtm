@@ -4,10 +4,12 @@
  * Provider-agnostic: delegates to whichever EmbeddingProvider is configured.
  */
 import { getDb, getSetting } from "../shared-db.js";
-import { setEmbedding, getEmbedding, listMemoryIdsMissingEmbedding } from "../dao/embeddings.js";
+import { setEmbedding, getEmbedding, listMemoryIdsMissingEmbedding, listMemoryIdsNeedingEmbedding } from "../dao/embeddings.js";
+import { llamaCppModel, LLAMACPP_DEFAULT_DIM } from "../providers/llamacpp.js";
 import { cohereEmbedding } from "./providers/cohere.js";
 import { geminiEmbedding } from "./providers/gemini.js";
 import { ollamaEmbedding } from "./providers/ollama.js";
+import { llamacppEmbedding } from "./providers/llamacpp.js";
 import { openaiEmbedding } from "./providers/openai.js";
 import { openrouterEmbedding } from "./providers/openrouter.js";
 import {
@@ -20,10 +22,13 @@ import {
 
 /** Resolve the active embedding provider from settings. */
 export function getEmbeddingProvider(): EmbeddingProvider {
-  const provider = (getSetting(SETTING_KEYS.EMBED_PROVIDER) ||
+  const env = process.env.LTM_EMBED_PROVIDER?.trim().toLowerCase();
+  const provider = (env || getSetting(SETTING_KEYS.EMBED_PROVIDER) ||
     getDefault(SETTING_KEYS.EMBED_PROVIDER)) as ProviderType;
 
   switch (provider) {
+    case "llamacpp":
+      return llamacppEmbedding;
     case "gemini":
       return geminiEmbedding;
     case "openrouter":
@@ -89,7 +94,11 @@ export async function embedMissingMemories(
   const db = getDb();
   const provider = getEmbeddingProvider();
 
-  const missingIds = listMemoryIdsMissingEmbedding(db, 10_000);
+  // llama.cpp is the default. Re-embed rows stamped for another model/dim
+  // so a Gemini install does not mix 768-d vectors with bge-m3.
+  const missingIds = provider.name === "llamacpp"
+    ? listMemoryIdsNeedingEmbedding(db, llamaCppModel(), LLAMACPP_DEFAULT_DIM, 10_000)
+    : listMemoryIdsMissingEmbedding(db, 10_000);
   if (missingIds.length === 0) return 0;
 
   // Fetch content for missing IDs in one query
@@ -141,19 +150,19 @@ export async function semanticSearch(
   // Generate embedding for the query
   const result = await provider.embed({ texts: [query] });
   const queryVector = result.vectors[0];
-  if (!queryVector) throw new Error("Failed to generate query embedding");
+  if (!queryVector) return [];
 
   // Load all memories that have embeddings (join with side-table)
   const rows = db
     .query<
       { id: number; content: string; category: string; importance: number; project_scope: string | null; embedding: Buffer },
-      []
+      [string, number]
     >(
       `SELECT m.id, m.content, m.category, m.importance, m.project_scope, e.embedding
        FROM memories m JOIN memory_embeddings e ON e.memory_id = m.id
-       WHERE m.status = 'active'`,
+       WHERE m.status = 'active' AND e.model = ? AND e.dim = ?`,
     )
-    .all();
+    .all(result.model, result.dimensions);
 
   // Compute similarities
   const scored = rows

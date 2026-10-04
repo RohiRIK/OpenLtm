@@ -64,6 +64,27 @@ export function deleteEmbedding(db: Database, memoryId: number): Promise<void> {
  * Return memory IDs that have no entry in memory_embeddings.
  * Used by the janitor backfill job and SessionStart hint.
  */
+/**
+ * Active memories with no embedding, or an embedding stamped for a different
+ * model/dim. A provider switch must re-embed; mixed vectors are not comparable.
+ */
+export function listMemoryIdsNeedingEmbedding(
+  db: Database,
+  model: string,
+  dim: number,
+  limit = 100,
+): number[] {
+  const rows = db.query<{ id: number }, [string, number, number]>(
+    `SELECT m.id FROM memories m
+     LEFT JOIN memory_embeddings e ON e.memory_id = m.id
+     WHERE m.status = 'active'
+       AND (e.memory_id IS NULL OR e.model != ? OR e.dim != ?)
+     ORDER BY m.importance DESC, m.created_at DESC
+     LIMIT ?`
+  ).all(model, dim, limit);
+  return rows.map(r => r.id);
+}
+
 export function listMemoryIdsMissingEmbedding(db: Database, limit = 100): number[] {
   const rows = db.query<{ id: number }, [number]>(
     `SELECT m.id FROM memories m

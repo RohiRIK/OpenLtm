@@ -80,6 +80,7 @@ export { anthropicLLM } from "./janitor/providers/anthropic.js";
 export { cohereEmbedding } from "./janitor/providers/cohere.js";
 export { geminiEmbedding, geminiLLM } from "./janitor/providers/gemini.js";
 export { ollamaEmbedding } from "./janitor/providers/ollama.js";
+export { llamacppEmbedding } from "./janitor/providers/llamacpp.js";
 export { openaiEmbedding } from "./janitor/providers/openai.js";
 export { openrouterEmbedding } from "./janitor/providers/openrouter.js";
 

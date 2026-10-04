@@ -988,9 +988,10 @@ Bun.serve({
 
     if (p === "/api/settings/models" && req.method === "GET") {
       return Response.json({
-        embeddingProviders: ["gemini", "openai", "cohere", "openrouter", "ollama"],
+        embeddingProviders: ["llamacpp", "gemini", "openai", "cohere", "openrouter", "ollama"],
         llmProviders: ["gemini", "openai", "anthropic", "cohere", "openrouter", "ollama"],
         embedModels: {
+          llamacpp: ["bge-m3", "bge-small-en-v1.5", "nomic-embed-text"],
           gemini: ["text-embedding-004", "text-embedding-005", "gemini-embedding-exp-03-07"],
           openai: ["text-embedding-3-small", "text-embedding-3-large", "text-embedding-ada-002"],
           cohere: ["embed-v4.0", "embed-multilingual-v3.0", "embed-english-v3.0"],

@@ -92,6 +92,9 @@ export const SETTING_KEYS = {
   // Anthropic (LLM only)
   ANTHROPIC_API_KEY: "ltm.anthropic.apiKey",
   ANTHROPIC_LLM_MODEL: "ltm.anthropic.llmModel",
+  // llama.cpp (local embeddings; OpenAI-compatible llama-server)
+  LLAMACPP_BASE_URL: "ltm.llamacpp.baseUrl",
+  LLAMACPP_EMBED_MODEL: "ltm.llamacpp.embedModel",
   // Cohere
   COHERE_API_KEY: "ltm.cohere.apiKey",
   COHERE_EMBED_MODEL: "ltm.cohere.embedModel",
@@ -114,7 +117,7 @@ export const SETTING_KEYS = {
 
 /** Default values for all settings. */
 export const SETTING_DEFAULTS: Record<string, string> = {
-  [SETTING_KEYS.EMBED_PROVIDER]: "gemini",
+  [SETTING_KEYS.EMBED_PROVIDER]: "llamacpp",
   [SETTING_KEYS.LLM_PROVIDER]: "gemini",
   [SETTING_KEYS.GEMINI_API_KEY]: "",
   [SETTING_KEYS.GEMINI_EMBED_MODEL]: "text-embedding-004",
@@ -125,6 +128,8 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   [SETTING_KEYS.OLLAMA_BASE_URL]: "http://localhost:11434",
   [SETTING_KEYS.OLLAMA_EMBED_MODEL]: "nomic-embed-text",
   [SETTING_KEYS.OLLAMA_LLM_MODEL]: "llama3.2",
+  [SETTING_KEYS.LLAMACPP_BASE_URL]: "http://127.0.0.1:8080",
+  [SETTING_KEYS.LLAMACPP_EMBED_MODEL]: "bge-m3",
   [SETTING_KEYS.OPENAI_API_KEY]: "",
   [SETTING_KEYS.OPENAI_EMBED_MODEL]: "text-embedding-3-small",
   [SETTING_KEYS.OPENAI_LLM_MODEL]: "gpt-4o-mini",
@@ -146,7 +151,7 @@ export const SETTING_DEFAULTS: Record<string, string> = {
 };
 
 /** Provider type identifiers. */
-export type ProviderType = "gemini" | "openrouter" | "ollama" | "openai" | "anthropic" | "cohere";
+export type ProviderType = "llamacpp" | "gemini" | "openrouter" | "ollama" | "openai" | "anthropic" | "cohere";
 
 /** Get a default setting value, guaranteed non-undefined. */
 export function getDefault(key: string): string {
