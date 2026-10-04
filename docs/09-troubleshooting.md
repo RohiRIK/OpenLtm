@@ -93,6 +93,27 @@ The graph server runs on port **7332**.
 
 ---
 
+## The graph API returns 403 or 415, or is unreachable from another machine
+
+The API server (port **7331**) has no authentication, so it is **local-only by design**:
+
+- It binds to `127.0.0.1`. It is not reachable from your LAN.
+- It answers only when the `Host` header is `localhost`, `127.0.0.1` or `[::1]`. Any other host (including a LAN IP or a custom hostname) gets **403**. This blocks DNS-rebinding attacks.
+- Browser requests from any origin other than `http://localhost:*`, `http://127.0.0.1:*` or `http://[::1]:*` get **403**. Open the UI at `http://localhost:7332`, not at a LAN IP or hostname.
+- `POST`/`PUT`/`PATCH`/`DELETE` requests that carry a body must send `Content-Type: application/json`, or they get **415**. Plain `curl http://localhost:7331/api/...` GETs and body-less `curl -X POST` calls still work.
+- Provider API keys are shown masked (`••••` plus the last 4 characters) in `GET /api/settings` and `GET /api/config`. Sending the masked value back leaves the stored key unchanged. To replace a key, type the new one.
+- `POST /api/reveal` only opens paths inside the database directory.
+
+To bind another address (for example `0.0.0.0` inside a container whose port is published only to the host's loopback), set `LTM_SERVER_HOST`:
+
+```
+LTM_SERVER_HOST=0.0.0.0 bun src/graph-server.ts
+```
+
+The server prints a **WARNING** to stderr whenever it binds a non-loopback address. Anyone who can reach that address can read, delete and merge every memory and change your settings. The Host and Origin checks still apply, but they stop browsers, not other clients. Never expose this on a shared or untrusted network.
+
+---
+
 ## sqlite-vec or Honker won't load
 
 The plugin degrades gracefully — the absence of either extension is not an error. But if you expected them to be active:

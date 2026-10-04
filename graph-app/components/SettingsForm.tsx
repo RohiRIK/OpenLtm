@@ -128,6 +128,11 @@ function ProviderCard({
           type={isOllama ? "text" : "password"}
           value={keyValue}
           onChange={(e) => onChange(keyFieldKey, e.target.value)}
+          // Stored keys arrive masked ("••••abcd"); select it so typing replaces it.
+          // The server ignores masked values on save, so an unchanged mask keeps the stored key.
+          onFocus={(e) => {
+            if (keyValue.includes("•")) e.currentTarget.select();
+          }}
           onBlur={() => {
             if (!isOllama && keyValue.length > 0 && keyState === "idle") onVerify();
           }}

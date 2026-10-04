@@ -26,6 +26,10 @@ import {
 } from "@rohirik/openltm-core";
 import { detectCommunities, generateClusterLabel, assignClusterColors } from "./cluster.js";
 import { getDbPath, getSchemaPath } from "./paths.js";
+import {
+  checkRequest, dropMaskedSecretsDeep, isMaskedValue, maskSecretsDeep, maskSettings,
+  nonLoopbackWarning, resolveRevealTarget, resolveServerHost, sanitizeSettingsUpdate,
+} from "./serverGuard.js";
 import type { Cluster } from "./graph-app/lib/types.js";
 
 const CLAUDE_DIR = join(homedir(), ".claude");
@@ -172,6 +176,8 @@ function deepMerge(base: Record<string, unknown>, patch: Record<string, unknown>
 const SCHEMA_PATH = getSchemaPath();
 const PID_PATH = join(CLAUDE_DIR, "tmp", "ltm-server.pid");
 const PORT = 7331;
+// Loopback by default — the API has no auth. LTM_SERVER_HOST overrides (with a warning).
+const { hostname: HOST, loopback: HOST_IS_LOOPBACK } = resolveServerHost();
 
 // Cache schema at startup — it never changes at runtime
 const SCHEMA = readFileSync(SCHEMA_PATH, "utf-8");
@@ -812,8 +818,11 @@ if (ltmListener.running) {
   }
 }
 
+if (!HOST_IS_LOOPBACK) console.error(nonLoopbackWarning(HOST, PORT));
+
 Bun.serve({
   port: PORT,
+  hostname: HOST,
 
   websocket: {
     open(ws) { clients.add(ws); ws.send(JSON.stringify({ type: "connected" })); },
@@ -822,6 +831,10 @@ Bun.serve({
   },
 
   async fetch(req, server) {
+    // Host / Origin / Content-Type policy — runs before routing and WebSocket upgrades.
+    const denied = checkRequest(req);
+    if (denied) return denied;
+
     if (req.headers.get("upgrade") === "websocket") {
       const ok = server.upgrade(req);
       if (!ok) return new Response("WebSocket upgrade failed", { status: 400 });
@@ -864,12 +877,12 @@ Bun.serve({
       return Response.json({ ok: true });
     }
     if (p === "/api/reveal" && req.method === "POST") {
-      let target = DB_PATH;
-      const body = await req.json().catch(() => ({})) as { path?: string };
-      if (body?.path && typeof body.path === "string") target = body.path;
-      if (!existsSync(target)) {
-        return Response.json({ ok: false, error: "Path not found", path: target }, { status: 404 });
+      const body = await req.json().catch(() => ({})) as { path?: unknown };
+      const resolved = resolveRevealTarget(body?.path, DB_PATH);
+      if (!resolved.ok) {
+        return Response.json({ ok: false, error: resolved.error }, { status: resolved.status });
       }
+      const target = resolved.path;
       const platform = process.platform;
       let cmd: string[];
       let args: string[];
@@ -968,16 +981,16 @@ Bun.serve({
       const stored = getAllSettings();
       // Merge with defaults so the UI always sees every key
       const merged: Record<string, string> = { ...SETTING_DEFAULTS, ...stored };
-      return Response.json(merged);
+      // API keys are never sent back in clear — the UI gets "••••" + last 4.
+      return Response.json(maskSettings(merged));
     }
 
     if (p === "/api/settings" && req.method === "PUT") {
       try {
-        const body = (await req.json()) as Record<string, string>;
-        for (const [key, value] of Object.entries(body)) {
-          if (typeof key === "string" && typeof value === "string") {
-            await setSetting(key, value);
-          }
+        // Drops masked placeholders so an unchanged form never overwrites a stored key.
+        const updates = sanitizeSettingsUpdate(await req.json());
+        for (const [key, value] of Object.entries(updates)) {
+          await setSetting(key, value);
         }
         broadcast({ type: "settings-updated" });
         return Response.json({ ok: true });
@@ -1013,6 +1026,7 @@ Bun.serve({
     if (p === "/api/settings/verify" && req.method === "POST") {
       try {
         const body = await req.json().catch(() => ({})) as { provider?: string; key?: string };
+        if (typeof body.key !== "string") delete body.key;
         // If caller provides key + provider, persist it first (avoids client-side extra PUT round-trip)
         if (body.provider && body.key) {
           const keySettingMap: Record<string, string> = {
@@ -1023,7 +1037,13 @@ Bun.serve({
             openrouter: SETTING_KEYS.OPENROUTER_API_KEY,
           };
           const settingKey = keySettingMap[body.provider];
-          if (settingKey) await setSetting(settingKey, body.key);
+          if (isMaskedValue(body.key)) {
+            // The UI re-verifies stored keys using the masked value it was given:
+            // keep the stored key and use it for the model listing below.
+            body.key = settingKey ? (getSetting(settingKey) ?? "") : "";
+          } else if (settingKey) {
+            await setSetting(settingKey, body.key);
+          }
         }
         const provider = body.provider
           ? (PROVIDER_VERIFY_MAP[body.provider] ?? null)
@@ -1466,13 +1486,13 @@ Bun.serve({
     // ============================================================
 
     if (p === "/api/config" && req.method === "GET") {
-      return Response.json(readClaudeConfig());
+      return Response.json(maskSecretsDeep(readClaudeConfig()));
     }
 
     if (p === "/api/config" && req.method === "PUT") {
       try {
         const patch = (await req.json()) as Record<string, unknown>;
-        writeClaudeConfig(patch);
+        writeClaudeConfig(dropMaskedSecretsDeep(patch));
         return Response.json({ ok: true });
       } catch (e) {
         return Response.json({ ok: false, error: String(e) }, { status: 400 });
@@ -1641,5 +1661,5 @@ for (const sig of ["SIGINT", "SIGTERM"] as const) {
   });
 }
 
-console.log(`🧠 LTM Graph running on http://localhost:${PORT}`);
+console.log(`🧠 LTM Graph running on http://${HOST_IS_LOOPBACK ? "localhost" : HOST}:${PORT}`);
 console.log(`   PID: ${process.pid} — saved to ${PID_PATH}`);
