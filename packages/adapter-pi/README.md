@@ -1,6 +1,6 @@
 # @rohirik/pi-ltm
 
-Long-Term Memory (LTM) native extension for [Pi](https://pi.ai) coding agent — shares the same memory database as Claude Code and OpenCode.
+OpenLTM long-term memory extension for the [Pi coding agent](https://pi.dev). Shares the local memory database with Claude Code and OpenCode.
 
 ## Install
 
@@ -8,31 +8,38 @@ Long-Term Memory (LTM) native extension for [Pi](https://pi.ai) coding agent —
 pi install npm:@rohirik/pi-ltm
 ```
 
-Or add to `pi.toml`:
+If Pi is already running, use `/reload` to load the extension. Pi records the package in `~/.pi/agent/settings.json`; use `pi install --local npm:@rohirik/pi-ltm` for a project-scoped install.
 
-```toml
-[[extensions]]
-package = "@rohirik/pi-ltm"
-```
+Find the extension in the [Pi package catalog](https://pi.dev/packages/@rohirik/pi-ltm). The npm package declares the `pi-package` discovery keyword and a `pi.extensions` manifest pointing to its compiled entrypoint.
+
+## Requirements
+
+Install [Bun](https://bun.sh) and make it available on `PATH`. Pi loads the extension under Node; the extension runs OpenLTM's core MCP server in a Bun child process, avoiding direct Node imports of `bun:sqlite`. The core package is installed as a dependency.
 
 ## What it does
 
-- **Session start** (`session:start`): injects a `## Prior Knowledge` block into the system prompt
-- **Compaction** (`compact`): saves session summary to LTM before conversation compaction
-- **3 tools**: `ltm_recall`, `ltm_learn`, `ltm_forget`
+- Registers the memory tools returned by OpenLTM's core MCP server, including recall, learn, forget, project context, and memory relationships.
+- On Pi's `before_agent_start` event, waits for the core connection and appends relevant project memories as a `## Prior Knowledge (LTM)` block.
+- Uses a local SQLite database shared with the other OpenLTM adapters. If Bun or the core server cannot be found, the extension currently skips registration.
+
+The current Pi adapter does not register a compaction hook.
 
 ## Shared memory
 
-All three tools read from and write to the same database:
+Default database path:
 
-```
+```text
 ~/.claude/plugins/data/OpenLtm-openltm/openltm.db
 ```
 
-A memory learned in Pi appears in the next Claude Code session, and vice versa.
-
-## Custom DB path
+Override it before starting Pi:
 
 ```bash
 export LTM_DB_PATH="/custom/path/openltm.db"
 ```
+
+A memory learned in Pi is available to another OpenLTM adapter using the same database.
+
+## Privacy and license
+
+Memory is stored locally. Optional embedding or janitor providers can send memory content to the provider you configure; see the [repository's security notes](https://github.com/RohiRIK/OpenLtm#security-notes). MIT licensed.
