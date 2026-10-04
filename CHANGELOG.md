@@ -7,6 +7,7 @@
 
 ### Added
 - `LlamaCppProvider` and janitor `llamacpp` adapter. `LTM_LLAMA_CPP_URL`, `LTM_EMBED_MODEL`.
+- `.github/CODEOWNERS` — `* @RohiRIK`, so with "Require review from Code Owners" on `main` every outside PR needs the owner's approval.
 
 ### Fixed
 - **Pi plugin registered nothing for users without Claude Code** — the Pi adapter had the same `@rohirik/openltm-core/package.json` lookup. Pi first tries the Claude Code plugin cache, so Claude Code users were unaffected; a Pi-only user fell through to the broken lookup and got zero tools and no Prior Knowledge, silently. Both adapters now share the same lookup in `src/find-core.ts`.
