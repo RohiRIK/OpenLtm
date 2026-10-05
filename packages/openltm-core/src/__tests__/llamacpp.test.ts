@@ -3,6 +3,7 @@ import { Database } from "bun:sqlite";
 import { LlamaCppProvider, resetLlamaCppProbeForTesting, LLAMACPP_DEFAULT_DIM } from "../providers/llamacpp.js";
 import { loadProvider } from "../providers/embeddingProvider.js";
 import { listMemoryIdsNeedingEmbedding } from "../dao/embeddings.js";
+import { SETTING_KEYS, SETTING_DEFAULTS } from "../janitor/providers/types.js";
 
 describe("llamacpp embedding provider", () => {
   const prevFetch = globalThis.fetch;
@@ -106,5 +107,13 @@ describe("listMemoryIdsNeedingEmbedding", () => {
     expect(ids).toContain(2);
     expect(ids).not.toContain(3);
     expect(ids).not.toContain(4);
+  });
+});
+
+describe("provider defaults (local-first)", () => {
+  it("embeddings default to llamacpp; janitor LLM defaults to ollama (Gemini opt-in)", () => {
+    expect(SETTING_DEFAULTS[SETTING_KEYS.EMBED_PROVIDER]).toBe("llamacpp");
+    expect(SETTING_DEFAULTS[SETTING_KEYS.LLM_PROVIDER]).toBe("ollama");
+    expect(SETTING_DEFAULTS[SETTING_KEYS.LLM_PROVIDER]).not.toBe("gemini");
   });
 });

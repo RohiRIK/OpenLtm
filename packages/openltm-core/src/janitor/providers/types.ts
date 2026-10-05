@@ -118,7 +118,7 @@ export const SETTING_KEYS = {
 /** Default values for all settings. */
 export const SETTING_DEFAULTS: Record<string, string> = {
   [SETTING_KEYS.EMBED_PROVIDER]: "llamacpp",
-  [SETTING_KEYS.LLM_PROVIDER]: "gemini",
+  [SETTING_KEYS.LLM_PROVIDER]: "ollama",
   [SETTING_KEYS.GEMINI_API_KEY]: "",
   [SETTING_KEYS.GEMINI_EMBED_MODEL]: "text-embedding-004",
   [SETTING_KEYS.GEMINI_LLM_MODEL]: "gemini-2.0-flash",
