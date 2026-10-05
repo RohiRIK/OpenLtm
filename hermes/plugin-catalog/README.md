@@ -6,7 +6,9 @@ request with, against [`NousResearch/hermes-agent`](https://github.com/NousResea
 
 **Status: listed.** Merged on 2026-10-02 as
 [`plugin-catalog/openltm.yaml`](https://github.com/NousResearch/hermes-agent/blob/main/plugin-catalog/openltm.yaml),
-pinned to v2.15.1. Catalog page: <https://hermes-agent.nousresearch.com/docs/plugins/openltm>.
+pinned to **v2.16.2** at sha `687934564e68878ff9646a57aa72f6d3fc4f5fc8`
+([PR #132746](https://github.com/NousResearch/hermes-agent/pull/132746)). Catalog page:
+<https://hermes-agent.nousresearch.com/docs/plugins/openltm>.
 Each later release needs a re-pin PR — see [Updating the pin later](#updating-the-pin-later).
 
 ## How the catalog works
