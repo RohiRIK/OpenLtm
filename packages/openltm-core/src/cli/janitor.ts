@@ -19,7 +19,7 @@
  *   5 `schedule --write` refused: a target exists (needs --force) or is a symlink
  */
 import { spawn } from "child_process";
-import { closeSync, existsSync, openSync } from "fs";
+import { closeSync, existsSync, openSync, readFileSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { getDbPath } from "../paths.js";
 import { configure, getDb, getSetting, waitForInit } from "../shared-db.js";
@@ -418,6 +418,70 @@ async function daemon(parsed: ParsedJanitorArgs): Promise<number> {
 
 // ── Detached spawn (hooks) ────────────────────────────────────────────────────
 
+/**
+ * Dotenv files Bun auto-loads from the working directory (`.env`,
+ * `.env.local`, `.env.<NODE_ENV>`, `.env.<NODE_ENV>.local`). All NODE_ENV
+ * variants are listed so none slips through.
+ */
+const BUN_DOTENV_FILES = [
+  ".env", ".env.local",
+  ".env.development", ".env.development.local",
+  ".env.production", ".env.production.local",
+  ".env.test", ".env.test.local",
+];
+
+/** Keys declared in the dotenv files Bun would auto-load from `dir`. */
+export function dotenvKeysIn(dir: string): Set<string> {
+  const keys = new Set<string>();
+  for (const name of BUN_DOTENV_FILES) {
+    let text: string;
+    try { text = readFileSync(join(dir, name), "utf-8"); } catch { continue; }
+    for (const line of text.split(/\r?\n/)) {
+      const m = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_.-]*)\s*[=:]/.exec(line);
+      if (m) keys.add(m[1]!);
+    }
+  }
+  return keys;
+}
+
+export interface JanitorSpawnSpec {
+  command: string;
+  args: string[];
+  cwd: string;
+  env: NodeJS.ProcessEnv;
+}
+
+/**
+ * Build the detached janitor child's command line, cwd, and env (security S6).
+ *
+ * A hook runs inside the user's *project* directory, and Bun auto-loads that
+ * project's `.env` into the hook process. A hostile `.env` could set
+ * OLLAMA_BASE_URL / LTM_LLAMA_CPP_URL / provider keys and make the janitor
+ * ship memory text to an attacker during embedding or LLM dedup. So:
+ *   - `--no-env-file`: the child never auto-loads any `.env`;
+ *   - cwd = the DB's directory, never the project (no project `.env` or
+ *     `bunfig.toml` preload is picked up);
+ *   - env = parent env minus every key declared in the dotenv files of the
+ *     parent's cwd, because the parent may already have been polluted by them.
+ *     Removing a key the user also exported in their shell only drops the
+ *     child back to DB settings/defaults (fail closed).
+ */
+export function janitorSpawnSpec(dbPath: string, opts: { env?: NodeJS.ProcessEnv; parentCwd?: string } = {}): JanitorSpawnSpec {
+  const parentEnv = opts.env ?? process.env;
+  const tainted = dotenvKeysIn(opts.parentCwd ?? process.cwd());
+  const env: NodeJS.ProcessEnv = {};
+  for (const [k, v] of Object.entries(parentEnv)) {
+    if (v !== undefined && !tainted.has(k)) env[k] = v;
+  }
+  env["LTM_DB_PATH"] = dbPath;
+  return {
+    command: typeof Bun !== "undefined" ? process.execPath : "bun",
+    args: ["--no-env-file", LTM_BIN_PATH, "janitor", "run", "--if-due", "--quiet", "--db", dbPath],
+    cwd: dirname(dbPath),
+    env,
+  };
+}
+
 export interface SpawnJanitorResult {
   spawned: boolean;
   reason?: "disabled" | "no-db" | "error";
@@ -440,14 +504,15 @@ export function spawnJanitorDetached(opts: { dbPath?: string; env?: NodeJS.Proce
   if (!existsSync(dbPath)) return { spawned: false, reason: "no-db" };
 
   const logPath = join(dirname(dbPath), "janitor.log");
-  const runtime = typeof Bun !== "undefined" ? process.execPath : "bun";
+  const spec = janitorSpawnSpec(dbPath, { env });
   let fd: number | null = null;
   try {
     fd = openSync(logPath, "a");
-    const child = spawn(runtime, [LTM_BIN_PATH, "janitor", "run", "--if-due", "--quiet", "--db", dbPath], {
+    const child = spawn(spec.command, spec.args, {
       detached: true,
       stdio: ["ignore", fd, fd],
-      env: { ...env, LTM_DB_PATH: dbPath },
+      cwd: spec.cwd,
+      env: spec.env,
     });
     child.on("error", () => { /* best-effort: never fail the hook */ });
     child.unref();

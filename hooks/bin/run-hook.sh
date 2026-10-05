@@ -6,6 +6,10 @@
 #
 # Usage: run-hook.sh <hook.ts> [args...]
 #
+# --no-env-file: hooks run with the user's *project* as cwd; never let Bun
+# auto-load that project's .env into LTM (it could redirect provider URLs or
+# keys and leak memory text — security S6).
+#
 # Keep candidate list in sync with BUN_CANDIDATES in hooks/lib/pluginDoctor.ts
 set -u
 
@@ -17,7 +21,7 @@ for candidate in \
   "$HOME/.asdf/shims/bun"
 do
   if [ -x "$candidate" ]; then
-    exec "$candidate" run "$@"
+    exec "$candidate" --no-env-file run "$@"
   fi
 done
 
@@ -32,7 +36,7 @@ set +u
 
 BUN=$(command -v bun 2>/dev/null)
 if [ -n "$BUN" ]; then
-  exec "$BUN" run "$@"
+  exec "$BUN" --no-env-file run "$@"
 fi
 
 # ── Not found ─────────────────────────────────────────────────────────────────

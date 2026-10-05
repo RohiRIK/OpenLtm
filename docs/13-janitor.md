@@ -122,6 +122,16 @@ This is a foreground loop that does `run --if-due` on every tick. Stop it with C
 
 ---
 
+## Environment isolation
+
+Hooks run with your *project* as the working directory, and Bun normally auto-loads a `.env` from there. A project `.env` must never be able to point the janitor's providers somewhere else (for example `LTM_EMBED_PROVIDER=ollama` plus `OLLAMA_BASE_URL=<attacker>` would ship memory text off the machine). So:
+
+- The `SessionEnd` child runs `bun --no-env-file`, with the DB's folder as its working directory. Any key declared in a `.env*` file in the hook's cwd is also removed from the env it inherits.
+- The systemd, launchd, and cron units run `bun --no-env-file` and set the working directory to the DB's folder (systemd and cron would otherwise use `$HOME`, launchd `/`).
+- `hooks/bin/run-hook.sh` runs every plugin hook with `--no-env-file`.
+
+Configure LTM through your shell profile, the unit's `Environment=` lines, or LTM settings, not a project `.env`. If you `schedule --write`, run it again (with `--force`) to pick up these flags.
+
 ## See also
 
 - [Hooks](06-hooks.md) · [Configuration](04-configuration.md) · [Troubleshooting](09-troubleshooting.md)

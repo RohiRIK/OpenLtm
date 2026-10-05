@@ -64,7 +64,7 @@ describe("renderers", () => {
     ]);
     const [service, timer] = r.files.map((f) => f.content);
     expect(service).toContain("Type=oneshot");
-    expect(service).toContain(`ExecStart=/opt/bun/bin/bun ${spec.bin} janitor run --if-due --quiet --interval-minutes 360`);
+    expect(service).toContain(`ExecStart=/opt/bun/bin/bun --no-env-file ${spec.bin} janitor run --if-due --quiet --interval-minutes 360`);
     expect(service).toContain(`Environment="LTM_DB_PATH=/home/me/data dir/openltm.db"`);
     expect(service).toContain("SuccessExitStatus=4");
     expect(timer).toContain("OnUnitActiveSec=60min");
@@ -92,6 +92,20 @@ describe("renderers", () => {
     expect(line).toContain("janitor run --if-due --quiet");
     expect(renderCron({ ...spec, checkMinutes: 15 }).activate[1]!.startsWith("*/15 * * * * ")).toBe(true);
     expect(renderCron({ ...spec, checkMinutes: 180 }).activate[1]!.startsWith("0 */3 * * * ")).toBe(true);
+  });
+
+  it("S6: every unit runs bun with --no-env-file from the DB directory, never $HOME or /", () => {
+    const service = renderSystemd(spec, "/home/me").files[0]!.content;
+    expect(service).toContain(`WorkingDirectory="/home/me/data dir"`);
+    expect(service).toMatch(/^ExecStart=\/opt\/bun\/bin\/bun --no-env-file /m);
+
+    const plist = renderLaunchd(spec, "/Users/me").files[0]!.content;
+    expect(plist).toContain("<key>WorkingDirectory</key>\n  <string>/home/me/data dir</string>");
+    expect(plist).toMatch(/<string>\/opt\/bun\/bin\/bun<\/string>\s*<string>--no-env-file<\/string>/);
+
+    const cron = renderCron(spec).activate[1]!;
+    expect(cron).toContain("cd '/home/me/data dir' && LTM_DB_PATH=");
+    expect(cron).toContain("/opt/bun/bin/bun --no-env-file ");
   });
 
   it("platform default: launchd on macOS, systemd elsewhere", () => {

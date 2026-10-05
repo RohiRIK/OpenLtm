@@ -9,7 +9,7 @@
  * manual runs from doubling up, and needs no Honker binary on any platform.
  */
 import { homedir } from "os";
-import { join } from "path";
+import { dirname, join } from "path";
 
 /** Default minutes between janitor runs when nothing else is configured. */
 export const DEFAULT_JANITOR_RUN_INTERVAL_MINUTES = 360;
@@ -83,8 +83,19 @@ export interface RenderedSchedule {
   deactivate: string[];
 }
 
+/**
+ * Command line for every unit. `--no-env-file` + a working directory of the
+ * DB's own folder (security S6): systemd user units default to $HOME, cron to
+ * $HOME, launchd to `/`. Without these, Bun would auto-load a `.env` (or a
+ * `bunfig.toml` preload) from there and could redirect provider URLs/keys.
+ */
 function runArgs(spec: ScheduleSpec): string[] {
-  return [spec.runtime, spec.bin, "janitor", "run", "--if-due", "--quiet", "--interval-minutes", String(spec.runIntervalMinutes)];
+  return [spec.runtime, "--no-env-file", spec.bin, "janitor", "run", "--if-due", "--quiet", "--interval-minutes", String(spec.runIntervalMinutes)];
+}
+
+/** Neutral working directory for the janitor process: the DB's folder. */
+export function janitorWorkingDirectory(spec: ScheduleSpec): string {
+  return dirname(spec.dbPath);
 }
 
 /** Quote one argument for a systemd ExecStart= line. */
@@ -111,6 +122,7 @@ export function renderSystemd(spec: ScheduleSpec, home = homedir()): RenderedSch
     "",
     "[Service]",
     "Type=oneshot",
+    `WorkingDirectory=${systemdQuote(janitorWorkingDirectory(spec))}`,
     ...env,
     `ExecStart=${runArgs(spec).map(systemdQuote).join(" ")}`,
     "# 4 = another janitor run holds the lock; not a failure.",
@@ -170,6 +182,8 @@ export function renderLaunchd(spec: ScheduleSpec, home = homedir()): RenderedSch
   <array>
 ${args}
   </array>
+  <key>WorkingDirectory</key>
+  <string>${xmlEscape(janitorWorkingDirectory(spec))}</string>
   <key>EnvironmentVariables</key>
   <dict>
 ${envEntries.join("\n")}
@@ -210,7 +224,7 @@ export function renderCron(spec: ScheduleSpec): RenderedSchedule {
   const when = minutes >= 60 && minutes % 60 === 0
     ? (minutes === 60 ? "0 * * * *" : `0 */${minutes / 60} * * *`)
     : `*/${Math.min(Math.max(minutes, 1), 59)} * * * *`;
-  const line = `${when} LTM_DB_PATH=${shQuote(spec.dbPath)} ${runArgs(spec).map(shQuote).join(" ")} >/dev/null 2>&1`;
+  const line = `${when} cd ${shQuote(janitorWorkingDirectory(spec))} && LTM_DB_PATH=${shQuote(spec.dbPath)} ${runArgs(spec).map(shQuote).join(" ")} >/dev/null 2>&1`;
   return {
     kind: "cron",
     files: [],
