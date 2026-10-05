@@ -117,3 +117,27 @@ describe("provider defaults (local-first)", () => {
     expect(SETTING_DEFAULTS[SETTING_KEYS.LLM_PROVIDER]).not.toBe("gemini");
   });
 });
+
+describe("janitor llamacpp adapter — vector alignment", () => {
+  const prevFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = prevFetch;
+    resetLlamaCppProbeForTesting();
+  });
+
+  it("stops at the first miss so vectors[i] always belongs to texts[i]", async () => {
+    resetLlamaCppProbeForTesting();
+    let call = 0;
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/health")) return new Response("{}", { status: 200 });
+      call++;
+      if (call === 2) return new Response("boom", { status: 500 });
+      return new Response(JSON.stringify({ data: [{ embedding: [call, call] }] }), { status: 200 });
+    }) as typeof fetch;
+    const { llamacppEmbedding } = await import("../janitor/providers/llamacpp.js");
+    const r = await llamacppEmbedding.embed({ texts: ["a", "b", "c"] });
+    expect(r.vectors.length).toBe(1);
+    expect(Array.from(r.vectors[0]!)).toEqual([1, 1]);
+  });
+});

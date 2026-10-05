@@ -81,7 +81,7 @@ Full detail, including which write paths scrub secrets and which don't: [Securit
 | Graph | Traverses relations between memories and builds a reasoning chain | `openltm-core/src/graph.ts:69` |
 | Visualize | A browser explorer over the live database, with janitor controls | `src/graph-server.ts` · `graph-app/` |
 | Extensions | sqlite-vec and Honker loaded from disk, with a working fallback when absent | `openltm-core/src/extensions.ts:160` |
-| Deduplicate | Merges memories the janitor judges to be the same thing | `openltm-core/src/janitor/dedup.ts` |
+| Deduplicate | Queues near-duplicate pairs as pending suggestions; nothing merges until you approve | `openltm-core/src/janitor/dedup.ts` |
 
 ---
 
@@ -192,6 +192,18 @@ bunx @rohirik/openltm-core memory forget --id 42 --reason "outdated"
 bunx @rohirik/openltm-core memory context --project homelab
 ```
 
+### Curate without graph-server
+
+The janitor (embed backfill → decay → archive → promote → dedup *suggestions*, never auto-merge) runs straight against the SQLite file. No graph-server and no Honker are needed:
+
+```bash
+bunx @rohirik/openltm-core janitor run              # one pass; exit 3 = no DB, 4 = another run holds the lock
+bunx @rohirik/openltm-core janitor status
+bunx @rohirik/openltm-core janitor schedule --write # systemd user timer (Linux) / launchd agent (macOS)
+```
+
+The Claude Code plugin also runs it on `SessionEnd`, at most once per 6h. Other hook hosts can call `ltm hook --name SessionEnd`. Details, install and undo steps: [`docs/13-janitor.md`](docs/13-janitor.md).
+
 Any MCP-capable host can run the full server directly:
 
 ```bash
@@ -222,6 +234,7 @@ Three things worth knowing before this holds anything you care about.
 | Tune decay, injection, embedding behavior | [Configuration](docs/04-configuration.md) |
 | See how it works under the hood | [How It Works](docs/02-how-it-works.md) · [Architecture](docs/03-architecture.md) |
 | Understand the schema and data model | [DB Spec](docs/internal/DB-SPEC.md) |
+| Curate the DB without graph-server | [Janitor](docs/13-janitor.md) |
 | See all hooks, skills, and MCP tools | [Hooks](docs/06-hooks.md) · [Skills](docs/07-skills.md) · [MCP Tools](docs/08-mcp-tools.md) |
 | Publish a release | [Publishing](docs/11-publishing.md) |
 | Fix a problem | [Troubleshooting](docs/09-troubleshooting.md) |
@@ -238,6 +251,8 @@ Three things worth knowing before this holds anything you care about.
 | `LTM_DB_PATH` | Where the SQLite file lives. Overrides the default location. |
 | `LTM_EMBED_PROVIDER` | Embedding provider. Unset probes local llama.cpp (`llamacpp`); falls back to FTS if the server is down. `gemini` / `openai` / `ollama` / `disabled` opt in or out. |
 | `LTM_LLM_PROVIDER` | Provider for janitor summaries. Unset → `ollama` (local). `gemini` / `openai` / `anthropic` / `cohere` / `openrouter` are opt-in. |
+| `LTM_JANITOR_INTERVAL_MINUTES` | Minimum minutes between `janitor run --if-due` passes (hook, timers, daemon). Default 360. |
+| `LTM_JANITOR_ON_SESSION_END` | `0` disables the janitor-on-`SessionEnd` hook. |
 | `LTM_DISABLE_VEC` | Turn off the sqlite-vec loader; falls back to JS-cosine. |
 | `LTM_DISABLE_HONKER` | Turn off the Honker loader. |
 | `LTM_SQLITE_LIB` | Explicit path to a SQLite library. Loads native code. |

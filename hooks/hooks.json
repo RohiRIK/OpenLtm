@@ -1,5 +1,5 @@
 {
-  "description": "LTM hooks — context injection, session learning, progress capture, compaction snapshot",
+  "description": "LTM hooks \u2014 context injection, session learning, progress capture, compaction snapshot, janitor on session end",
   "hooks": {
     "SessionStart": [
       {
@@ -39,6 +39,17 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/bin/run-hook.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/src/PreCompact.ts\""
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/bin/run-hook.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/src/SessionEnd.ts\""
           }
         ]
       }

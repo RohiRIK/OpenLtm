@@ -21,4 +21,13 @@ export { installClaude } from "./claude.js";
 export { installOpenCode } from "./opencode.js";
 export { installPi } from "./pi.js";
 export { INSTALL_TARGETS, getInstallTarget } from "./targets.js";
+export {
+  JANITOR_EXIT,
+  LTM_BIN_PATH,
+  parseJanitorArgs,
+  runJanitorCli,
+  runJanitorCommand,
+  spawnJanitorDetached,
+} from "./janitor.js";
+export type { ParsedJanitorArgs, JanitorCommandResult, SpawnJanitorResult } from "./janitor.js";
 export type { InstallTargetDefinition } from "./targets.js";
