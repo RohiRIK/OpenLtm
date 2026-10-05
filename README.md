@@ -112,9 +112,9 @@ Hermes gets a native Python plugin rather than an adapter: a separate implementa
 | npm | `@rohirik/openclaw-ltm` | [npmjs.com/package/@rohirik/openclaw-ltm](https://www.npmjs.com/package/@rohirik/openclaw-ltm) | automatic on every tag |
 | Pi Package Catalog | `@rohirik/pi-ltm` extension | [Pi marketplace listing](https://pi.dev/packages/@rohirik/pi-ltm) · [catalog search](https://pi.dev/packages?name=%40rohirik%2Fpi-ltm) | indexed from npm via the `pi-package` keyword |
 | ClawHub (OpenClaw) | `@rohirik/openclaw-ltm` | [OpenLTM Memory on ClawHub](https://clawhub.ai/rohirik/plugins/openclaw-ltm) | dispatch `publish.yml` at the release tag after npm succeeds ([procedure](docs/11-publishing.md#publishing-to-clawhub--dispatch-after-npm)) |
-| Hermes Plugin Catalog | `openltm` | [`plugin-catalog/openltm.yaml`](https://github.com/NousResearch/hermes-agent/blob/main/plugin-catalog/openltm.yaml) · [catalog page](https://hermes-agent.nousresearch.com/docs/plugins/openltm) | pinned to a commit; each update is a reviewed PR to NousResearch |
+| Hermes Plugin Catalog | `openltm` | [`plugin-catalog/openltm.yaml`](https://github.com/NousResearch/hermes-agent/blob/main/plugin-catalog/openltm.yaml) · [catalog page](https://hermes-agent.nousresearch.com/docs/plugins/openltm) | pinned to 2.16.2 (`68793456…`); each update is a reviewed PR to NousResearch |
 
-The Hermes Plugin Catalog remains pinned to 2.15.1 until Nous maintainers merge the [2.16.2 catalog update](https://github.com/NousResearch/hermes-agent/pull/132746). The current OpenLTM release is 2.16.2; the catalog’s exact commit pin, not the latest repository tag, determines what catalog installs receive.
+The Hermes Plugin Catalog is pinned to **2.16.2** at sha `687934564e68878ff9646a57aa72f6d3fc4f5fc8` ([merged PR #132746](https://github.com/NousResearch/hermes-agent/pull/132746)). The catalog’s exact commit pin, not the latest repository tag, determines what catalog installs receive.
 
 How each channel is published, and what to do when one breaks: [`docs/11-publishing.md`](docs/11-publishing.md).
 

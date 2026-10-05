@@ -9,7 +9,7 @@ project's own documentation.
 |---|---|---|---|---|
 | npm | `@rohirik/openltm-core`, `opencode-ltm`, `pi-ltm`, `openclaw-ltm` | live | automatic on every `v*` tag (OIDC) | [npmjs.com/~rohirik](https://www.npmjs.com/~rohirik) |
 | Claude Code marketplace | `openltm` plugin | live | automatic — the repo is the marketplace | [`RohiRIK/OpenLtm`](https://github.com/RohiRIK/OpenLtm) |
-| Hermes Plugin Catalog | `openltm` (Python provider) | live since 2026-10-02, pinned to 2.15.1 | a reviewed re-pin PR to NousResearch per release | [entry](https://github.com/NousResearch/hermes-agent/blob/main/plugin-catalog/openltm.yaml) · [page](https://hermes-agent.nousresearch.com/docs/plugins/openltm) |
+| Hermes Plugin Catalog | `openltm` (Python provider) | live since 2026-10-02, pinned to 2.16.2 | a reviewed re-pin PR to NousResearch per release | [entry](https://github.com/NousResearch/hermes-agent/blob/main/plugin-catalog/openltm.yaml) · [page](https://hermes-agent.nousresearch.com/docs/plugins/openltm) |
 | ClawHub (OpenClaw) | `@rohirik/openclaw-ltm` | 2.16.1 recovery release; malformed ClawHub-only 2.16.0 is superseded | dispatch `publish.yml` at the release tag after npm succeeds (OIDC) | `openclaw plugins install clawhub:@rohirik/openclaw-ltm` |
 | OpenClaw self-serve marketplace | — | not set up (needs its own `marketplace.json`) | — | §4c below |
 
@@ -45,10 +45,12 @@ claude plugin install openltm
 ## 3. Hermes Plugin Catalog — live
 
 **Listed.** The entry was merged into `NousResearch/hermes-agent` on 2026-10-02
-([`plugin-catalog/openltm.yaml`](https://github.com/NousResearch/hermes-agent/blob/main/plugin-catalog/openltm.yaml)),
-pinned to `6105051` (v2.15.1). Users install it with `hermes plugins install openltm`;
-the page is <https://hermes-agent.nousresearch.com/docs/plugins/openltm>, and the
-site rebuilds on every catalog merge.
+([`plugin-catalog/openltm.yaml`](https://github.com/NousResearch/hermes-agent/blob/main/plugin-catalog/openltm.yaml)).
+The live pin is **v2.16.2** at sha `687934564e68878ff9646a57aa72f6d3fc4f5fc8`
+([PR #132746](https://github.com/NousResearch/hermes-agent/pull/132746)). Users install it with
+`hermes plugins install openltm`; the page is
+<https://hermes-agent.nousresearch.com/docs/plugins/openltm>, and the site rebuilds on every
+catalog merge.
 
 **Every release after that is a new PR to their repo** — the pin does not move by
 itself. Run `bun run catalog:sync` + `bun run catalog:check` here, copy the
