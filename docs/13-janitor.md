@@ -36,6 +36,7 @@ From a clone: `bun packages/openltm-core/src/cli/bin.ts janitor run`.
 | 2 | Runtime error, a step reported an error, or `--max-minutes` (default 60) was exceeded |
 | 3 | Database not found. The janitor never creates one. |
 | 4 | Another janitor run holds the lock |
+| 5 | `schedule --write` refused: a unit file already exists (re-run with `--force`) or the path is a symlink |
 
 **Single instance.** Every standalone run takes `<db>.janitor.lock` (atomic `O_EXCL` create) and fails closed with exit 4 if it is held. A lock whose owner PID is dead, or that is older than 6h, is reclaimed. graph-server's own `POST /api/janitor/run` and in-process interval do not take this lock yet; avoid running both at once against the same DB.
 
@@ -74,6 +75,8 @@ Behaviour shared by both:
 The background units wake up on a short **check** cadence (hourly by default, `--check-minutes`). Each wake-up runs `janitor run --if-due`, so the 6h **run** interval is the one rule shared by timers, hooks, and manual runs. No Honker binary is needed on any platform.
 
 `ltm janitor schedule` prints a ready-to-use unit with absolute paths for bun, the CLI, and your DB. Add `--write` to put the files in place. It never runs `systemctl` or `launchctl` itself; it prints those commands for you to run.
+
+`--write` is conservative. It will not replace an existing unit file unless you add `--force`, and then it first saves the old file as `<file>.bak` (or `<file>.bak-<timestamp>` if a `.bak` already exists). It never writes through a symlink, even with `--force`. Files are written with mode `0600` through a temp file and an atomic move. If any target is refused, nothing is written.
 
 Use a stable CLI path in a unit. A path inside the `bunx` cache can be cleaned up, so install the package (`bun add -g @rohirik/openltm-core`) or a clone and pass `--bin <path to cli/bin.ts>` if needed. The command warns when it detects a cache path.
 

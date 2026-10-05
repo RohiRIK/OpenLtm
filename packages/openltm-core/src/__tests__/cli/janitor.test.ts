@@ -4,7 +4,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { Database } from "bun:sqlite";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "fs";
 import { hostname, tmpdir } from "os";
 import { join } from "path";
 
@@ -228,6 +228,47 @@ describe("cli/janitor — ltm binary (subprocess)", () => {
     const out = JSON.parse(r.stdout);
     expect(out.activate.join("\n")).toContain(`LTM_DB_PATH=${dbPath}`);
     expect(ltm(["janitor", "schedule", "cron", "--db", join(dir, "nope.db")]).code).toBe(3);
+  });
+
+  it("schedule --write refuses to overwrite a custom unit without --force (exit 5), keeps a .bak with --force", () => {
+    const dbPath = join(dir, "env.db");
+    const home = mkdtempSync(join(dir, "home-"));
+    const unitDir = join(home, ".config", "systemd", "user");
+    const service = join(unitDir, "openltm-janitor.service");
+    mkdirSync(unitDir, { recursive: true });
+    writeFileSync(service, "# hand-tuned unit\n");
+
+    const refused = ltm(["janitor", "schedule", "systemd", "--db", dbPath, "--write"], { HOME: home });
+    expect(refused.code).toBe(5);
+    expect(refused.stderr).toContain("--force");
+    expect(readFileSync(service, "utf-8")).toBe("# hand-tuned unit\n");
+    expect(existsSync(join(unitDir, "openltm-janitor.timer"))).toBe(false);
+
+    const forced = ltm(["janitor", "schedule", "systemd", "--db", dbPath, "--write", "--force", "--json"], { HOME: home });
+    expect(forced.code).toBe(0);
+    expect(JSON.parse(forced.stdout).backups).toEqual([{ path: service, backup: `${service}.bak` }]);
+    expect(readFileSync(`${service}.bak`, "utf-8")).toBe("# hand-tuned unit\n");
+    expect(readFileSync(service, "utf-8")).toContain("janitor run --if-due");
+    expect(statSync(service).mode & 0o777).toBe(0o600);
+  });
+
+  it("schedule --write refuses a symlinked plist even with --force; the link target is unchanged", () => {
+    const dbPath = join(dir, "env.db");
+    const home = mkdtempSync(join(dir, "home-"));
+    const agents = join(home, "Library", "LaunchAgents");
+    mkdirSync(agents, { recursive: true });
+    const victim = join(home, "victim.txt");
+    writeFileSync(victim, "precious\n");
+    symlinkSync(victim, join(agents, "com.rohirik.openltm.janitor.plist"));
+    const r = ltm(["janitor", "schedule", "launchd", "--db", dbPath, "--write", "--force"], { HOME: home });
+    expect(r.code).toBe(5);
+    expect(r.stderr).toContain("symlink");
+    expect(readFileSync(victim, "utf-8")).toBe("precious\n");
+  });
+
+  it("--force without schedule --write is a usage error", () => {
+    expect(ltm(["janitor", "run", "--force"]).code).toBe(1);
+    expect(ltm(["janitor", "schedule", "cron", "--force"]).code).toBe(1);
   });
 
   it("hook --name SessionEnd spawns a detached run that curates the DB", async () => {

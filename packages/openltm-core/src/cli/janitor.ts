@@ -16,9 +16,10 @@
  *   2 runtime error, or the run finished with step errors
  *   3 database not found (fail closed — the janitor never creates a DB)
  *   4 another janitor run holds the lock (fail closed — never waits)
+ *   5 `schedule --write` refused: a target exists (needs --force) or is a symlink
  */
 import { spawn } from "child_process";
-import { closeSync, existsSync, mkdirSync, openSync, writeFileSync } from "fs";
+import { closeSync, existsSync, openSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { getDbPath } from "../paths.js";
 import { configure, getDb, getSetting, waitForInit } from "../shared-db.js";
@@ -33,8 +34,9 @@ import {
   resolveRunIntervalMinutes,
   type ScheduleKind,
 } from "../janitor/schedule.js";
+import { writeUnitFiles } from "../janitor/unitWriter.js";
 
-export const JANITOR_EXIT = { OK: 0, USAGE: 1, RUNTIME: 2, NO_DB: 3, LOCKED: 4 } as const;
+export const JANITOR_EXIT = { OK: 0, USAGE: 1, RUNTIME: 2, NO_DB: 3, LOCKED: 4, REFUSED: 5 } as const;
 
 export type JanitorCommand = "run" | "status" | "schedule" | "daemon";
 
@@ -50,6 +52,7 @@ export interface ParsedJanitorArgs {
   checkMinutes: number;
   scheduleKind?: ScheduleKind;
   write: boolean;
+  force: boolean;
   runtime?: string;
   bin?: string;
 }
@@ -95,7 +98,7 @@ function scanFlags(argv: string[]): { flags: Record<string, string | true>; posi
 }
 
 const VALUE_FLAGS = new Set(["db", "interval-minutes", "max-minutes", "check-minutes", "runtime", "bin"]);
-const BOOL_FLAGS = new Set(["json", "quiet", "if-due", "write"]);
+const BOOL_FLAGS = new Set(["json", "quiet", "if-due", "write", "force"]);
 
 function positiveIntFlag(flags: Record<string, string | true>, name: string): number | undefined | "invalid" {
   const v = flags[name];
@@ -143,6 +146,9 @@ export function parseJanitorArgs(argv: string[]): ParsedJanitorArgs | JanitorArg
   } else if (positionals.length > 0) {
     return { ok: false, error: `unexpected argument '${positionals[0]}'` };
   }
+  if (flags["force"] === true && !(command === "schedule" && flags["write"] === true)) {
+    return { ok: false, error: "--force only applies to `schedule --write`" };
+  }
 
   return {
     ok: true,
@@ -156,6 +162,7 @@ export function parseJanitorArgs(argv: string[]): ParsedJanitorArgs | JanitorArg
     checkMinutes: checkMinutes ?? DEFAULT_JANITOR_CHECK_MINUTES,
     scheduleKind,
     write: flags["write"] === true,
+    force: flags["force"] === true,
     runtime: typeof flags["runtime"] === "string" ? flags["runtime"] : undefined,
     bin: typeof flags["bin"] === "string" ? flags["bin"] : undefined,
   };
@@ -340,29 +347,40 @@ function schedule(parsed: ParsedJanitorArgs): JanitorCommandResult {
     warnings.push(`bin ${bin} looks like a bunx/npx cache path that may be cleaned up; install the package (e.g. \`bun add -g @rohirik/openltm-core\`) or pass --bin <stable path to cli/bin.ts>`);
   }
 
+  let backups: Array<{ path: string; backup: string }> = [];
   if (parsed.write) {
     if (rendered.files.length === 0) {
       return { exitCode: JANITOR_EXIT.USAGE, output: `  ltm janitor schedule: --write is not supported for ${kind}; add the printed line with \`crontab -e\`\n${rendered.activate.join("\n")}` };
     }
-    try {
-      for (const f of rendered.files) {
-        mkdirSync(dirname(f.path), { recursive: true });
-        writeFileSync(f.path, f.content, "utf-8");
+    const res = writeUnitFiles(rendered.files, { force: parsed.force });
+    if (!res.ok) {
+      if (res.refused.length > 0) {
+        const why = (r: { path: string; reason: string }): string =>
+          r.reason === "exists" ? `${r.path} already exists — re-run with --force to replace it (a .bak copy is kept)`
+          : r.reason === "symlink" ? `${r.path} is a symlink — refusing to write through it; remove the link first`
+          : `${r.path} is not a regular file`;
+        return {
+          exitCode: JANITOR_EXIT.REFUSED,
+          output: parsed.json
+            ? JSON.stringify({ ok: false, error: "refused", refused: res.refused, written: res.written })
+            : res.refused.map((r) => `  ltm janitor schedule: ${why(r)}`).join("\n") + (res.written.length === 0 ? "\n  nothing was written" : `\n  partially written: ${res.written.join(", ")}`),
+        };
       }
-    } catch (err) {
-      return { exitCode: JANITOR_EXIT.RUNTIME, output: `  ltm janitor schedule: ${String(err)}` };
+      return { exitCode: JANITOR_EXIT.RUNTIME, output: `  ltm janitor schedule: ${res.error ?? "write failed"}${res.written.length ? ` (written so far: ${res.written.join(", ")})` : ""}` };
     }
+    backups = res.backups;
   }
 
   if (parsed.json) {
-    return { exitCode: JANITOR_EXIT.OK, output: JSON.stringify({ ok: true, written: parsed.write, warnings, ...rendered }) };
+    return { exitCode: JANITOR_EXIT.OK, output: JSON.stringify({ ok: true, written: parsed.write, backups, warnings, ...rendered }) };
   }
   const out: string[] = [];
   for (const w of warnings) out.push(`  warning: ${w}`);
   for (const f of rendered.files) {
-    out.push(parsed.write ? `  wrote ${f.path}` : `# ── ${f.path} ──`);
+    out.push(parsed.write ? `  wrote ${f.path} (mode 600)` : `# ── ${f.path} ──`);
     if (!parsed.write) out.push(f.content);
   }
+  for (const b of backups) out.push(`  backed up previous ${b.path} → ${b.backup}`);
   out.push(parsed.write || rendered.files.length === 0 ? "  next:" : "# write these files with --write, then:");
   out.push(...rendered.activate.map((c) => `    ${c}`));
   out.push("  undo:");
@@ -464,7 +482,7 @@ export function printJanitorHelp(): string {
     "  Commands:",
     "    run       [--if-due] [--interval-minutes N] [--max-minutes N] [--json|--quiet]",
     "    status    [--json]",
-    "    schedule  [systemd|launchd|cron] [--write] [--check-minutes N] [--interval-minutes N]",
+    "    schedule  [systemd|launchd|cron] [--write [--force]] [--check-minutes N] [--interval-minutes N]",
     "              [--runtime <bun>] [--bin <cli/bin.ts>]   print (or write) a background unit",
     "    daemon    [--check-minutes N] [--interval-minutes N]  foreground loop, no systemd/launchd",
     "",
@@ -472,6 +490,7 @@ export function printJanitorHelp(): string {
     "  Interval: --interval-minutes > LTM_JANITOR_INTERVAL_MINUTES > ltm.janitor.intervalMinutes > 360",
     "",
     "  Exit codes: 0 ok/skipped · 1 usage · 2 runtime or step errors · 3 DB not found · 4 lock held",
+    "              5 schedule --write refused (target exists without --force, or is a symlink)",
     "",
   ].join("\n");
 }
