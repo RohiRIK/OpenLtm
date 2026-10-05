@@ -10,8 +10,19 @@
 # auto-load that project's .env into LTM (it could redirect provider URLs or
 # keys and leak memory text — security S6).
 #
+# --config: pin Bun to the plugin's own bunfig.toml. Otherwise Bun reads
+# bunfig.toml from the project cwd, and a hostile `preload` there would run
+# arbitrary code inside every LTM hook. If the plugin copy is missing, use an
+# empty config (/dev/null) — never fall back to the project's.
+#
 # Keep candidate list in sync with BUN_CANDIDATES in hooks/lib/pluginDoctor.ts
 set -u
+
+PLUGIN_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." 2>/dev/null && pwd -P)
+BUNFIG="$PLUGIN_ROOT/bunfig.toml"
+if [ -z "$PLUGIN_ROOT" ] || [ ! -f "$BUNFIG" ]; then
+  BUNFIG=/dev/null
+fi
 
 for candidate in \
   "/opt/homebrew/bin/bun" \
@@ -21,7 +32,7 @@ for candidate in \
   "$HOME/.asdf/shims/bun"
 do
   if [ -x "$candidate" ]; then
-    exec "$candidate" --no-env-file run "$@"
+    exec "$candidate" --no-env-file --config="$BUNFIG" run "$@"
   fi
 done
 
@@ -36,7 +47,7 @@ set +u
 
 BUN=$(command -v bun 2>/dev/null)
 if [ -n "$BUN" ]; then
-  exec "$BUN" --no-env-file run "$@"
+  exec "$BUN" --no-env-file --config="$BUNFIG" run "$@"
 fi
 
 # ── Not found ─────────────────────────────────────────────────────────────────

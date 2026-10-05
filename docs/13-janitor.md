@@ -128,7 +128,7 @@ Hooks run with your *project* as the working directory, and Bun normally auto-lo
 
 - The `SessionEnd` child runs `bun --no-env-file`, with the DB's folder as its working directory. Any key declared in a `.env*` file in the hook's cwd is also removed from the env it inherits.
 - The systemd, launchd, and cron units run `bun --no-env-file` and set the working directory to the DB's folder (systemd and cron would otherwise use `$HOME`, launchd `/`).
-- `hooks/bin/run-hook.sh` runs every plugin hook with `--no-env-file`.
+- `hooks/bin/run-hook.sh` runs every plugin hook with `--no-env-file` and `--config=<plugin>/bunfig.toml`, so a project `bunfig.toml` (and its `preload` scripts) is never read. If the plugin copy is missing it uses an empty config, never the project's.
 
 Configure LTM through your shell profile, the unit's `Environment=` lines, or LTM settings, not a project `.env`. If you `schedule --write`, run it again (with `--force`) to pick up these flags.
 
