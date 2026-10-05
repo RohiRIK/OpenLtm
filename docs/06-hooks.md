@@ -1,14 +1,14 @@
 # Hooks
 
-Hooks are the lifeblood of OpenLTM. They run automatically at session boundaries — no manual setup, no opt-in checklist, no "remember to run this." On install, four Claude Code lifecycle hooks and one git post-commit hook wire themselves automatically. You see them only when something goes wrong.
+Hooks are the lifeblood of OpenLTM. They run automatically at session boundaries — no manual setup, no opt-in checklist, no "remember to run this." On install, five Claude Code lifecycle hooks and one git post-commit hook wire themselves automatically. You see them only when something goes wrong.
 
 If a hook fails, run `/openltm:health` to diagnose.
 
 ---
 
-## The five hooks
+## The six hooks
 
-**Four Claude Code lifecycle hooks** (wired in `hooks/hooks.json`):
+**Five Claude Code lifecycle hooks** (wired in `hooks/hooks.json`):
 
 | Hook | Event | What It Does |
 |------|-------|-------------|
@@ -16,6 +16,7 @@ If a hook fails, run `/openltm:health` to diagnose.
 | `UpdateContext` | Session stops | Saves session progress to `context_items` |
 | `EvaluateSession` | Session stops | Extracts patterns from transcript into `memories` |
 | `PreCompact` | Before compaction | Snapshots context to `context-summary.md` so it survives |
+| `SessionEnd` | Session ends | Spawns a detached `ltm janitor run --if-due`, at most once per 6h. No graph-server needed. Opt out with `LTM_JANITOR_ON_SESSION_END=0`. See [Janitor](13-janitor.md). |
 
 **One git post-commit hook** (wired into `.git/hooks/post-commit` by `scripts/install-wiring.ts`):
 
@@ -45,8 +46,12 @@ SessionStop             ─▶ EvaluateSession (extract patterns)
    │
 PreCompact              ─▶ snapshot context-summary.md
    │
+SessionEnd              ─▶ janitor run --if-due (detached)
+   │
 git commit (if enabled) ─▶ GitCommit (extract from diffs)
 ```
+
+**Other hook hosts** can use the portable dispatcher, which needs no plugin checkout: `ltm hook --name SessionStart` (prefill) and `ltm hook --name SessionEnd` (janitor if due; set `LTM_DB_PATH`).
 
 ---
 

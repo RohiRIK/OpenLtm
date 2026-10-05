@@ -101,6 +101,7 @@ const LTM_HOOK_PATTERNS = [
   "hooks/src/UpdateContext.ts",
   "hooks/src/EvaluateSession.ts",
   "hooks/src/PreCompact.ts",
+  "hooks/src/SessionEnd.ts",
 ];
 
 if (isMarketplaceInstall) {
@@ -150,6 +151,7 @@ if (isMarketplaceInstall) {
     ["Stop",         `CLAUDE_PLUGIN_ROOT=${root} bun run ${root}/hooks/src/UpdateContext.ts`],
     ["Stop",         `CLAUDE_PLUGIN_ROOT=${root} bun run ${root}/hooks/src/EvaluateSession.ts`],
     ["PreCompact",   `CLAUDE_PLUGIN_ROOT=${root} bun run ${root}/hooks/src/PreCompact.ts`],
+    ["SessionEnd",   `CLAUDE_PLUGIN_ROOT=${root} bun run ${root}/hooks/src/SessionEnd.ts`],
   ];
 
   for (const [event, command] of LTM_HOOKS) {

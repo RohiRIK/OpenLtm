@@ -10,11 +10,13 @@
  *   bunx @rohirik/openltm-core --dry-run --claude # preview without writing
  *
  *   bunx @rohirik/openltm-core hook --name <hookName>  # lifecycle hook entrypoint
+ *   bunx @rohirik/openltm-core janitor run             # curate the DB, no server needed
  *   bunx @rohirik/openltm-core mcp-serve               # MCP server
  */
 import { runInstallCli } from "./install.js";
 import { runHook } from "./hook.js";
 import { runMemoryCli } from "./memory.js";
+import { runJanitorCli } from "./janitor.js";
 
 function printHelp(): void {
   process.stdout.write(
@@ -32,7 +34,10 @@ function printHelp(): void {
       "  Sub-commands:",
       "    memory <cmd>          Read/write memories from the shell (learn, recall,",
       "                          forget, relate, context) — run 'memory --help'",
-      "    hook --name <event>   Lifecycle hook entrypoint (SessionStart prefill + safe no-ops)",
+      "    janitor <cmd>         Curate the DB without graph-server (run, status,",
+      "                          schedule, daemon) — run 'janitor --help'",
+      "    hook --name <event>   Lifecycle hook entrypoint (SessionStart prefill,",
+      "                          SessionEnd janitor-if-due, safe no-ops)",
       "    mcp-serve             Start the LTM MCP server (stdio)",
       "",
       "  If no target flags are given, agents are auto-detected.",
@@ -52,6 +57,12 @@ async function main(): Promise<void> {
   // Sub-command: memory (learn | recall | forget | relate | context)
   if (argv[0] === "memory") {
     const exitCode = await runMemoryCli(argv.slice(1));
+    process.exit(exitCode);
+  }
+
+  // Sub-command: janitor (run | status | schedule | daemon)
+  if (argv[0] === "janitor") {
+    const exitCode = await runJanitorCli(argv.slice(1));
     process.exit(exitCode);
   }
 
