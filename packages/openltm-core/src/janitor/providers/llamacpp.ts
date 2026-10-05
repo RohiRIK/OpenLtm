@@ -51,14 +51,19 @@ export const llamacppEmbedding: EmbeddingProvider = {
     if (!await probeLlamaCpp(url)) {
       return { vectors: [], model: embedModel, dimensions: LLAMACPP_DEFAULT_DIM, totalTokens: 0 };
     }
+    // Callers map vectors[i] → texts[i], so a gap would shift every later
+    // vector onto the wrong memory. Stop at the first miss and return the
+    // aligned prefix; the rest stay un-embedded and are retried next run.
     const vectors: EmbeddingVector[] = [];
     for (const text of input.texts) {
+      let vec: EmbeddingVector | null = null;
       try {
-        const vec = await embedOne(text, embedModel, url);
-        if (vec) vectors.push(vec);
+        vec = await embedOne(text, embedModel, url);
       } catch {
-        // skip this text; caller treats a short vectors array as a partial miss
+        vec = null;
       }
+      if (!vec) break;
+      vectors.push(vec);
     }
     return {
       vectors,
