@@ -19,9 +19,9 @@ const MAX_INJECT_LINES = 60;
 const MAX_LTM_LINES    = 30;
 const MAX_CONFLICT_LINES = 5;
 const MAX_AGE_MS       = 30 * 24 * 60 * 60 * 1000;
-const LTM_REMINDER     = "⚡ LTM MCP live — use mcp__plugin_openltm_memory__recall before tasks, mcp__plugin_openltm_memory__learn after discoveries.\n";
+const LTM_REMINDER     = "⚡ LTM MCP live — recall before tasks, get <id> for full memory from the index, learn after discoveries.\n";
 const LTM_REPO_SLUG    = "RohiRIK/OpenLtm";
-const LTM_DIRECTIVE   = "⚡ LTM Active — Before starting work: call `recall` with task keywords. Check `context` for project state. After decisions: call `learn` to store them.\n\n";
+const LTM_DIRECTIVE   = "⚡ LTM Active — Before starting work: call `recall` with task keywords; use `get` on an index id for full body. Check `context` for project state. After decisions: call `learn`.\n\n";
 
 function defaultName(cwd: string): string {
   const last = cwd.replace(/\/$/, "").split("/").pop() ?? "";
@@ -35,8 +35,8 @@ async function buildLtmSection(
 ): Promise<string> {
   if (!existsSync(DB_PATH)) return "";
   try {
-    let globals: Array<{ id: number; content: string }>;
-    let scoped: Array<{ id: number; content: string; importance: number }>;
+    let globals: Array<{ id: number; content: string; title?: string }>;
+    let scoped: Array<{ id: number; content: string; importance: number; title?: string }>;
     let graphInsights: string | undefined;
 
     const topN = typeof injectTopN === "number" && injectTopN > 0 ? Math.floor(injectTopN) : 15;
@@ -64,9 +64,17 @@ async function buildLtmSection(
 
     if (globals.length === 0 && scoped.length === 0) return "";
 
-    const lines: string[] = ["LTM:", ""];
-    if (globals.length > 0) { lines.push("globals:"); for (const m of globals) lines.push(`- [${m.id}] ${scrubForEgress(m.content)}`); lines.push(""); }
-    if (scoped.length > 0) { lines.push("project:"); for (const m of scoped) lines.push(`- [${m.id}] ${scrubForEgress(m.content)}`); lines.push(""); }
+    /** Compact index line: id + title/snippet — full body via MCP `get`. */
+    const indexLine = (m: { id: number; content: string; title?: string }) => {
+      const title = typeof m.title === "string" ? m.title.trim() : "";
+      const scrubbed = scrubForEgress(title || m.content);
+      const label = scrubbed.length > 80 ? scrubbed.slice(0, 80) + "…" : scrubbed;
+      return `- [${m.id}] ${label}`;
+    };
+
+    const lines: string[] = ["LTM index (use MCP get <id> for full memory):", ""];
+    if (globals.length > 0) { lines.push("globals:"); for (const m of globals) lines.push(indexLine(m)); lines.push(""); }
+    if (scoped.length > 0) { lines.push("project:"); for (const m of scoped) lines.push(indexLine(m)); lines.push(""); }
     if (graphInsights) { lines.push(scrubForEgress(graphInsights)); lines.push(""); }
 
     const allLines = lines.join("\n").split("\n");
