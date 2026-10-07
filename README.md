@@ -70,6 +70,17 @@ Full detail, including which write paths scrub secrets and which don't: [Securit
 
 ---
 
+## Design ethos
+
+- **Local-first.** Data stays on the machine. No cloud account is required.
+- **One SQLite file.** No mandatory graph database, worker daemon, or Docker stack.
+- **Curated, durable memories.** Decisions, preferences, and conventions — not a full session transcript archive.
+- **Memories age.** Decay, supersede, and janitor cleanup prefer quality over accumulation.
+- **Multi-host.** Claude Code, OpenCode, Pi, Hermes, OpenClaw, and others plug in through hooks and adapters over the same database.
+- **Optional upgrades.** The graph-server explorer and Honker extensions are available when you want them; they are not requirements.
+
+---
+
 ## What you get
 
 | Capability | What it actually does | Where it lives |
