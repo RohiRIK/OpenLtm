@@ -4,7 +4,7 @@
  * Two modes: automatic (high-confidence merges) and suggested (for review).
  */
 import { getDb, getSetting } from "../shared-db.js";
-import { scrubOrRefuse } from "../secretsScrubber.js";
+import { scrubOrRefuse, scrubForEgress } from "../secretsScrubber.js";
 import {
   blobToVector,
   cosineSimilarity,
@@ -170,7 +170,7 @@ Respond in JSON format: { "verdict": "duplicate"|"related"|"distinct", "reasonin
       },
       {
         role: "user",
-        content: `Memory A [${candidate.memoryA.category}]: ${candidate.memoryA.content}\n\nMemory B [${candidate.memoryB.category}]: ${candidate.memoryB.content}\n\nCosine similarity: ${candidate.similarity.toFixed(3)}`,
+        content: `Memory A [${candidate.memoryA.category}]: ${scrubForEgress(candidate.memoryA.content)}\n\nMemory B [${candidate.memoryB.category}]: ${scrubForEgress(candidate.memoryB.content)}\n\nCosine similarity: ${candidate.similarity.toFixed(3)}`,
       },
     ],
     jsonMode: true,

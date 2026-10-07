@@ -130,3 +130,23 @@ export function scrubSecrets(text: string): ScrubResult {
 export function scrubOrRefuse(text: string): ScrubResult {
   return scrubSecrets(text);
 }
+
+/**
+ * Scrub text before it leaves the process (hooks, MCP, LLM/embed providers).
+ *
+ * Egress fail-closed (different shape from store):
+ * - On success: redacted text (secrets replaced)
+ * - On scrub failure: SCRUB_FAILED_PLACEHOLDER stub — NEVER the raw original
+ * Callers may omit the item entirely when scrubbed === SCRUB_FAILED_PLACEHOLDER;
+ * they must not send raw text either way.
+ */
+export function scrubForEgress(text: string): string {
+  const { scrubbed, redactions } = scrubOrRefuse(text);
+  if (redactions.includes("scrub-failed")) return SCRUB_FAILED_PLACEHOLDER;
+  return scrubbed;
+}
+
+/** True when egress should prefer omitting the item over showing a stub. */
+export function isEgressScrubFailed(scrubbed: string): boolean {
+  return scrubbed === SCRUB_FAILED_PLACEHOLDER;
+}
