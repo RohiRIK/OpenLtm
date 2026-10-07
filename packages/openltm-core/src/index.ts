@@ -33,7 +33,7 @@ export { setEmbedding, getEmbedding, deleteEmbedding, listMemoryIdsMissingEmbedd
 export { listByProject, upsertGoal, appendProgress, addDecision, addGotcha } from "./dao/contextItems.js";
 
 // Utilities
-export { scrubSecrets, scrubOrRefuse, scrubForEgress, SCRUB_FAILED_PLACEHOLDER, _forceScrubThrowForTesting } from "./secretsScrubber.js";
+export { scrubSecrets, scrubOrRefuse, scrubForEgress, isEgressScrubFailed, SCRUB_FAILED_PLACEHOLDER, _forceScrubThrowForTesting } from "./secretsScrubber.js";
 export { normalizeKey } from "./dedup.js";
 export { normalizeAnchorPath, normalizeAnchorPaths } from "./anchors.js";
 export { embedText, getLlmConfig, callLlm } from "./embeddings.js";
