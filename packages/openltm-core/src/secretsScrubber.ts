@@ -130,3 +130,11 @@ export function scrubSecrets(text: string): ScrubResult {
 export function scrubOrRefuse(text: string): ScrubResult {
   return scrubSecrets(text);
 }
+
+/**
+ * Scrub text before it leaves the process (hooks, MCP, LLM/embed providers).
+ * Fail-closed — same contract as scrubOrRefuse.
+ */
+export function scrubForEgress(text: string): string {
+  return scrubOrRefuse(text).scrubbed;
+}

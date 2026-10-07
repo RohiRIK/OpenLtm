@@ -9,6 +9,7 @@
  */
 
 import type { MemoryCategory } from "../dao/types.js";
+import { scrubForEgress } from "../secretsScrubber.js";
 
 export interface CategoriseResult {
   category: MemoryCategory;
@@ -120,9 +121,10 @@ async function classifyWithLlm(content: string): Promise<MemoryCategory | null> 
 // ── Public API ─────────────────────────────────────────────────────────────────
 
 export async function categorise(
-  content: string,
+  rawContent: string,
   confidenceThreshold = 0.6,
 ): Promise<CategoriseResult> {
+  const content = scrubForEgress(rawContent);
   const heuristic = scoreHeuristic(content);
 
   if (heuristic.confidence >= confidenceThreshold) {

@@ -17,6 +17,7 @@ import { queryAudit } from "../dao/provenanceAudit.js";
 import { getItems } from "../context.js";
 import { traverseGraph, buildReasoningContext } from "../graph.js";
 import { categorise } from "../recall/categorise.js";
+import { scrubForEgress } from "../secretsScrubber.js";
 
 // ─── Options ─────────────────────────────────────────────────────────────────
 
@@ -30,14 +31,30 @@ export interface McpServerOptions {
 // Embedding excluded at the SQL query level — strip() is now a no-op passthrough kept for call-site compatibility.
 function strip(obj: unknown): unknown { return obj; }
 
+/** Scrub string content fields before MCP egress (fail-closed). */
+function scrubContentField(value: unknown): unknown {
+  return typeof value === "string" ? scrubForEgress(value) : value;
+}
+
+function scrubMemoryPayload(obj: unknown): unknown {
+  if (Array.isArray(obj)) return obj.map(scrubMemoryPayload);
+  if (!obj || typeof obj !== "object") return obj;
+  const mem = obj as Record<string, unknown>;
+  const out: Record<string, unknown> = { ...mem };
+  if (typeof out.content === "string") out.content = scrubForEgress(out.content);
+  if (typeof out.title === "string") out.title = scrubForEgress(out.title);
+  return out;
+}
+
 /** Compact formatter — strips verbose fields and truncates content to keep MCP responses small. */
 function compact(memories: unknown[]): unknown[] {
   const MAX_CONTENT = 300;
   return memories.map(m => {
     const mem = m as Record<string, unknown>;
-    const content = typeof mem.content === "string" && mem.content.length > MAX_CONTENT
-      ? mem.content.slice(0, MAX_CONTENT) + "…"
-      : mem.content;
+    const raw = scrubContentField(mem.content);
+    const content = typeof raw === "string" && raw.length > MAX_CONTENT
+      ? raw.slice(0, MAX_CONTENT) + "…"
+      : raw;
     const relations = Array.isArray(mem.relations) && mem.relations.length > 0
       ? { relations: mem.relations.map((r: Record<string, unknown>) => ({ id: (r.memory as Record<string, unknown>)?.id, type: r.relationship_type, dir: r.direction })) }
       : {};
@@ -78,7 +95,9 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
     },
     async ({ query, project, limit, category, verbose, since, until, sort_by, includeProvenance }) => {
       const results = await recall({ query, project, limit, category, since, until, sort_by, includeProvenance });
-      const payload = verbose ? strip(results) : compact(strip(results) as unknown[]);
+      const payload = verbose
+        ? scrubMemoryPayload(strip(results))
+        : compact(strip(results) as unknown[]);
       return { content: [{ type: "text", text: JSON.stringify(payload) }] };
     },
   );
@@ -255,7 +274,10 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
       type: z.enum(["goal", "decision", "progress", "gotcha"]).optional(),
     },
     async ({ project, type }) => {
-      const items = getItems(project, type);
+      const items = getItems(project, type).map((item) => ({
+        ...item,
+        content: scrubForEgress(item.content),
+      }));
       return { content: [{ type: "text", text: JSON.stringify(items) }] };
     },
   );
@@ -271,7 +293,7 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
       const rows = db.query<Memory, []>(
         `SELECT * FROM memories WHERE importance = 5 AND project_scope IS NULL AND status = 'active' ORDER BY created_at DESC`,
       ).all();
-      return { contents: [{ uri: "memory://globals", text: JSON.stringify(strip(rows)), mimeType: "application/json" }] };
+      return { contents: [{ uri: "memory://globals", text: JSON.stringify(scrubMemoryPayload(strip(rows))), mimeType: "application/json" }] };
     },
   );
 
@@ -284,7 +306,7 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
       const rows = db.query<Memory, []>(
         `SELECT * FROM memories WHERE status = 'active' ORDER BY created_at DESC LIMIT 20`,
       ).all();
-      return { contents: [{ uri: "memory://recent", text: JSON.stringify(strip(rows)), mimeType: "application/json" }] };
+      return { contents: [{ uri: "memory://recent", text: JSON.stringify(scrubMemoryPayload(strip(rows))), mimeType: "application/json" }] };
     },
   );
 
@@ -299,7 +321,7 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
          JOIN memory_tags mt ON t.id = mt.tag_id
          GROUP BY t.id ORDER BY count DESC`,
       ).all();
-      return { contents: [{ uri: "memory://tags", text: JSON.stringify(strip(rows)), mimeType: "application/json" }] };
+      return { contents: [{ uri: "memory://tags", text: JSON.stringify(scrubMemoryPayload(strip(rows))), mimeType: "application/json" }] };
     },
   );
 

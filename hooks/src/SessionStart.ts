@@ -8,7 +8,7 @@ import { EVENTS } from "../lib/eventNames.js";
 import { spawnSync } from "child_process";
 import { getContextMerge, getSimilarMemories, getContextMergeWithGraph, computeDecayScore,
          embedText, getDb, listMemoryIdsMissingEmbedding, exportContextMarkdown,
-         runPendingMigrations, getRecentConflicts, emitEvent } from "@rohirik/openltm-core";
+         runPendingMigrations, getRecentConflicts, emitEvent, scrubForEgress } from "@rohirik/openltm-core";
 import { readConfigSync } from "../../src/config.js";
 
 const TMP_DIR      = join(CLAUDE_DIR, "tmp");
@@ -34,7 +34,7 @@ async function buildLtmSection(project: string, sessionContext?: string): Promis
     let scoped: Array<{ id: number; content: string; importance: number }>;
     let graphInsights: string | undefined;
 
-    const queryVec = sessionContext ? await embedText(sessionContext) : null;
+    const queryVec = sessionContext ? await embedText(scrubForEgress(sessionContext)) : null;
     if (queryVec) {
       const db = getDb();
       globals = getSimilarMemories(db, queryVec, { minImportance: 4, limit: 16 });
@@ -55,8 +55,8 @@ async function buildLtmSection(project: string, sessionContext?: string): Promis
     if (globals.length === 0 && scoped.length === 0) return "";
 
     const lines: string[] = ["LTM:", ""];
-    if (globals.length > 0) { lines.push("globals:"); for (const m of globals) lines.push(`- [${m.id}] ${m.content}`); lines.push(""); }
-    if (scoped.length > 0) { lines.push("project:"); for (const m of scoped) lines.push(`- [${m.id}] ${m.content}`); lines.push(""); }
+    if (globals.length > 0) { lines.push("globals:"); for (const m of globals) lines.push(`- [${m.id}] ${scrubForEgress(m.content)}`); lines.push(""); }
+    if (scoped.length > 0) { lines.push("project:"); for (const m of scoped) lines.push(`- [${m.id}] ${scrubForEgress(m.content)}`); lines.push(""); }
     if (graphInsights) { lines.push(graphInsights); lines.push(""); }
 
     const allLines = lines.join("\n").split("\n");

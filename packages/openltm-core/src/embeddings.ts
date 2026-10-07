@@ -7,6 +7,7 @@
 import type { Database } from "bun:sqlite";
 import type { EmbeddingProvider } from "./providers/embeddingProvider.js";
 import { setEmbedding, listMemoryIdsNeedingEmbedding } from "./dao/embeddings.js";
+import { scrubForEgress } from "./secretsScrubber.js";
 
 // --- Provider config (retained for LLM/auto-relate path) ---
 
@@ -201,7 +202,7 @@ export async function embedText(text: string): Promise<Float32Array | null> {
   try {
     const provider = await getEmbeddingProvider();
     if (!await provider.available()) return null;
-    return provider.generate(text);
+    return provider.generate(scrubForEgress(text));
   } catch (e) {
     process.stderr.write(`[embeddings] embedText error: ${e}\n`);
     return null;
@@ -220,7 +221,7 @@ export async function embedMemory(db: Database, id: number): Promise<void> {
   const provider = await getEmbeddingProvider();
   if (!await provider.available()) return;
 
-  const vec = await provider.generate(row.content);
+  const vec = await provider.generate(scrubForEgress(row.content));
   if (!vec) return;
 
   await setEmbedding(db, id, vecToBlob(vec), provider.model, provider.dim);
@@ -248,7 +249,7 @@ export async function backfill(db: Database): Promise<void> {
         `SELECT content FROM memories WHERE id=?`
       ).get(id);
       if (!row) return;
-      const vec = await provider.generate(row.content);
+      const vec = await provider.generate(scrubForEgress(row.content));
       if (vec) {
         await setEmbedding(db, id, vecToBlob(vec), provider.model, provider.dim);
         done++;
