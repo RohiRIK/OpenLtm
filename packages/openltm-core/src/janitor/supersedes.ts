@@ -4,6 +4,7 @@
  * as 'superseded' and a directed relation is created.
  */
 import { getDb } from "../shared-db.js";
+import { scrubOrRefuse } from "../secretsScrubber.js";
 
 /**
  * Mark a memory as superseding another.
@@ -31,7 +32,12 @@ export function supersede(
        VALUES (?, ?, 'supersedes')`,
       [newId, oldId],
     );
-    db.run("UPDATE memories SET status = 'superseded' WHERE id = ?", [oldId]);
+    // Single source of truth: status + superseded_by/at + relation
+    db.run(
+      `UPDATE memories SET status = 'superseded', superseded_by = ?, superseded_at = datetime('now')
+       WHERE id = ?`,
+      [newId, oldId],
+    );
     if (transferTags) {
       db.run(
         `INSERT OR IGNORE INTO memory_tags (memory_id, tag_id)
@@ -101,7 +107,11 @@ export function unsupersede(newId: number, oldId: number): void {
     ).get(oldId) as { cnt: number } | undefined;
 
     if ((stillSuperseded?.cnt ?? 0) === 0) {
-      db.run("UPDATE memories SET status = 'active' WHERE id = ? AND status = 'superseded'", [oldId]);
+      db.run(
+        `UPDATE memories SET status = 'active', superseded_by = NULL, superseded_at = NULL
+         WHERE id = ? AND status = 'superseded'`,
+        [oldId],
+      );
     }
   })();
 }
@@ -177,23 +187,70 @@ export function detectContradictions(
   return contradictions;
 }
 
-export function applyContradictions(contradictions: Contradiction[]): number {
+/** Fixed vocabulary of contradiction terms produced by detectContradictions. */
+const KNOWN_CONTRADICTION_TERMS = new Set(CONTRADICTION_PAIRS.map(([a, b]) => `${a} vs ${b}`));
+
+/**
+ * Normalise a staging term before it is persisted. Terms from the fixed
+ * CONTRADICTION_PAIRS list pass through; anything else (caller-supplied)
+ * goes through scrubOrRefuse so secrets can never land in staging. On scrub
+ * failure the term is dropped (NULL) rather than stored raw.
+ */
+export function sanitizeStagingTerm(term: string | null | undefined): string | null {
+  if (term == null) return null;
+  if (KNOWN_CONTRADICTION_TERMS.has(term)) return term;
+  const { scrubbed, redactions } = scrubOrRefuse(term);
+  if (redactions.includes("scrub-failed")) return null;
+  return scrubbed;
+}
+
+/**
+ * Stage contradiction pairs for human review. Does NOT supersede or mutate
+ * memory status — UX / explicit accept calls supersede().
+ */
+export function stageContradictions(contradictions: Contradiction[]): number {
   const db = getDb();
-  let applied = 0;
+  let staged = 0;
 
   for (const con of contradictions) {
-    const existing = db.query(
+    const already = db.query(
       `SELECT id FROM memories WHERE id = ? AND superseded_by IS NOT NULL`
     ).get(con.olderId) as { id: number } | null;
+    if (already) continue;
 
-    if (existing) continue;
-
-    db.run(
-      `UPDATE memories SET superseded_by = ?, superseded_at = datetime('now') WHERE id = ?`,
-      [con.newerId, con.olderId],
+    const result = db.run(
+      `INSERT OR IGNORE INTO memory_conflict_staging (older_id, newer_id, term, status)
+       VALUES (?, ?, ?, 'pending')`,
+      [con.olderId, con.newerId, sanitizeStagingTerm(con.term)],
     );
-    applied++;
+    if (Number(result.changes) > 0) staged++;
   }
 
-  return applied;
+  return staged;
 }
+
+/** @deprecated Use stageContradictions — auto-apply is forbidden. */
+export function applyContradictions(contradictions: Contradiction[]): number {
+  return stageContradictions(contradictions);
+}
+
+export interface StagedConflict {
+  id: number;
+  olderId: number;
+  newerId: number;
+  term: string | null;
+  status: string;
+  createdAt: string;
+}
+
+export function listStagedConflicts(limit = 50): StagedConflict[] {
+  const db = getDb();
+  return db.query<StagedConflict, [number]>(
+    `SELECT id, older_id as olderId, newer_id as newerId, term, status, created_at as createdAt
+     FROM memory_conflict_staging
+     WHERE status = 'pending'
+     ORDER BY created_at DESC
+     LIMIT ?`,
+  ).all(limit);
+}
+

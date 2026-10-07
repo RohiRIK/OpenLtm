@@ -270,24 +270,25 @@ export function mergeMemories(
       ]);
     }
 
-    // Mark the other as superseded
-    db.run("UPDATE memories SET status = 'superseded' WHERE id = ?", [
-      supersededId,
-    ]);
+    // Mark superseded: status + superseded_by/at + relation (same SoT as supersede())
+    db.run(
+      `UPDATE memories SET status = 'superseded', superseded_by = ?, superseded_at = datetime('now')
+       WHERE id = ?`,
+      [keepId, supersededId],
+    );
 
-    // Create a supersedes relation
     db.run(
       `INSERT OR IGNORE INTO memory_relations (source_memory_id, target_memory_id, relationship_type)
        VALUES (?, ?, 'supersedes')`,
       [keepId, supersededId],
     );
 
-    // Transfer any tags from superseded to kept
     db.run(
       `INSERT OR IGNORE INTO memory_tags (memory_id, tag_id)
        SELECT ?, tag_id FROM memory_tags WHERE memory_id = ?`,
       [keepId, supersededId],
     );
+
 
     // Repoint any relations targeting the superseded memory.
     // Delete rows that would collide on the unique constraint before updating.

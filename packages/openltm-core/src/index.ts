@@ -71,9 +71,10 @@ export {
   runArchive, touchMemory,
   approveMemory, getPendingMemories, rejectMemory,
   mergeMemories, parseDedupSource,
-  supersede,
+  supersede, stageContradictions, listStagedConflicts, detectContradictions, sanitizeStagingTerm,
   getEmbeddingProvider, semanticSearch, findSimilarMemories,
 } from "./janitor/index.js";
+export type { Contradiction, StagedConflict } from "./janitor/index.js";
 export { runDecay } from "./janitor/decay.js";
 export { SETTING_KEYS, SETTING_DEFAULTS } from "./janitor/providers/types.js";
 export { anthropicLLM } from "./janitor/providers/anthropic.js";
