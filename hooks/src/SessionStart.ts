@@ -57,7 +57,7 @@ async function buildLtmSection(project: string, sessionContext?: string): Promis
     const lines: string[] = ["LTM:", ""];
     if (globals.length > 0) { lines.push("globals:"); for (const m of globals) lines.push(`- [${m.id}] ${scrubForEgress(m.content)}`); lines.push(""); }
     if (scoped.length > 0) { lines.push("project:"); for (const m of scoped) lines.push(`- [${m.id}] ${scrubForEgress(m.content)}`); lines.push(""); }
-    if (graphInsights) { lines.push(graphInsights); lines.push(""); }
+    if (graphInsights) { lines.push(scrubForEgress(graphInsights)); lines.push(""); }
 
     const allLines = lines.join("\n").split("\n");
     if (allLines.length > MAX_LTM_LINES) return allLines.slice(0, MAX_LTM_LINES).join("\n") + "\n… (truncated)\n";

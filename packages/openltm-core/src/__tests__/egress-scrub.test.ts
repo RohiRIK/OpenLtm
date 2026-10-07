@@ -112,3 +112,18 @@ describe("plant-secret egress paths", () => {
     for (const t of texts) assertNoRaw(t);
   });
 });
+
+describe("SessionStart graphInsights egress", () => {
+  it("plant-secret: graphInsights text is scrubbed before inject", () => {
+    const AWS = "AKIAIOSFODNN7EXAMPLE";
+    const graphInsights = `Related: deploy with aws key ${AWS} — see memory 12`;
+    const scrubbed = core.scrubForEgress(graphInsights);
+    expect(scrubbed).not.toContain(AWS);
+  });
+
+  it("SessionStart source scrubs graphInsights (not raw push)", () => {
+    const src = readFileSync(join(import.meta.dir, "../../../../hooks/src/SessionStart.ts"), "utf-8");
+    expect(src).toContain("scrubForEgress(graphInsights)");
+    expect(src).not.toMatch(/if \(graphInsights\) \{ lines\.push\(graphInsights\)/);
+  });
+});
