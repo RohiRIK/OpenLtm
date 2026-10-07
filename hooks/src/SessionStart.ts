@@ -8,7 +8,7 @@ import { EVENTS } from "../lib/eventNames.js";
 import { spawnSync } from "child_process";
 import { getContextMerge, getSimilarMemories, getContextMergeWithGraph, computeDecayScore,
          embedText, getDb, listMemoryIdsMissingEmbedding, exportContextMarkdown,
-         runPendingMigrations, getRecentConflicts, emitEvent, scrubForEgress } from "@rohirik/openltm-core";
+         runPendingMigrations, getRecentConflicts, listStagedConflicts, emitEvent, scrubForEgress } from "@rohirik/openltm-core";
 import { readConfigSync } from "../../src/config.js";
 import { applyInjectTopN } from "../lib/injectTopN.js";
 
@@ -90,16 +90,25 @@ function buildConflictSection(project: string): string {
   if (!existsSync(DB_PATH)) return "";
   try {
     const db = getDb();
-    const conflicts = getRecentConflicts(db, project, MAX_CONFLICT_LINES);
+    const applied = getRecentConflicts(db, project, MAX_CONFLICT_LINES);
+    const staged = listStagedConflicts(MAX_CONFLICT_LINES);
 
-    if (conflicts.length === 0) return "";
+    if (applied.length === 0 && staged.length === 0) return "";
 
-    const lines: string[] = ["⚠️ Memory Conflicts Detected", ""];
-    for (const c of conflicts) {
-      lines.push(`- [${c.olderId}] superseded by [${c.newerId}]`);
+    const lines: string[] = ["⚠️ Memory Conflicts", ""];
+    if (staged.length > 0) {
+      lines.push("Pending review (ltm conflict accept|reject <stagingId>):");
+      for (const s of staged) {
+        const term = s.term ? scrubForEgress(s.term) : "";
+        lines.push(`- staging #${s.id}: [${s.olderId}] vs [${s.newerId}]${term ? ` (${term})` : ""}`);
+      }
+      lines.push("");
     }
-    if (conflicts.length >= MAX_CONFLICT_LINES) {
-      lines.push(`… and ${conflicts.length - MAX_CONFLICT_LINES + 1} more conflicts`);
+    if (applied.length > 0) {
+      lines.push("Recently applied:");
+      for (const c of applied) {
+        lines.push(`- [${c.olderId}] superseded by [${c.newerId}]`);
+      }
     }
     return lines.join("\n");
   } catch (err) {

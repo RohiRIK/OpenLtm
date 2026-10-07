@@ -236,3 +236,38 @@ export function listStagedConflicts(limit = 50): StagedConflict[] {
   ).all(limit);
 }
 
+/**
+ * Accept a staged conflict: apply supersede(newer, older) and mark staging accepted.
+ * Returns false if not found / not pending.
+ */
+export function acceptStagedConflict(stagingId: number): boolean {
+  const db = getDb();
+  const row = db.query<{ id: number; older_id: number; newer_id: number; status: string }, [number]>(
+    `SELECT id, older_id, newer_id, status FROM memory_conflict_staging WHERE id = ?`,
+  ).get(stagingId);
+  if (!row || row.status !== "pending") return false;
+
+  supersede(row.newer_id, row.older_id, true);
+  db.run(`UPDATE memory_conflict_staging SET status = 'accepted' WHERE id = ?`, [stagingId]);
+  return true;
+}
+
+/** Reject a staged conflict without superseding. */
+export function rejectStagedConflict(stagingId: number): boolean {
+  const db = getDb();
+  const result = db.run(
+    `UPDATE memory_conflict_staging SET status = 'rejected' WHERE id = ? AND status = 'pending'`,
+    [stagingId],
+  );
+  return Number(result.changes) > 0;
+}
+
+/** Mark staged conflict as coexist (keep both active). */
+export function coexistStagedConflict(stagingId: number): boolean {
+  const db = getDb();
+  const result = db.run(
+    `UPDATE memory_conflict_staging SET status = 'coexist' WHERE id = ? AND status = 'pending'`,
+    [stagingId],
+  );
+  return Number(result.changes) > 0;
+}
