@@ -18,6 +18,7 @@ import { getItems } from "../context.js";
 import { traverseGraph, buildReasoningContext } from "../graph.js";
 import { categorise } from "../recall/categorise.js";
 import { scrubForEgress } from "../secretsScrubber.js";
+import { hasPrivateTag } from "../privacy.js";
 
 // ─── Options ─────────────────────────────────────────────────────────────────
 
@@ -92,9 +93,10 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
       workspace_id: z.string().optional().describe("Filter by workspace"),
       agent_id: z.string().optional().describe("Filter by agent"),
       includeProvenance: z.boolean().optional().default(false).describe("Attach provenance chain to each result (off by default)"),
+      includePrivate: z.boolean().optional().default(false).describe("Include memories tagged private (default false — private ≠ encrypted)"),
     },
-    async ({ query, project, limit, category, verbose, since, until, sort_by, includeProvenance }) => {
-      const results = await recall({ query, project, limit, category, since, until, sort_by, includeProvenance });
+    async ({ query, project, limit, category, verbose, since, until, sort_by, includeProvenance, includePrivate }) => {
+      const results = await recall({ query, project, limit, category, since, until, sort_by, includeProvenance, includePrivate });
       const payload = verbose
         ? scrubMemoryPayload(strip(results))
         : compact(strip(results) as unknown[]);
@@ -105,14 +107,18 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
 
   server.tool(
     "get",
-    "Fetch one memory by id after recall (progressive fetch). Use when compact recall truncated content or you need the full body, tags, and metadata. Skip when recall verbose already returned enough.",
+    "Fetch one memory by id after recall (progressive fetch). Use when compact recall truncated content or you need the full body, tags, and metadata. Skip when recall verbose already returned enough. Private-tagged memories require includePrivate.",
     {
       id: z.number().int().describe("Memory id from a prior recall / SessionStart index"),
+      includePrivate: z.boolean().optional().default(false).describe("Allow fetching a memory tagged private (default false — private ≠ encrypted)"),
     },
-    async ({ id }) => {
+    async ({ id, includePrivate }) => {
       const mem = getMemoryById(id);
       if (!mem) {
         return { content: [{ type: "text", text: JSON.stringify({ ok: false, error: "not_found", id }) }] };
+      }
+      if (hasPrivateTag(mem.tags) && !includePrivate) {
+        return { content: [{ type: "text", text: JSON.stringify({ ok: false, error: "private", id }) }] };
       }
       const payload = scrubMemoryPayload(strip(mem));
       return { content: [{ type: "text", text: JSON.stringify({ ok: true, memory: payload }) }] };

@@ -7,6 +7,7 @@ import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import { normalizeKey } from "./dedup.js";
 import { isNearDuplicate, jaccardSimilarity } from "./similarity.js";
+import { filterPrivateMemories } from "./privacy.js";
 import { normalizeAnchorPaths } from "./anchors.js";
 import { getDb, DB_PATH, configure as configureDb } from "./shared-db.js";
 import { enqueueEmbedding } from "./queue/index.js";
@@ -114,6 +115,8 @@ export interface LearnResult {
 }
 
 export interface RecallInput {
+  /** Opt-in: include memories tagged `private` (default false). */
+  includePrivate?: boolean;
   since?: string;
   until?: string;
   sort_by?: "relevance" | "created" | "last_recalled" | "recall_count";
@@ -906,7 +909,8 @@ export async function recall(input: RecallInput = {}): Promise<MemoryWithRelatio
       sorted.map(m => m.id),
     );
   }
-  const enriched = sorted.map(m => enrichMemory(db, m));
+  let enriched = sorted.map(m => enrichMemory(db, m));
+  enriched = filterPrivateMemories(enriched, input.includePrivate === true);
   if (input.includeProvenance) {
     const provMap = listProvenanceBatch(db, enriched.map(m => m.id));
     for (const m of enriched) {
@@ -1007,7 +1011,14 @@ export function getSimilarMemories(
   });
 
   scored.sort((a, b) => b.sim - a.sim);
-  return scored.slice(0, limit).map(s => s.mem);
+  const picked: Memory[] = [];
+  for (const s of scored) {
+    const enriched = enrichMemory(db, s.mem);
+    if (filterPrivateMemories([enriched], false).length === 0) continue;
+    picked.push(s.mem);
+    if (picked.length >= limit) break;
+  }
+  return picked;
 }
 
 export function getContextMerge(project: string): { globals: Memory[]; scoped: Memory[] } {
@@ -1029,10 +1040,14 @@ export function getContextMerge(project: string): { globals: Memory[]; scoped: M
     `SELECT ${SLIM} FROM memories WHERE project_scope=? AND importance >= 3 AND status = 'active' LIMIT 15`
   ).all(project));
 
-  const allIds = [...globals, ...scoped].map(m => m.id);
+  const gEnriched = globals.map(m => enrichMemory(db, m));
+  const sEnriched = scoped.map(m => enrichMemory(db, m));
+  const gVis = filterPrivateMemories(gEnriched, false);
+  const sVis = filterPrivateMemories(sEnriched, false);
+  const allIds = [...gVis, ...sVis].map(m => m.id);
   updateLastUsed(allIds);
 
-  return { globals, scoped };
+  return { globals: gVis, scoped: sVis };
 }
 
 /**
@@ -1077,6 +1092,10 @@ export function exportMarkdown(): void {
 
   // Batch-fetch all tags in one query to avoid N+1
   const tagsByMemory = getTagsBatch(db, rows.map(r => r.id));
+  const visibleRows = rows.filter((m) => {
+    const tags = tagsByMemory.get(m.id) ?? [];
+    return filterPrivateMemories([{ tags }], false).length > 0;
+  });
 
   const timestamp = new Date().toISOString().replace("T", " ").replace(/\..+/, "");
   const lines: string[] = [
@@ -1089,7 +1108,7 @@ export function exportMarkdown(): void {
   ];
 
   const byCategory = new Map<string, Memory[]>();
-  for (const m of rows) {
+  for (const m of visibleRows) {
     if (!byCategory.has(m.category)) byCategory.set(m.category, []);
     byCategory.get(m.category)!.push(m);
   }
@@ -1121,10 +1140,17 @@ export function exportGraphJson(): void {
   if (!existsSync(DOCS_DIR)) mkdirSync(DOCS_DIR, { recursive: true });
 
   const memories = db.query<Memory, []>(`SELECT * FROM memories`).all();
-  const relations = db.query<MemoryRelation, []>(`SELECT * FROM memory_relations`).all();
+  const tagsByMemory = getTagsBatch(db, memories.map(m => m.id));
+  const visible = memories.filter((m) => {
+    const tags = tagsByMemory.get(m.id) ?? [];
+    return filterPrivateMemories([{ tags }], false).length > 0;
+  });
+  const visibleIds = new Set(visible.map(m => m.id));
+  const relations = db.query<MemoryRelation, []>(`SELECT * FROM memory_relations`).all()
+    .filter(r => visibleIds.has(r.source_memory_id) && visibleIds.has(r.target_memory_id));
 
   writeFileSync(join(DOCS_DIR, "memory-graph.json"), JSON.stringify({
-    nodes: memories.map(m => ({
+    nodes: visible.map(m => ({
       id: m.id,
       label: m.content.substring(0, 60),
       category: m.category,

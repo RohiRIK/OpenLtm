@@ -10,7 +10,8 @@ If you ever need to call them yourself (e.g. from a custom hook or script), this
 
 | Tool | Description |
 |------|-------------|
-| `recall` | Search memories. FTS5 first, semantic fallback if needed. Results carry a `stale` flag and stale memories are downranked. |
+| `recall` | Search memories. FTS5 first, semantic fallback if needed. Results carry a `stale` flag and stale memories are downranked. Pass `includePrivate: true` to include memories tagged `private` (default omitted). |
+| `get` | Fetch one memory by id after compact recall. Private-tagged memories return `{ ok:false, error:"private" }` unless `includePrivate: true`. |
 | `learn` | Store or reinforce a memory. Deduplicates automatically. Optional `files` param anchors the memory to repo-relative paths it references. |
 | `forget` | Delete a memory by ID. Cascades to relations. |
 | `revalidate` | Clear a memory's stale flag after review — the code changed but the memory is still correct. Use `forget` when it's actually wrong. |
@@ -41,6 +42,17 @@ If you ever need to call them yourself (e.g. from a custom hook or script), this
 The graph view in `localhost:7332` colors edges by type — `contradicts` shows red, `supports` shows green, the rest are blue.
 
 ---
+
+---
+
+## Private tag (`private`)
+
+Memories tagged `private` are **omitted by default** from auto-recall, SessionStart inject, MCP `recall`/`get`/`context`, markdown/graph export, and janitor embed/dedup/archive candidate scans.
+
+Pass `includePrivate: true` on `recall` / `get` to opt in.
+
+**private ≠ encrypted** — content remains plaintext in SQLite. The tag is a visibility filter only, not encryption or access control against a DB reader.
+
 
 ## See also
 

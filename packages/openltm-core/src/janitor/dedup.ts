@@ -5,6 +5,7 @@
  */
 import { getDb, getSetting } from "../shared-db.js";
 import { scrubOrRefuse, scrubForEgress } from "../secretsScrubber.js";
+import { hasPrivateTag } from "../privacy.js";
 import {
   blobToVector,
   cosineSimilarity,
@@ -94,19 +95,27 @@ export async function findDuplicates(
     )
     .all();
 
-  if (memories.length < 2) return result;
+  const publicMemories = memories.filter((m) => {
+    const tags = db.query<{ name: string }, [number]>(
+      `SELECT t.name FROM tags t
+       JOIN memory_tags mt ON mt.tag_id = t.id
+       WHERE mt.memory_id = ?`,
+    ).all(m.id).map((x) => x.name);
+    return !hasPrivateTag(tags);
+  });
+  if (publicMemories.length < 2) return result;
 
   // Convert embeddings upfront
   const vectors: Map<number, EmbeddingVector> = new Map();
-  for (const mem of memories) {
+  for (const mem of publicMemories) {
     vectors.set(mem.id, blobToVector(mem.embedding));
   }
 
   // Pairwise comparison (upper triangle only)
-  for (let i = 0; i < memories.length; i++) {
-    const memA = memories[i]!;
-    for (let j = i + 1; j < memories.length; j++) {
-      const memB = memories[j]!;
+  for (let i = 0; i < publicMemories.length; i++) {
+    const memA = publicMemories[i]!;
+    for (let j = i + 1; j < publicMemories.length; j++) {
+      const memB = publicMemories[j]!;
       result.pairsCompared++;
       const vecA = vectors.get(memA.id)!;
       const vecB = vectors.get(memB.id)!;
