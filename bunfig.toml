@@ -1,5 +1,8 @@
 [test]
 timeout = 30000
+# Fail closed unless HOME is a temp dir — tests must never write the real ~/.claude.
+# `bun run test` isolates HOME via scripts/test-isolated.ts.
+preload = ["./src/__tests__/setup/isolate-home.ts"]
 
 # Playwright e2e specs live under graph-app/e2e/*.pw.ts so bare `bun test`
 # ignores them automatically. Run `bun run test:e2e` for the browser suite.

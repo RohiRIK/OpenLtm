@@ -15,7 +15,8 @@ Categories: `preference | architecture | gotcha | pattern | workflow | constrain
 ## Working in this repo
 
 - **Runtime is Bun**, not npm/node. Use `bun`, `bunx`, `bun test`.
-- **Tests + typecheck must pass**: `bun test && bun run typecheck`.
+- **Tests + typecheck must pass**: `bun run test && bun run typecheck`.
+- **Tests run with an isolated HOME** — `bun run test` (or `bun run test:isolated <paths>`) points `HOME`/`CLAUDE_CONFIG_DIR` at a temp dir and fails if the real `~/.claude` changes. Bare `bun test` is refused by the preload unless `HOME` is a temp dir (`HOME=$(mktemp -d) bun test <paths>`).
 - **Version bumps are mandatory** on any change — `bun run bump <version>` then `bun run verify-version` (it gates all version sources: `package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, every `packages/*/package.json`, and the README badge).
 - **No secrets, no database files** in commits. `data/*.db*` is gitignored; keep it that way.
 
