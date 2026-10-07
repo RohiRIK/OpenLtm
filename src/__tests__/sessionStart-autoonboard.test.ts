@@ -1,14 +1,27 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdirSync, rmSync, writeFileSync } from "fs";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
-import { tmpdir } from "os";
+import { homedir, tmpdir } from "os";
 
 const PROJECT_ROOT = join(import.meta.dir, "..", "..");
 const HOOK_SCRIPT  = join(PROJECT_ROOT, "hooks", "src", "SessionStart.ts");
-const DB_PATH      = `/tmp/test-ltm-autoonboard-${Date.now()}.db`;
+
+// Real ~/.claude — the spawned hook must never write here. The test wrapper
+// passes the pre-isolation home; fall back to homedir() otherwise.
+const REAL_REGISTRY = join(process.env.LTM_TEST_REAL_HOME || homedir(), ".claude", "projects", "registry.json");
+
+function readRegistry(path: string): Record<string, string> {
+  try { return JSON.parse(readFileSync(path, "utf-8")) as Record<string, string>; }
+  catch { return {}; }
+}
+
+let testRoot: string;
+let fakeHome: string;
+let projectCwd: string;
+let dbPath: string;
 
 async function runHook(pluginDataDir: string): Promise<{ exitCode: number | null; stdout: string }> {
-  const input = JSON.stringify({ cwd: "/tmp/test-autoonboard-project" });
+  const input = JSON.stringify({ cwd: projectCwd });
   const proc = Bun.spawn(
     ["bun", "run", HOOK_SCRIPT],
     {
@@ -17,7 +30,10 @@ async function runHook(pluginDataDir: string): Promise<{ exitCode: number | null
       stderr: "pipe",
       env: {
         ...process.env,
-        LTM_DB_PATH: DB_PATH,
+        // Isolate everything under ~/.claude (registry, projects/, logs, tmp) to a temp HOME.
+        HOME: fakeHome,
+        CLAUDE_CONFIG_DIR: join(fakeHome, ".claude"),
+        LTM_DB_PATH: dbPath,
         CLAUDE_PLUGIN_DATA: pluginDataDir,
         CLAUDE_PLUGIN_ROOT: undefined, // no root → skip actual spawn, message still fires
       },
@@ -29,16 +45,28 @@ async function runHook(pluginDataDir: string): Promise<{ exitCode: number | null
   return { exitCode, stdout };
 }
 
+beforeAll(() => {
+  testRoot = mkdtempSync(join(tmpdir(), "ltm-autoonboard-test-"));
+  fakeHome = join(testRoot, "home");
+  projectCwd = join(testRoot, "test-autoonboard-project");
+  dbPath = join(testRoot, "test-ltm-autoonboard.db");
+  mkdirSync(fakeHome, { recursive: true });
+  mkdirSync(projectCwd, { recursive: true });
+});
+
+afterAll(() => {
+  try { rmSync(testRoot, { recursive: true, force: true }); } catch {}
+});
+
 describe("SessionStart auto-onboard (P5-0.5)", () => {
   let tmpPluginData: string;
 
   beforeEach(() => {
-    tmpPluginData = join(tmpdir(), `ltm-autoonboard-test-${Date.now()}`);
-    mkdirSync(tmpPluginData, { recursive: true });
+    tmpPluginData = mkdtempSync(join(testRoot, "plugin-data-"));
   });
 
   afterEach(() => {
-    try { rmSync(tmpPluginData, { recursive: true }); } catch {}
+    try { rmSync(tmpPluginData, { recursive: true, force: true }); } catch {}
   });
 
   it("prints auto-onboard message when flag is absent", async () => {
@@ -53,5 +81,14 @@ describe("SessionStart auto-onboard (P5-0.5)", () => {
     const { exitCode, stdout } = await runHook(tmpPluginData);
     expect(exitCode).toBe(0);
     expect(stdout).not.toContain("auto-onboarded");
+  }, 30_000);
+
+  it("writes only under the temp HOME, never the real ~/.claude", async () => {
+    await runHook(tmpPluginData);
+    expect(existsSync(join(fakeHome, ".claude"))).toBe(true);
+    expect(Object.keys(readRegistry(REAL_REGISTRY))).not.toContain(projectCwd);
+    for (const key of Object.keys(readRegistry(REAL_REGISTRY))) {
+      expect(key.startsWith(testRoot)).toBe(false);
+    }
   }, 30_000);
 });
