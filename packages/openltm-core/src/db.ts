@@ -11,7 +11,7 @@ import { normalizeAnchorPaths } from "./anchors.js";
 import { getDb, DB_PATH, configure as configureDb } from "./shared-db.js";
 import { enqueueEmbedding } from "./queue/index.js";
 import { notifyLtm, notifyMemoryAdded } from "./events/index.js";
-import { scrubSecrets } from "./secretsScrubber.js";
+import { scrubOrRefuse } from "./secretsScrubber.js";
 import { insertProvenance, insertAudit, snapshotMemory, listProvenanceBatch } from "./dao/provenanceAudit.js";
 import type { ProvenanceSourceType } from "./dao/types.js";
 import type { LtmCoreConfig } from "./adapterTypes.js";
@@ -558,7 +558,7 @@ export function learn(input: LearnInput): LearnResult {
   const db = getDb();
 
   // Scrub secrets before any DB write or dedup check
-  const { scrubbed, redactions } = scrubSecrets(input.content);
+  const { scrubbed, redactions } = scrubOrRefuse(input.content);
   if (redactions.length > 0) {
     process.stderr.write(`[learn] Scrubbed ${redactions.length} secret(s): ${redactions.join(", ")}\n`);
   }

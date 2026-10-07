@@ -4,6 +4,7 @@
  */
 import { getDb } from "../shared-db.js";
 import { writeQueue } from "../lib/writeQueue.js";
+import { scrubOrRefuse } from "../secretsScrubber.js";
 import type { ContextItemRow, ContextItemType } from "./types.js";
 
 export function listByProject(project: string, type?: ContextItemType): ContextItemRow[] {
@@ -21,19 +22,21 @@ export function listByProject(project: string, type?: ContextItemType): ContextI
 }
 
 export function upsertGoal(project: string, content: string): void {
+  const { scrubbed } = scrubOrRefuse(content);
   writeQueue.enqueue(() => {
     const db = getDb();
     db.transaction(() => {
       db.run(`DELETE FROM context_items WHERE project_name=? AND type='goal'`, [project]);
       db.run(
         `INSERT INTO context_items (project_name, type, content, permanent) VALUES (?, 'goal', ?, 0)`,
-        [project, content]
+        [project, scrubbed]
       );
     })();
   });
 }
 
 export function appendProgress(project: string, content: string, sessionId?: string): void {
+  const { scrubbed } = scrubOrRefuse(content);
   writeQueue.enqueue(() => {
     const db = getDb();
     // Trim to 20 most recent progress entries
@@ -47,16 +50,17 @@ export function appendProgress(project: string, content: string, sessionId?: str
     }
     db.run(
       `INSERT INTO context_items (project_name, type, content, session_id, permanent) VALUES (?, 'progress', ?, ?, 0)`,
-      [project, content, sessionId ?? null]
+      [project, scrubbed, sessionId ?? null]
     );
   });
 }
 
 function insertPermanent(project: string, type: ContextItemType, content: string): void {
+  const { scrubbed } = scrubOrRefuse(content);
   writeQueue.enqueue(() => {
     getDb().run(
       `INSERT INTO context_items (project_name, type, content, permanent) VALUES (?, ?, ?, 1)`,
-      [project, type, content]
+      [project, type, scrubbed]
     );
   });
 }

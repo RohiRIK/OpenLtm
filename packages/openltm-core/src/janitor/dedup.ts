@@ -4,6 +4,7 @@
  * Two modes: automatic (high-confidence merges) and suggested (for review).
  */
 import { getDb, getSetting } from "../shared-db.js";
+import { scrubOrRefuse } from "../secretsScrubber.js";
 import {
   blobToVector,
   cosineSimilarity,
@@ -226,9 +227,13 @@ export function saveDedupCandidates(candidates: DedupCandidate[]): number {
     const verdict = c.verdict ? ` | ${c.verdict}` : "";
     const reasoning = c.reasoning ? `\nWhy: ${c.reasoning}` : "";
     const suggested = c.mergedContent ? `\nSuggested merge: ${c.mergedContent}` : "";
-    const mergedContent = c.mergedContent
+    const mergedContentRaw = c.mergedContent
       ? `[${pct}% similar${verdict}]${reasoning}${suggested}\n\nA: ${c.memoryA.content}\nB: ${c.memoryB.content}`
       : `[${pct}% similar — no LLM verdict]\nA: ${c.memoryA.content}\nB: ${c.memoryB.content}`;
+    const { scrubbed: mergedContent, redactions } = scrubOrRefuse(mergedContentRaw);
+    if (redactions.length > 0) {
+      process.stderr.write(`[dedup] Scrubbed ${redactions.length} secret(s) in candidate: ${redactions.join(", ")}\n`);
+    }
 
     db.run(
       `INSERT INTO memories (content, category, importance, confidence, source, project_scope, dedup_key, status)
@@ -253,10 +258,14 @@ export function mergeMemories(
   const db = getDb();
 
   db.transaction(() => {
-    // Optionally update the kept memory's content
+    // Optionally update the kept memory's content (scrub before write)
     if (mergedContent) {
+      const { scrubbed, redactions } = scrubOrRefuse(mergedContent);
+      if (redactions.length > 0) {
+        process.stderr.write(`[dedup] Scrubbed ${redactions.length} secret(s) on merge: ${redactions.join(", ")}\n`);
+      }
       db.run("UPDATE memories SET content = ? WHERE id = ?", [
-        mergedContent,
+        scrubbed,
         keepId,
       ]);
     }
