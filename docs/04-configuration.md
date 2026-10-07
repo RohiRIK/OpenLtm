@@ -22,7 +22,7 @@ Configure via `~/.claude/config.json`.
 |-----|---------|-------------|
 | `dbPath` | auto-resolved | Override db location (prefer `LTM_DB_PATH` env var) |
 | `decayEnabled` | `true` | Enable memory relevance decay over time |
-| `injectTopN` | `15` | Max memories injected at SessionStart (Claude hook). Also the default `maxMemories` for adapter prefill. |
+| `injectTopN` | `15` | Max memories in the SessionStart **compact index** (id + title/snippet). Full body via MCP `get`. Also default `maxMemories` for adapter prefill. |
 | `autoRelate` | `true` | Automatically link related memories |
 | `graphReasoning` | `false` | Enable graph-based reasoning during recall |
 | `evaluateSessionLlm` | `false` | Use LLM to evaluate sessions (costs tokens) |
