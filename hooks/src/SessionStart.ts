@@ -10,6 +10,7 @@ import { getContextMerge, getSimilarMemories, getContextMergeWithGraph, computeD
          embedText, getDb, listMemoryIdsMissingEmbedding, exportContextMarkdown,
          runPendingMigrations, getRecentConflicts, emitEvent } from "@rohirik/openltm-core";
 import { readConfigSync } from "../../src/config.js";
+import { applyInjectTopN } from "../lib/injectTopN.js";
 
 const TMP_DIR      = join(CLAUDE_DIR, "tmp");
 const COUNTER_FILE = join(TMP_DIR, "session-tool-count.txt");
@@ -27,24 +28,33 @@ function defaultName(cwd: string): string {
   return last.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
-async function buildLtmSection(project: string, sessionContext?: string): Promise<string> {
+async function buildLtmSection(
+  project: string,
+  sessionContext?: string,
+  injectTopN = 15,
+): Promise<string> {
   if (!existsSync(DB_PATH)) return "";
   try {
     let globals: Array<{ id: number; content: string }>;
     let scoped: Array<{ id: number; content: string; importance: number }>;
     let graphInsights: string | undefined;
 
+    const topN = typeof injectTopN === "number" && injectTopN > 0 ? Math.floor(injectTopN) : 15;
+    const globalFetch = Math.max(1, Math.ceil(topN / 3));
+
     const queryVec = sessionContext ? await embedText(sessionContext) : null;
     if (queryVec) {
       const db = getDb();
-      globals = getSimilarMemories(db, queryVec, { minImportance: 4, limit: 16 });
-      scoped  = getSimilarMemories(db, queryVec, { projectScope: project, minImportance: 2, limit: 15 });
-      process.stderr.write(`[SessionStart] Semantic LTM: ${globals.length} globals, ${scoped.length} scoped\n`);
+      globals = getSimilarMemories(db, queryVec, { minImportance: 4, limit: globalFetch });
+      scoped  = getSimilarMemories(db, queryVec, { projectScope: project, minImportance: 2, limit: topN });
+      process.stderr.write(`[SessionStart] Semantic LTM: ${globals.length} globals, ${scoped.length} scoped (injectTopN=${topN})\n`);
     } else {
       const merged = getContextMerge(project) as { globals: Array<{ id: number; content: string }>; scoped: Array<{ id: number; content: string; importance: number }> };
       globals = merged.globals;
       scoped  = merged.scoped;
     }
+
+    ({ globals, scoped } = applyInjectTopN(globals, scoped, topN));
 
     const cfg = readConfigSync();
     if (cfg?.ltm?.graphReasoning) {
@@ -208,9 +218,9 @@ async function main(): Promise<void> {
   let useDirective = true;
   try { const cfg = readConfigSync(); useDirective = cfg?.ltm?.autoRecall !== false; } catch (_) {} // silent: missing/malformed config falls back to default (autoRecall=true)
 
-  // Override injectTopN from project settings if set
+  // injectTopN caps how many LTM memories appear in the SessionStart block
   const injectTopN = readConfigSync().ltm?.injectTopN ?? 15;
-  const ltmSection = await buildLtmSection(name, sessionContext);
+  const ltmSection = await buildLtmSection(name, sessionContext, injectTopN);
   const directive = useDirective ? LTM_DIRECTIVE : "";
   const conflictSection = buildConflictSection(name);
   const backfillHint = buildBackfillHint();
