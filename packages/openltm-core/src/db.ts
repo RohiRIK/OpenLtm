@@ -868,6 +868,19 @@ export function relate(input: {
   );
 }
 
+/**
+ * Fetch a single active memory by id (for progressive MCP get-after-index).
+ * Returns null when missing or not active.
+ */
+export function getMemoryById(id: number): MemoryWithRelations | null {
+  const db = getDb();
+  const row = db.query<Memory, [number]>(
+    `SELECT * FROM memories WHERE id=? AND status='active'`
+  ).get(id);
+  if (!row) return null;
+  return enrichMemory(db, row);
+}
+
 export function forget(input: { id: number; reason?: string; skipExport?: boolean; actor?: string; sessionId?: string }): void {
   const db = getDb();
   const snap = snapshotMemory(db, input.id);
