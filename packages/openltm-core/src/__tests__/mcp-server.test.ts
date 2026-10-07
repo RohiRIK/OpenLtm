@@ -22,7 +22,7 @@ describe("mcp/server — buildMcpServer", () => {
     // public-ish _registeredTools record the SDK maintains.
     const tools = (server as unknown as { _registeredTools: Record<string, unknown> })._registeredTools;
     const names = Object.keys(tools);
-    for (const expected of ["recall", "learn", "relate", "forget", "revalidate", "admin_audit", "context", "graph", "context_items"]) {
+    for (const expected of ["recall", "get", "learn", "relate", "forget", "revalidate", "admin_audit", "context", "graph", "context_items"]) {
       expect(names).toContain(expected);
     }
   });

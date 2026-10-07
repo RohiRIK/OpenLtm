@@ -11,7 +11,7 @@
 import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { learn, recall, relate, forget, revalidate, getContextMerge, type Memory } from "../db.js";
+import { learn, recall, getMemoryById, relate, forget, revalidate, getContextMerge, type Memory } from "../db.js";
 import { getDb, waitForInit } from "../shared-db.js";
 import { queryAudit } from "../dao/provenanceAudit.js";
 import { getItems } from "../context.js";
@@ -99,6 +99,23 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
         ? scrubMemoryPayload(strip(results))
         : compact(strip(results) as unknown[]);
       return { content: [{ type: "text", text: JSON.stringify(payload) }] };
+    },
+  );
+
+
+  server.tool(
+    "get",
+    "Fetch one memory by id after recall (progressive fetch). Use when compact recall truncated content or you need the full body, tags, and metadata. Skip when recall verbose already returned enough.",
+    {
+      id: z.number().int().describe("Memory id from a prior recall / SessionStart index"),
+    },
+    async ({ id }) => {
+      const mem = getMemoryById(id);
+      if (!mem) {
+        return { content: [{ type: "text", text: JSON.stringify({ ok: false, error: "not_found", id }) }] };
+      }
+      const payload = scrubMemoryPayload(strip(mem));
+      return { content: [{ type: "text", text: JSON.stringify({ ok: true, memory: payload }) }] };
     },
   );
 

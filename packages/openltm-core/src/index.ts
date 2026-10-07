@@ -8,7 +8,7 @@ export { configureCore, configureDocs } from "./db.js";
 
 // Core memory operations
 export {
-  learn, recall, forget, relate, getSimilarMemories,
+  learn, recall, getMemoryById, forget, relate, getSimilarMemories,
   getContextMerge, getContextMergeWithGraph, computeDecayScore,
   exportMarkdown, exportGraphJson, flagStaleByPaths, revalidate,
 } from "./db.js";
