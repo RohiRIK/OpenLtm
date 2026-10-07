@@ -140,3 +140,7 @@ CHANGELOG.md          Version history
 - [Configuration](04-configuration.md) — knobs that control decay, injection, and embedding
 - [Hooks](06-hooks.md) — what fires when
 - [PRD](internal/PRD.md) — product vision and roadmap
+
+## Privacy tag
+
+Tag a memory `private` to keep it out of default recall and SessionStart. **private ≠ encrypted** — SQLite still stores plaintext; this is a visibility filter, not encryption.

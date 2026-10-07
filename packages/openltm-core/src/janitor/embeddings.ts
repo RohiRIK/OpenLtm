@@ -6,6 +6,7 @@
 import { getDb, getSetting } from "../shared-db.js";
 import { setEmbedding, getEmbedding, listMemoryIdsMissingEmbedding, listMemoryIdsNeedingEmbedding } from "../dao/embeddings.js";
 import { scrubForEgress } from "../secretsScrubber.js";
+import { hasPrivateTag } from "../privacy.js";
 import { llamaCppModel, LLAMACPP_DEFAULT_DIM } from "../providers/llamacpp.js";
 import { cohereEmbedding } from "./providers/cohere.js";
 import { geminiEmbedding } from "./providers/gemini.js";
@@ -112,10 +113,21 @@ export async function embedMissingMemories(
 
   if (rows.length === 0) return 0;
 
+  // Omit private-tagged memories from auto-embed (egress to provider)
+  const publicRows = rows.filter((r) => {
+    const tags = db.query<{ name: string }, [number]>(
+      `SELECT t.name FROM tags t
+       JOIN memory_tags mt ON mt.tag_id = t.id
+       WHERE mt.memory_id = ?`,
+    ).all(r.id).map((x) => x.name);
+    return !hasPrivateTag(tags);
+  });
+  if (publicRows.length === 0) return 0;
+
   let totalEmbedded = 0;
 
-  for (let i = 0; i < rows.length; i += batchSize) {
-    const batch = rows.slice(i, i + batchSize);
+  for (let i = 0; i < publicRows.length; i += batchSize) {
+    const batch = publicRows.slice(i, i + batchSize);
     const texts = batch.map((r) => scrubForEgress(r.content));
 
     const result = await provider.embed({ texts });

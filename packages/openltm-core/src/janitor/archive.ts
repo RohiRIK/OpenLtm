@@ -13,6 +13,7 @@
 import { getDb } from "../shared-db.js";
 import type { Memory } from "../db.js";
 import { insertAudit, snapshotMemory } from "../dao/provenanceAudit.js";
+import { hasPrivateTag } from "../privacy.js";
 
 const BATCH_SIZE = 100;
 
@@ -39,7 +40,18 @@ export function runArchive(): ArchiveResult {
 
   if (candidates.length === 0) return { archived: 0 };
 
-  const ids = candidates.map(m => m.id);
+  // Skip private-tagged memories (private ≠ archived/exported without opt-in)
+  const visible = candidates.filter((m) => {
+    const tags = db.query<{ name: string }, [number]>(
+      `SELECT t.name FROM tags t
+       JOIN memory_tags mt ON mt.tag_id = t.id
+       WHERE mt.memory_id = ?`,
+    ).all(m.id).map((r) => r.name);
+    return !hasPrivateTag(tags);
+  });
+  if (visible.length === 0) return { archived: 0 };
+
+  const ids = visible.map(m => m.id);
   const placeholders = ids.map(() => "?").join(",");
 
   const archive = db.transaction((mems: Memory[]) => {
@@ -62,5 +74,5 @@ export function runArchive(): ArchiveResult {
     return db.query<{ n: number }, []>("SELECT changes() AS n").get()!.n;
   });
 
-  return { archived: archive(candidates) };
+  return { archived: archive(visible) };
 }
