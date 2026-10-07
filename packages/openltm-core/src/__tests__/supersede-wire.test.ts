@@ -84,3 +84,32 @@ describe("supersede wire — single SoT", () => {
     expect(row.superseded_by).toBe(keep);
   });
 });
+
+describe("stageContradictions term scrub", () => {
+  it("known contradiction terms pass through unchanged", () => {
+    expect(core.sanitizeStagingTerm("npm vs bun")).toBe("npm vs bun");
+  });
+
+  it("plant-secret: caller-supplied term is scrubbed before staging", () => {
+    const AWS = "AKIAIOSFODNN7EXAMPLE";
+    const older = insertMem("secret term older body");
+    const newer = insertMem("secret term newer body");
+    core.stageContradictions([
+      { olderId: older, olderContent: "a", newerId: newer, newerContent: "b", term: `key ${AWS}` },
+    ]);
+    const row = db.query<{ term: string | null }, [number, number]>(
+      "SELECT term FROM memory_conflict_staging WHERE older_id=? AND newer_id=?",
+    ).get(older, newer)!;
+    expect(row.term ?? "").not.toContain(AWS);
+  });
+
+  it("scrub failure drops term (NULL) rather than storing raw", () => {
+    core._forceScrubThrowForTesting(true);
+    try {
+      expect(core.sanitizeStagingTerm("raw AKIAIOSFODNN7EXAMPLE")).toBeNull();
+    } finally {
+      core._forceScrubThrowForTesting(false);
+    }
+  });
+});
+

@@ -71,7 +71,7 @@ export {
   runArchive, touchMemory,
   approveMemory, getPendingMemories, rejectMemory,
   mergeMemories, parseDedupSource,
-  supersede, stageContradictions, listStagedConflicts, detectContradictions,
+  supersede, stageContradictions, listStagedConflicts, detectContradictions, sanitizeStagingTerm,
   getEmbeddingProvider, semanticSearch, findSimilarMemories,
 } from "./janitor/index.js";
 export type { Contradiction, StagedConflict } from "./janitor/index.js";

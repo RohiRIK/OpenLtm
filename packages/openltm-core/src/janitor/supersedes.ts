@@ -4,6 +4,7 @@
  * as 'superseded' and a directed relation is created.
  */
 import { getDb } from "../shared-db.js";
+import { scrubOrRefuse } from "../secretsScrubber.js";
 
 /**
  * Mark a memory as superseding another.
@@ -186,6 +187,23 @@ export function detectContradictions(
   return contradictions;
 }
 
+/** Fixed vocabulary of contradiction terms produced by detectContradictions. */
+const KNOWN_CONTRADICTION_TERMS = new Set(CONTRADICTION_PAIRS.map(([a, b]) => `${a} vs ${b}`));
+
+/**
+ * Normalise a staging term before it is persisted. Terms from the fixed
+ * CONTRADICTION_PAIRS list pass through; anything else (caller-supplied)
+ * goes through scrubOrRefuse so secrets can never land in staging. On scrub
+ * failure the term is dropped (NULL) rather than stored raw.
+ */
+export function sanitizeStagingTerm(term: string | null | undefined): string | null {
+  if (term == null) return null;
+  if (KNOWN_CONTRADICTION_TERMS.has(term)) return term;
+  const { scrubbed, redactions } = scrubOrRefuse(term);
+  if (redactions.includes("scrub-failed")) return null;
+  return scrubbed;
+}
+
 /**
  * Stage contradiction pairs for human review. Does NOT supersede or mutate
  * memory status — UX / explicit accept calls supersede().
@@ -203,7 +221,7 @@ export function stageContradictions(contradictions: Contradiction[]): number {
     const result = db.run(
       `INSERT OR IGNORE INTO memory_conflict_staging (older_id, newer_id, term, status)
        VALUES (?, ?, ?, 'pending')`,
-      [con.olderId, con.newerId, con.term],
+      [con.olderId, con.newerId, sanitizeStagingTerm(con.term)],
     );
     if (Number(result.changes) > 0) staged++;
   }
