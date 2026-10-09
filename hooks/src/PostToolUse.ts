@@ -15,8 +15,8 @@ import { join } from "path";
 import { tmpdir } from "os";
 import { spawnSync } from "child_process";
 import { readStdin, safeRun } from "../lib/hookUtils.js";
+import { commitRepoDir } from "../lib/commitCommand.js";
 
-const COMMIT_RE = /\bgit\s+commit\b/;
 /** HEAD must be this fresh to count as "the commit that command just made". */
 const MAX_COMMIT_AGE_MS = 10 * 60 * 1000;
 const LAST_COMMIT_FILE = join(tmpdir(), "ltm-posttooluse-last-commit");
@@ -42,8 +42,10 @@ async function main(): Promise<void> {
 
   if (input.tool_name !== undefined && input.tool_name !== "Bash") return;
   const command = String(input.tool_input?.command ?? "");
-  if (!COMMIT_RE.test(command) || toolFailed(input.tool_response)) return;
-  const cwd = typeof input.cwd === "string" ? input.cwd : "";
+  const sessionCwd = typeof input.cwd === "string" ? input.cwd : "";
+  if (!sessionCwd || toolFailed(input.tool_response)) return;
+  // `git -c k=v commit`, `git -C ../repo commit`, … — the repo is where the commit ran.
+  const cwd = commitRepoDir(command, sessionCwd);
   if (!cwd || !existsSync(cwd)) return;
 
   const { readConfigSync } = await import("../../src/config.js");
