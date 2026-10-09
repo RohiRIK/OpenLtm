@@ -1,0 +1,168 @@
+/**
+ * A realistic memory corpus plus labelled prompts for measuring UserPromptSubmit
+ * relevance (src/__tests__/hooks/prompt-recall-relevance.test.ts).
+ *
+ * Three projects and a set of global preferences, written the way `learn` calls
+ * actually phrase them. Each prompt names the memories it should surface (`want`)
+ * and the ones that are harmless if they show up (`ok`); any other hit is noise.
+ */
+export interface CorpusMemory { key: string; project: string | null; category: string; content: string }
+export interface LabelledPrompt { project: string; prompt: string; want: string[]; ok?: string[] }
+
+export const CORPUS: CorpusMemory[] = [
+  // ── openltm (this repo) ──
+  { key: "o1", project: "openltm", category: "gotcha", content: "Bun test runs every file in one process, so tests that set process.env.LTM_DB_PATH or call configure() must restore them in afterEach or later files read the wrong DB." },
+  { key: "o2", project: "openltm", category: "gotcha", content: "Hooks run with a stripped PATH; always launch them through hooks/bin/run-hook.sh, which locates bun." },
+  { key: "o3", project: "openltm", category: "constraint", content: "Version bump must touch package.json, plugin.json, marketplace.json (both fields), every packages/*/package.json and the README badge; bun run verify-version is the gate." },
+  { key: "o4", project: "openltm", category: "architecture", content: "SessionStart fires with source=compact after /compact; the injected-id set is reset so prompt recall can re-inject memories into the new context window." },
+  { key: "o5", project: "openltm", category: "gotcha", content: "FTS5 MATCH input must be quoted per token, otherwise words like NEAR or AND in a prompt become query operators and throw a syntax error." },
+  { key: "o6", project: "openltm", category: "architecture", content: "sqlite-vec is optional: when the extension fails to load, recall falls back to FTS-only and getCapabilities reports vec=false." },
+  { key: "o7", project: "openltm", category: "architecture", content: "Pi and OpenClaw adapters run on Node, so they cannot import bun:sqlite; they talk to the MCP server over stdio instead." },
+  { key: "o8", project: "openltm", category: "architecture", content: "The janitor takes a cross-process lock file next to the DB (<db>.janitor.lock); the graph server returns 409 when another process holds it." },
+  { key: "o9", project: "openltm", category: "gotcha", content: "Playwright tests for graph-app need PLAYWRIGHT_CHROMIUM pointing at /opt/pw-browsers/chromium in the sandbox; never run playwright install." },
+  { key: "o10", project: "openltm", category: "architecture", content: "The graph server rejects non-JSON mutating requests with 415 and any non-loopback Origin with 403 to block CSRF from browser pages." },
+  { key: "o11", project: "openltm", category: "architecture", content: "API keys are masked as •••• plus the last 4 chars in /api/settings; the server ignores masked values on PUT so saving the settings form keeps the stored key." },
+  { key: "o12", project: "openltm", category: "architecture", content: "Project identity resolves the registry name first, then the git repo root name, then the folder name, all lowercased and normalized." },
+  { key: "o13", project: "openltm", category: "architecture", content: "Publishing to npm is tokenless via OIDC trusted publishing; pushing a vX.Y.Z tag triggers the Release and Publish workflows." },
+  { key: "o14", project: "openltm", category: "constraint", content: "Migrations live in migrations/ and are numbered; never edit an applied migration, add a new one instead." },
+  { key: "o15", project: "openltm", category: "gotcha", content: "hooks/GitCommit.bundle.mjs is a build artifact of build:hooks and must be rebuilt whenever hooks/lib or core changes." },
+  { key: "o16", project: "openltm", category: "architecture", content: "Recall fuses FTS and semantic results with reciprocal rank fusion (k=60) rather than mixing raw scores." },
+  { key: "o17", project: "openltm", category: "architecture", content: "Private-tagged memories are excluded in the candidate SQL, not post-filtered, so the limit is never eaten by hidden rows." },
+  { key: "o18", project: "openltm", category: "gotcha", content: "Embedding provider timeouts must not block SessionStart; the hook falls back to the non-semantic ranking after 2 seconds." },
+  { key: "o19", project: "openltm", category: "gotcha", content: "The Stop hook fires after every assistant turn, not only at session end; heavy work belongs in SessionEnd." },
+  { key: "o20", project: "openltm", category: "architecture", content: "learn() near-duplicate detection uses Jaccard similarity but refuses to merge when polarity words differ (sync vs async, enable vs disable)." },
+  { key: "o21", project: "openltm", category: "architecture", content: "The OpenCode adapter runs on Bun and can import openltm-core directly." },
+  { key: "o22", project: "openltm", category: "gotcha", content: "Claude Code ignores mcpServers in settings.json; user-scope MCP servers belong in ~/.claude.json." },
+  { key: "o23", project: "openltm", category: "constraint", content: "Run bun run test, not bare bun test, so the suite runs under a temp HOME and cannot touch the real ~/.claude." },
+  { key: "o24", project: "openltm", category: "architecture", content: "PostToolUse detects git commit commands, including git -C dir commit and git -c key=val commit, to flag stale memories for the changed files." },
+  { key: "o25", project: "openltm", category: "pattern", content: "The Hermes plugin is Python and lives in a separate catalog; its pin is updated with bun run catalog:sync and a re-pin PR." },
+
+  // ── shop-web (Next.js storefront) ──
+  { key: "s1", project: "shop-web", category: "gotcha", content: "Next.js app router: server components cannot use useState; mark interactive components with 'use client'." },
+  { key: "s2", project: "shop-web", category: "constraint", content: "The checkout page must never cache cart totals; fetch them with cache: 'no-store'." },
+  { key: "s3", project: "shop-web", category: "gotcha", content: "Stripe webhooks need the raw request body for signature verification; disable bodyParser on that route." },
+  { key: "s4", project: "shop-web", category: "pattern", content: "Product images go through next/image with the CDN loader; remote patterns are listed in next.config.js." },
+  { key: "s5", project: "shop-web", category: "architecture", content: "We use Zustand for the cart store, not Redux: the store is tiny and needs persistence to localStorage." },
+  { key: "s6", project: "shop-web", category: "pattern", content: "Playwright e2e tests run against the preview deployment, not localhost, in CI." },
+  { key: "s7", project: "shop-web", category: "pattern", content: "Tailwind dark mode is class-based; the theme toggle sets the class on <html>." },
+  { key: "s8", project: "shop-web", category: "pattern", content: "The search page debounces input by 300ms before calling the Algolia API." },
+  { key: "s9", project: "shop-web", category: "gotcha", content: "Environment variables exposed to the browser must be prefixed NEXT_PUBLIC_, otherwise they are undefined on the client." },
+  { key: "s10", project: "shop-web", category: "gotcha", content: "Vercel preview builds fail if ESLint errors exist; fix lint before pushing." },
+  { key: "s11", project: "shop-web", category: "constraint", content: "Order confirmation emails are sent via Resend from a server action, never from the client." },
+  { key: "s12", project: "shop-web", category: "architecture", content: "Use React Query for product data fetching; stale time is 5 minutes." },
+  { key: "s13", project: "shop-web", category: "gotcha", content: "Hydration mismatch errors came from Date.now() rendered on the server; format dates only on the client." },
+  { key: "s14", project: "shop-web", category: "constraint", content: "The coupon field validates codes server-side; the client only shows the error message returned." },
+  { key: "s15", project: "shop-web", category: "pattern", content: "Jest unit tests mock next/navigation with a manual mock in __mocks__/next/navigation.ts." },
+
+  // ── billing-api (Python FastAPI) ──
+  { key: "b1", project: "billing-api", category: "gotcha", content: "Alembic migrations must be generated with --autogenerate and then reviewed; autogenerate misses server_default changes." },
+  { key: "b2", project: "billing-api", category: "constraint", content: "Invoices are immutable once finalized; corrections create a credit note instead of editing the invoice." },
+  { key: "b3", project: "billing-api", category: "constraint", content: "Use Decimal for money, never float; amounts are stored as integer cents in Postgres." },
+  { key: "b4", project: "billing-api", category: "pattern", content: "pytest fixtures for the DB wrap each test in a transaction that is rolled back; do not commit inside tests." },
+  { key: "b5", project: "billing-api", category: "pattern", content: "Celery workers retry Stripe API calls with exponential backoff, max 5 attempts." },
+  { key: "b6", project: "billing-api", category: "gotcha", content: "The FastAPI dependency get_db yields a session; forgetting to close it leaked connections under load." },
+  { key: "b7", project: "billing-api", category: "architecture", content: "Store all timestamps in UTC; convert to the customer's timezone only when rendering the invoice." },
+  { key: "b8", project: "billing-api", category: "preference", content: "Ruff replaces flake8 and isort; run ruff check --fix before committing." },
+  { key: "b9", project: "billing-api", category: "constraint", content: "The /webhooks/stripe endpoint must be idempotent; we store event ids and skip duplicates." },
+  { key: "b10", project: "billing-api", category: "architecture", content: "Rate limiting is done at the nginx ingress, not in the app." },
+  { key: "b11", project: "billing-api", category: "pattern", content: "Tax calculation delegates to the TaxJar API; rates are cached per postal code for 24h." },
+  { key: "b12", project: "billing-api", category: "constraint", content: "mypy runs in strict mode in CI; untyped defs fail the build." },
+  { key: "b13", project: "billing-api", category: "gotcha", content: "PDF invoices are rendered with WeasyPrint; fonts must be installed in the Docker image or text renders as boxes." },
+  { key: "b14", project: "billing-api", category: "architecture", content: "Subscription proration uses the day count of the billing period, not a fixed 30 days." },
+  { key: "b15", project: "billing-api", category: "gotcha", content: "Async SQLAlchemy sessions cannot lazy-load relationships; use selectinload." },
+
+  // ── global preferences ──
+  { key: "g1", project: null, category: "preference", content: "Prefer bun over npm for installing packages and running scripts." },
+  { key: "g2", project: null, category: "preference", content: "Write commit messages in imperative mood with a short subject line." },
+  { key: "g3", project: null, category: "constraint", content: "Never force-push to shared branches; use a merge commit to bring in main." },
+  { key: "g4", project: null, category: "preference", content: "Prefer small focused PRs over large ones." },
+  { key: "g5", project: null, category: "preference", content: "Use TypeScript strict mode in new projects." },
+  { key: "g6", project: null, category: "preference", content: "When a test is flaky, find the root cause instead of adding retries." },
+  { key: "g7", project: null, category: "preference", content: "Avoid adding new dependencies for things the standard library already does." },
+  { key: "g8", project: null, category: "preference", content: "Explain trade-offs briefly before large refactors." },
+  { key: "g9", project: null, category: "pattern", content: "Docker images should use multi-stage builds to keep the runtime image small." },
+  { key: "g10", project: null, category: "constraint", content: "Keep secrets out of logs; redact tokens and API keys before logging." },
+];
+
+export const PROMPTS: LabelledPrompt[] = [
+  // openltm
+  { project: "openltm", prompt: "the playwright tests for the graph app fail to launch chromium", want: ["o9"] },
+  { project: "openltm", prompt: "why does my hook say bun: command not found when it runs?", want: ["o2"] },
+  { project: "openltm", prompt: "bump the version to 2.18.0 for the release", want: ["o3"], ok: ["o13"] },
+  { project: "openltm", prompt: "add a new migration for an index on the tags table", want: ["o14"] },
+  { project: "openltm", prompt: "after compact the prompt recall stops injecting memories", want: ["o4"] },
+  { project: "openltm", prompt: "the recall query throws an fts5 syntax error near AND", want: ["o5"] },
+  { project: "openltm", prompt: "make the pi adapter use bun:sqlite directly", want: ["o7"], ok: ["o21"] },
+  { project: "openltm", prompt: "tests pass alone but fail when running the whole suite", want: ["o1"], ok: ["o23", "g6"] },
+  { project: "openltm", prompt: "the janitor runs twice when I start the graph server", want: ["o8"], ok: ["o10"] },
+  { project: "openltm", prompt: "commits made with git -C are not flagging stale memories", want: ["o24"] },
+  { project: "openltm", prompt: "the graph server returns 403 when I open the UI from my LAN IP", want: ["o10"], ok: ["o8"] },
+  { project: "openltm", prompt: "add an option to skip the stop hook summary", want: ["o19"] },
+  { project: "openltm", prompt: "learn merged two memories that say opposite things", want: ["o20"] },
+  { project: "openltm", prompt: "the MCP server doesn't show up after the bunx install", want: ["o22"] },
+  { project: "openltm", prompt: "session start is slow when the embedding provider is down", want: ["o18"] },
+  { project: "openltm", prompt: "refactor the settings form so it looks nicer", want: [], ok: ["o11"] },
+  { project: "openltm", prompt: "fix the failing test", want: [], ok: ["o1", "o23", "g6"] },
+  { project: "openltm", prompt: "write a function that parses semver strings", want: [] },
+  { project: "openltm", prompt: "explain how the code is organized", want: [] },
+  { project: "openltm", prompt: "update the readme with the new install steps", want: [], ok: ["o3"] },
+  { project: "openltm", prompt: "ok thanks, looks good to me", want: [] },
+  { project: "openltm", prompt: "let's continue with the next item on the list", want: [] },
+  { project: "openltm", prompt: "rename the variable in this file to camelCase", want: [] },
+  { project: "openltm", prompt: "add a test for the new function and run it", want: [], ok: ["o1", "o23"] },
+  { project: "openltm", prompt: "check the logs and tell me what failed", want: [], ok: ["g10"] },
+
+  // shop-web
+  { project: "shop-web", prompt: "stripe webhook signature verification fails in the api route", want: ["s3"] },
+  { project: "shop-web", prompt: "the cart total is stale after adding an item", want: ["s2"], ok: ["s5"] },
+  { project: "shop-web", prompt: "hydration error on the product page", want: ["s13"], ok: ["s4", "s12"] },
+  { project: "shop-web", prompt: "my env var is undefined in the browser", want: ["s9"] },
+  { project: "shop-web", prompt: "add a dark mode toggle to the header", want: ["s7"] },
+  { project: "shop-web", prompt: "the vercel build fails on the PR", want: ["s10"], ok: ["g4"] },
+  { project: "shop-web", prompt: "write unit tests for the coupon component", want: ["s14"], ok: ["s15", "s1"] },
+  { project: "shop-web", prompt: "make the search input feel faster", want: ["s8"] },
+  { project: "shop-web", prompt: "add a new page for the about us content", want: [], ok: ["s1"] },
+  { project: "shop-web", prompt: "should we use redux for the wishlist?", want: ["s5"] },
+  { project: "shop-web", prompt: "please fix the bug on this page", want: [] },
+  { project: "shop-web", prompt: "show images on the product cards", want: ["s4"] },
+
+  // billing-api
+  { project: "billing-api", prompt: "the invoice PDF shows boxes instead of text", want: ["b13"] },
+  { project: "billing-api", prompt: "store the refund amount as a float field", want: ["b3"] },
+  { project: "billing-api", prompt: "edit the finalized invoice to fix the customer address", want: ["b2"] },
+  { project: "billing-api", prompt: "lazy load error on subscription.items in an async route", want: ["b15"] },
+  { project: "billing-api", prompt: "proration is off by a day for february", want: ["b14"] },
+  { project: "billing-api", prompt: "we're getting duplicate stripe webhook events", want: ["b9"], ok: ["b5"] },
+  { project: "billing-api", prompt: "add rate limiting to the login endpoint", want: ["b10"] },
+  { project: "billing-api", prompt: "CI fails with mypy errors on the new module", want: ["b12"] },
+  { project: "billing-api", prompt: "database connections are exhausted under load", want: ["b6"] },
+  { project: "billing-api", prompt: "write a migration adding a default value to status", want: ["b1"] },
+  { project: "billing-api", prompt: "show invoice dates in the customer's local time", want: ["b7"] },
+  { project: "billing-api", prompt: "the test leaves rows in the database after it runs", want: ["b4"] },
+  { project: "billing-api", prompt: "add a docstring to this function", want: [] },
+
+  // a project with no memories of its own — only global ones can surface
+  { project: "notes-app", prompt: "set up docker for this project", want: ["g9"] },
+  { project: "notes-app", prompt: "how should I write this commit message?", want: ["g2"] },
+  { project: "notes-app", prompt: "add lodash just to do the deep clone", want: [], ok: ["g7"] },
+  { project: "notes-app", prompt: "what does this regex match exactly?", want: [] },
+
+  // Held out: written after the thresholds were tuned on the prompts above.
+  { project: "openltm", prompt: "where should the MCP server config go for claude code users", want: ["o22"], ok: ["o7"] },
+  { project: "openltm", prompt: "the release workflow didn't publish to npm after I pushed the tag", want: ["o13"] },
+  { project: "openltm", prompt: "the graph server answers 415 to my fetch call", want: ["o10"], ok: ["o8"] },
+  { project: "openltm", prompt: "recall returns private memories in the results", want: ["o17"], ok: ["o16"] },
+  { project: "openltm", prompt: "semantic search is disabled because the vec extension is missing", want: ["o6"] },
+  { project: "openltm", prompt: "rebuild the git commit hook bundle", want: ["o15"], ok: ["o24"] },
+  { project: "openltm", prompt: "can you summarize what we did today", want: [] },
+  { project: "shop-web", prompt: "send the order confirmation email from the client component", want: ["s11"], ok: ["s1"] },
+  { project: "shop-web", prompt: "use useState inside the product grid server component", want: ["s1"], ok: ["s4", "s12"] },
+  { project: "shop-web", prompt: "the e2e tests hit localhost in CI", want: ["s6"] },
+  { project: "billing-api", prompt: "the celery task keeps retrying the stripe charge", want: ["b5"], ok: ["b9"] },
+  { project: "billing-api", prompt: "add flake8 to the pre-commit hooks", want: ["b8"] },
+  { project: "billing-api", prompt: "cache the tax rates per zip code", want: ["b11"] },
+  { project: "billing-api", prompt: "timestamps are stored in local time in the invoices table", want: ["b7"], ok: ["b2", "b13"] },
+  { project: "notes-app", prompt: "log the user's api token for debugging", want: ["g10"] },
+  { project: "notes-app", prompt: "should I force push to main to fix the history", want: ["g3"] },
+  { project: "notes-app", prompt: "make this one giant PR with everything in it", want: ["g4"] },
+];
