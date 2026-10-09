@@ -78,4 +78,22 @@ describe("learn near-dedup #16", () => {
     expect(b.action).toBe("created");
     expect(b.id).not.toBe(a.id);
   });
+
+  // Each pair differs by a marker, number, or polarity word that tokenize()
+  // drops or that Jaccard scores as a near-match — the second fact must survive.
+  for (const [first, second] of [
+    ["For the cache layer we chose plan A over the others", "For the cache layer we chose plan B over the others"],
+    ["Set the retry count to 3 for the outbound webhook sender", "Set the retry count to 5 for the outbound webhook sender"],
+    ["Do not run the janitor dedup pass against the production memory database during business hours",
+     "Do run the janitor dedup pass against the production memory database during business hours"],
+    ["Always enable the write queue for hook writers that share the sqlite database with the MCP server process today",
+     "Never enable the write queue for hook writers that share the sqlite database with the MCP server process today"],
+  ]) {
+    it(`keeps meaningfully different facts apart: "${second.slice(0, 40)}…"`, () => {
+      const a = core.learn({ content: first, category: "pattern", skipExport: true });
+      const b = core.learn({ content: second, category: "pattern", skipExport: true });
+      expect(b.action).toBe("created");
+      expect(b.id).not.toBe(a.id);
+    });
+  }
 });

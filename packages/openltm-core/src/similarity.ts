@@ -45,6 +45,48 @@ function isShortMarker(token: string): boolean {
 }
 
 /**
+ * Words that flip or bound a statement. Two memories that differ by one of
+ * these say different things ("do not run X" vs "do run X"), even though
+ * tokenize() drops "not"/"no" as stopwords and the rest of the text matches.
+ */
+const POLARITY_WORDS = new Set([
+  "not", "no", "never", "always", "dont", "cannot", "cant", "wont", "without",
+  "avoid", "allow", "deny", "forbid", "enable", "enabled", "disable", "disabled",
+  "true", "false", "must", "should", "only", "required", "optional", "deprecated",
+  "before", "after", "increase", "decrease", "more", "less", "min", "max",
+]);
+
+/** A marker-like token: short (counter/suffix/letter) or containing a digit. */
+function isMarker(token: string): boolean {
+  return isShortMarker(token) || /\d/.test(token);
+}
+
+/**
+ * differsMeaningfully — true when two texts say different things even though
+ * their content tokens largely match. Compared on the unfiltered token lists,
+ * because tokenize() drops exactly these differences (short tokens, "not"/"no").
+ *
+ * Distinct when:
+ *  - either side has a polarity word the other lacks ("do not run" vs "do run");
+ *  - both sides have their own marker — a substitution ("plan A" vs "plan B",
+ *    "retry 3" vs "retry 5");
+ *  - the whole difference is short markers (the original "…-A" vs "…-B" rule).
+ * An elaboration that only adds detail on one side ("… at 100 per 6 hours")
+ * is not distinct.
+ */
+export function differsMeaningfully(a: string, b: string): boolean {
+  const allA = new Set(tokenizeAll(a));
+  const allB = new Set(tokenizeAll(b));
+  const onlyA = [...allA].filter((t) => !allB.has(t));
+  const onlyB = [...allB].filter((t) => !allA.has(t));
+  const differing = [...onlyA, ...onlyB];
+  if (differing.length === 0) return false;
+  if (differing.some((t) => POLARITY_WORDS.has(t))) return true;
+  if (onlyA.some(isMarker) && onlyB.some(isMarker)) return true;
+  return differing.every(isShortMarker);
+}
+
+/**
  * isNearDuplicate — true when two contents describe the same knowledge.
  *
  * Deliberately conservative, because this feeds the learn() path where a false
@@ -60,18 +102,8 @@ export function isNearDuplicate(a: string, b: string): boolean {
   const tb = new Set(tokenize(b));
   if (ta.size < 3 || tb.size < 3) return false;
 
-  // Symmetric difference is computed on the *unfiltered* token list, because
-  // stopword/short-token filtering would hide exactly the "…-A" vs "…-B"
-  // difference this guard exists to protect.
-  const allA = new Set(tokenizeAll(a));
-  const allB = new Set(tokenizeAll(b));
-  const differing = [
-    ...[...allA].filter((t) => !allB.has(t)),
-    ...[...allB].filter((t) => !allA.has(t)),
-  ];
-
-  // Differing only by short markers (counter/suffix) → intentionally distinct.
-  if (differing.length > 0 && differing.every(isShortMarker)) return false;
+  // Differing by a marker, number, or polarity word → intentionally distinct.
+  if (differsMeaningfully(a, b)) return false;
 
   const [smaller, larger] = ta.size <= tb.size ? [ta, tb] : [tb, ta];
   let contained = 0;

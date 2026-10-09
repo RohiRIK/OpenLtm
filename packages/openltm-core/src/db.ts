@@ -6,7 +6,7 @@ import type { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import { normalizeKey } from "./dedup.js";
-import { isNearDuplicate, jaccardSimilarity } from "./similarity.js";
+import { differsMeaningfully, isNearDuplicate, jaccardSimilarity } from "./similarity.js";
 import { filterPrivateMemories } from "./privacy.js";
 import { normalizeAnchorPaths } from "./anchors.js";
 import { getDb, DB_PATH, configure as configureDb } from "./shared-db.js";
@@ -236,7 +236,9 @@ function findNearDuplicate(
   for (const row of candidates) {
     const score = jaccardSimilarity(row.content, content);
     if (score < JACCARD_AMBIGUOUS) continue;
-    const reinforce = score >= JACCARD_REINFORCE;
+    // A strong score is not enough when the difference is a marker, number, or
+    // polarity word ("plan A" vs "plan B") — record it as ambiguous instead.
+    const reinforce = score >= JACCARD_REINFORCE && !differsMeaningfully(row.content, content);
     const hit: NearDupHit = { memory: row, matched_by: "jaccard", score, reinforce };
     if (!best || score > best.score) best = hit;
   }
