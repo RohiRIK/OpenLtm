@@ -47,7 +47,7 @@ SessionStart never runs `git` and never edits Claude Code's own config.
 
 ### UserPromptSubmit
 
-Recalls memories relevant to each prompt with full-text search only — no embeddings, no DB writes, about 50ms. It searches active memories that are global or belong to the current project and are not flagged stale, and prints `LTM (relevant to this prompt):` followed by up to `ltm.promptRecallLimit` (default 5) lines of `- [id] (category) content`, each cut to 200 characters. A memory is never injected twice in a session, including ones SessionStart already injected. It prints nothing when there is no match, for slash commands, for prompts under 15 characters, or when `ltm.autoRecall` or `ltm.promptRecall` is `false`.
+Recalls memories relevant to each prompt with full-text search only — no embeddings, no DB writes, about 50ms. It searches active memories that are global or belong to the current project and are not flagged stale, and prints `LTM (relevant to this prompt):` followed by up to `ltm.promptRecallLimit` (default 5) lines of `- [id] (category) content`, each cut to 200 characters. A memory is never injected twice in a session. Memories SessionStart only listed in its index (id + title) can still be injected with their content. It prints nothing when there is no match, for slash commands, for prompts under 15 characters, or when `ltm.autoRecall` or `ltm.promptRecall` is `false`.
 
 ### PostToolUse
 

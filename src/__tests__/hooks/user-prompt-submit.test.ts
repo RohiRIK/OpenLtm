@@ -104,10 +104,19 @@ describe("UserPromptSubmit hook (subprocess)", () => {
     expect(otherSession.stdout).toContain(`[${ids.global}]`);
   }, 30_000);
 
-  it("treats IDs SessionStart already injected as seen", async () => {
+  it("honours ids already in the session's dedupe state", async () => {
     writeFileSync(join(sb.tmp, "ltm-prompt-recall-s-seeded.json"), JSON.stringify({ ids: [ids.global] }));
     const { stdout } = await run({ prompt: PROMPT, session_id: "s-seeded" });
     expect(stdout).not.toContain(`[${ids.global}]`);
+  }, 30_000);
+
+  // Found in a live Claude Code run: SessionStart's index shows only a title, so
+  // treating its ids as "already injected" meant the model never got the body.
+  it("still injects a memory that SessionStart only listed in its index", async () => {
+    const start = await runHook("SessionStart.ts", { cwd, session_id: "s-index", source: "startup" }, sb);
+    expect(start.stdout).toContain(`[${ids.global}]`);
+    const { stdout } = await run({ prompt: PROMPT, session_id: "s-index" });
+    expect(stdout).toContain(`[${ids.global}]`);
   }, 30_000);
 
   it("prints nothing for slash commands, short prompts, or no matches", async () => {

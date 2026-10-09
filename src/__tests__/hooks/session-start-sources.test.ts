@@ -155,13 +155,16 @@ describe("SessionStart — injection", () => {
     expect(bullets.length).toBe(2);
   }, 30_000);
 
-  it("seeds the prompt-recall dedupe state with injected memory IDs", async () => {
+  it("resets prompt-recall dedupe on a new context window but does not mark index ids as injected", async () => {
     markOnboarded(sb);
     initSandboxDb(sb);
     const id = seedMemory(sb, { content: "Global gotcha: hooks run with a stripped PATH", importance: 4, category: "gotcha" });
+    const statePath = join(sb.tmp, "ltm-prompt-recall-sess-abc.json");
+    writeFileSync(statePath, JSON.stringify({ ids: [999] }));
 
-    await runHook("SessionStart.ts", { cwd, source: "startup", session_id: "sess-abc" }, sb);
-    const state = JSON.parse(readFileSync(join(sb.tmp, "ltm-prompt-recall-sess-abc.json"), "utf-8"));
-    expect(state.ids).toContain(id);
+    const out = await runHook("SessionStart.ts", { cwd, source: "startup", session_id: "sess-abc" }, sb);
+    expect(out.stdout).toContain(`[${id}]`); // listed in the index…
+    const state = JSON.parse(readFileSync(statePath, "utf-8"));
+    expect(state.ids).toEqual([]); // …but not "injected": prompt recall may still bring its body in
   }, 30_000);
 });
