@@ -84,6 +84,23 @@ describe("recall / contextMerge omit private by default", () => {
     const allIds = [...merged.globals, ...merged.scoped].map((m) => m.id);
     expect(allIds).not.toContain(priv.id);
   });
+
+  it("hidden private memories neither take result slots nor get recall bumps", async () => {
+    const privIds = [1, 2, 3].map((n) => core.learn({
+      content: `quokka ledger private entry number ${"abc"[n - 1]} for reconciliation`,
+      category: "workflow", importance: 5, tags: ["private"], skipExport: true,
+    }).id);
+    const pubIds = [1, 2].map((n) => core.learn({
+      content: `quokka ledger public entry ${"xy"[n - 1]} about reconciliation exports`,
+      category: "workflow", importance: 2, skipExport: true,
+    }).id);
+    const recallCount = (id: number) => (core.getDb().query("SELECT recall_count FROM memories WHERE id = ?").get(id) as { recall_count: number }).recall_count;
+    const before = privIds.map(recallCount);
+
+    const hits = await core.recall({ query: "quokka ledger reconciliation", limit: 2 });
+    expect(hits.map((m) => m.id).sort()).toEqual([...pubIds].sort()); // the limit is filled by visible memories
+    expect(privIds.map(recallCount)).toEqual(before);
+  });
 });
 
 describe("exportMarkdown omits private", () => {
