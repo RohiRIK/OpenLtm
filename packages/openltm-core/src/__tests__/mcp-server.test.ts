@@ -426,3 +426,14 @@ describe("mcp/server — graph traversal skips private memories", () => {
     expect(text).toContain("manual approval");
   });
 });
+
+describe("mcp/server — context_add keeps permanent items unique", () => {
+  it("adding the same decision twice stores it once", async () => {
+    const client = await connect();
+    for (let i = 0; i < 2; i++) {
+      json(await call(client, "context_add", { type: "decision", content: "Use WAL mode for the ledger DB", project: "uniq-proj" }));
+    }
+    const items = json<Array<{ content: string }>>(await call(client, "context_items", { project: "uniq-proj", type: "decision" }));
+    expect(items.filter((i) => i.content === "Use WAL mode for the ledger DB").length).toBe(1);
+  });
+});

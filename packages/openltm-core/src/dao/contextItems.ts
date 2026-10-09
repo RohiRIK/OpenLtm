@@ -83,12 +83,15 @@ export function appendProgress(project: string, content: string, sessionId?: str
   });
 }
 
+/** Permanent items are kept forever, so an identical one is never added twice. */
 function insertPermanent(project: string, type: ContextItemType, content: string): void {
   const { scrubbed } = scrubOrRefuse(content);
   writeQueue.enqueue(() => {
     getDb().run(
-      `INSERT INTO context_items (project_name, type, content, permanent) VALUES (?, ?, ?, 1)`,
-      [project, type, scrubbed]
+      `INSERT INTO context_items (project_name, type, content, permanent)
+       SELECT ?, ?, ?, 1
+        WHERE NOT EXISTS (SELECT 1 FROM context_items WHERE project_name=? AND type=? AND content=?)`,
+      [project, type, scrubbed, project, type, scrubbed]
     );
   });
 }
