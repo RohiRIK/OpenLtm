@@ -26,7 +26,7 @@
     "postinstall": "bun run scripts/update-wiring.ts",
     "check:openclaw": "bun run scripts/check-openclaw-manifest.ts",
     "check:published": "bun run scripts/check-published-versions.ts",
-    "qa:smoke": "bun run scripts/qa/mcp-smoke.ts && bun run scripts/qa/hooks-smoke.ts && bun run scripts/qa/semantic-smoke.ts && bun run scripts/qa/server-smoke.ts"
+    "qa:smoke": "bun run scripts/qa/mcp-smoke.ts && bun run scripts/qa/hooks-smoke.ts && bun run scripts/qa/semantic-smoke.ts && bun run scripts/qa/adapters-smoke.ts && bun run scripts/qa/server-smoke.ts"
   },
   "dependencies": {
     "@clack/prompts": "^1.3.0",
