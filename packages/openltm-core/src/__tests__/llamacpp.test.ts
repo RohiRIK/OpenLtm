@@ -120,6 +120,14 @@ describe("provider defaults (local-first)", () => {
 
 describe("janitor llamacpp adapter — vector alignment", () => {
   const prevFetch = globalThis.fetch;
+  // The adapter reads its URL setting from the shared DB; own one, so the test
+  // doesn't depend on (or trip over) a handle another test file closed.
+  beforeEach(async () => {
+    const { _setDbForTesting } = await import("../shared-db.js");
+    const db = new Database(":memory:");
+    db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+    _setDbForTesting(db);
+  });
   afterEach(() => {
     globalThis.fetch = prevFetch;
     resetLlamaCppProbeForTesting();

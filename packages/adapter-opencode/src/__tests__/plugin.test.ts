@@ -4,13 +4,15 @@ import { join } from "path";
 import { Database } from "bun:sqlite";
 
 const dbPath = `/tmp/test-opencode-ltm-${process.pid}-${Date.now()}.db`;
-// One DB for the injected handle and for core's DB_PATH (the project-name probe
-// opens DB_PATH), as in production. Set before core is first imported.
-process.env["LTM_DB_PATH"] = dbPath;
+let prevDbPath = "";
 const SCHEMA_PATH = join(import.meta.dir, "..", "..", "..", "openltm-core", "src", "schema.sql");
 
 beforeAll(async () => {
-  const { runPendingMigrations, _setDbForTesting } = await import("@rohirik/openltm-core");
+  const { runPendingMigrations, _setDbForTesting, configure, getConfiguredDbPath } = await import("@rohirik/openltm-core");
+  // One DB for the injected handle and for core's DB_PATH (the project-name probe
+  // opens DB_PATH), as in production — without leaking env into other test files.
+  prevDbPath = getConfiguredDbPath();
+  configure({ dbPath });
   const db = new Database(dbPath, { create: true });
   db.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
   db.exec(readFileSync(SCHEMA_PATH, "utf-8"));
@@ -18,7 +20,9 @@ beforeAll(async () => {
   _setDbForTesting(db);
 }, 30_000);
 
-afterAll(() => {
+afterAll(async () => {
+  const { configure } = await import("@rohirik/openltm-core");
+  if (prevDbPath) configure({ dbPath: prevDbPath });
   try { unlinkSync(dbPath); } catch {}
   try { unlinkSync(`${dbPath}-shm`); } catch {}
   try { unlinkSync(`${dbPath}-wal`); } catch {}

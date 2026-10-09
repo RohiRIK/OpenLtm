@@ -83,12 +83,17 @@ describe("runJanitorExclusive — every in-process janitor path takes the file l
     try {
       const core = await import("../../index.js");
       const dbPath = join(dir, "ltm.db");
+      const prevDbPath = core.getConfiguredDbPath();
       core.configure({ dbPath });
+      try {
       // Stand-in for another process (graph-server, the CLI, the SessionEnd trigger).
       writeFileSync(janitorLockPath(dbPath), JSON.stringify({ pid: process.pid, host: hostname(), startedAt: new Date().toISOString() }));
       expect(await core.runJanitorExclusive()).toBeNull();
       expect(core.getJanitorStatus().running).toBe(false);
       expect(existsSync(janitorLockPath(dbPath))).toBe(true); // someone else's lock is left alone
+      } finally {
+        core.configure({ dbPath: prevDbPath });
+      }
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
