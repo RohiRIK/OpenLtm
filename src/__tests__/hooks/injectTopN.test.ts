@@ -1,10 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { readFileSync } from "fs";
-import { join } from "path";
 import { applyInjectTopN } from "../../../hooks/lib/injectTopN.js";
 
-const PROJECT_ROOT = join(import.meta.dir, "..", "..", "..");
-const SESSION_START = join(PROJECT_ROOT, "hooks", "src", "SessionStart.ts");
 
 function ids(n: number): Array<{ id: number }> {
   return Array.from({ length: n }, (_, i) => ({ id: i + 1 }));
@@ -41,14 +37,4 @@ describe("applyInjectTopN", () => {
   });
 });
 
-describe("SessionStart wiring", () => {
-  it("passes injectTopN into buildLtmSection (not a dead local)", () => {
-    const src = readFileSync(SESSION_START, "utf-8");
-    expect(src).toContain("buildLtmSection(name, sessionContext, injectTopN");
-    expect(src).toContain("applyInjectTopN(globals, scoped, topN)");
-    expect(src).toContain('from "../lib/injectTopN.js"');
-    expect(src).not.toMatch(
-      /const injectTopN = readConfigSync\(\)\.ltm\?\.injectTopN \?\? 15;\s*\n\s*const ltmSection = await buildLtmSection\(name, sessionContext\);/,
-    );
-  });
-});
+// SessionStart's use of injectTopN is asserted on real hook output in sessionstart-compact.test.ts.

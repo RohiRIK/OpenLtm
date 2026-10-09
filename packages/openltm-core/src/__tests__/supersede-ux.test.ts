@@ -64,10 +64,5 @@ describe("supersede UX resolve", () => {
     expect(row.status).toBe("active");
   });
 
-  it("SessionStart banner source lists staged conflicts", () => {
-    const src = readFileSync(join(import.meta.dir, "../../../../hooks/src/SessionStart.ts"), "utf-8");
-    expect(src).toContain("listStagedConflicts");
-    expect(src).toContain("Pending review");
-    expect(src).toContain("scrubForEgress(s.term)");
-  });
+  // The SessionStart banner is asserted on real hook output in src/__tests__/hooks/sessionstart-compact.test.ts.
 });
