@@ -35,6 +35,8 @@ const WATCHED = [
 
 type Snapshot = Map<string, string>;
 
+const SESSION_DIR_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function walk(path: string, out: Snapshot): void {
   let st;
   try { st = statSync(path); } catch { return; }
@@ -46,6 +48,8 @@ function walk(path: string, out: Snapshot): void {
       // Claude Code session transcripts live in projects/<slug>/*.jsonl — written by
       // live sessions, never by OpenLTM tests. Skip to avoid false drift.
       if (name.endsWith(".jsonl")) continue;
+      // …and per-session state dirs projects/<slug>/<session-uuid>/ (e.g. ccr-tip.json).
+      if (SESSION_DIR_RE.test(name)) continue;
       walk(join(path, name), out);
     }
   } else {
