@@ -1,6 +1,6 @@
 # Commands Reference
 
-All commands are available as `/openltm:<command>` after installing the plugin. Four commands cover everything — memory, project context, health, and admin.
+All commands are available as `/openltm:<command>` after installing the plugin. Five commands cover day-to-day use — memory, project context, health, admin, and the graph server — plus `/openltm:onboard` (first-time setup wizard) and `/openltm:analyze-context` (an alias for `/openltm:project analyze`).
 
 If no subcommand is given, the command prints its own usage.
 
@@ -10,17 +10,17 @@ If no subcommand is given, the command prints its own usage.
 
 | Subcommand | What it does |
 |------------|-------------|
-| `recall [query]` | Search memories — FTS5 + semantic fallback. FTS5 supports `AND`, `OR`, `NOT`, phrase matching (`"bun sqlite"`). |
+| `recall [query]` | Search memories — full-text plus semantic search when an embedding provider is configured. Write the query as natural language; each word is matched separately. |
 | `learn [insight]` | Store a memory. With no args, Claude reviews the session and extracts patterns automatically. |
 | `forget <id>` | Delete a memory by ID. Cascades to relations. |
 | `relate <src> <tgt> <type>` | Link two memories. Types: `supports | contradicts | refines | depends_on | related_to | supersedes` |
-| `propose` | Review pending memory proposals from `EvaluateSession`. Subcommands: `list`, `review`, `accept`, `reject` |
+| `propose` | Review memories the SessionEnd hook proposed (never auto-written). Subcommands: `list`, `review`, `accept <session-id> <index>`, `reject <session-id> <index>` — backed by the `proposals` MCP tool. For a full curation pass (proposals + stale + duplicates) ask for a memory review — the `MemoryReview` skill. |
 
 ### Flags for `learn`
 
 - `--category <cat>` — one of `preference | architecture | gotcha | pattern | workflow | constraint`
 - `--importance <1-5>` — `5` = inject every session, `1` = recall only
-- `--save-context` — also write to `context_items` so it appears at every future session start for this project
+- `--save-context` — also record it as a project context item (`context_add`) so it appears at every future session start for this project
 
 ### Examples
 
@@ -53,7 +53,7 @@ If no subcommand is given, the command prints its own usage.
 /openltm:project register my-app
 ```
 
-`init` asks for the current goal, stores it in the DB, and injects it at every session start. `analyze` is what you run before a non-trivial task to load context.
+`init` asks for the current goal, stores it with `context_add` (replacing any previous goal), and injects it at every session start. `analyze` is what you run before a non-trivial task to load context.
 
 ---
 
@@ -89,7 +89,6 @@ Score breakdown when the graph server is running:
 |------------|-------------|
 | `migrate [status\|up\|down\|reset\|--legacy]` | Schema migration control + legacy DB detection. `reset` requires confirmation. |
 | `scan [--project X] [--dry-run]` | Scan memories for leaked secrets, redact in-place. `--dry-run` is safe. |
-| `server [start\|stop\|status]` | Start/stop the graph visualization server (port 7332). |
 | `audit [--memory-id N] [--op <op>] [--session <id>] [--since <iso>] [--limit N]` | Query the memory write audit log. |
 
 ### Examples
@@ -97,11 +96,32 @@ Score breakdown when the graph server is running:
 ```
 /openltm:admin migrate status
 /openltm:admin scan --dry-run
-/openltm:admin server start
 /openltm:admin audit --since 2026-06-01T00:00:00Z
 ```
 
+The graph server moved out of `admin` — use [`/openltm:server`](#openltmserver--graph-visualizer).
+
 `scan` redacts API keys, tokens, and passwords. Always run `--dry-run` first to preview. `migrate reset` drops and recreates the schema — destructive, requires explicit confirmation.
+
+---
+
+## `/openltm:server` — graph visualizer
+
+| Subcommand | What it does |
+|------------|-------------|
+| `start` | Starts the API + WebSocket server on `:7331` and the Next.js UI on `:7332`, then opens http://localhost:7332. Both bind to `127.0.0.1` only. |
+| `stop` | Stops both processes and frees the ports. |
+| `status` (default) | Reports whether the API and UI are up. |
+
+### Examples
+
+```
+/openltm:server start
+/openltm:server status
+/openltm:server stop
+```
+
+Logs go to `~/.claude/tmp/ltm-server.log` and `~/.claude/tmp/nextjs.log`. Without a production build of `graph-app/`, the UI starts in dev mode and compiles on first load.
 
 ---
 

@@ -20,6 +20,6 @@
   "skills": "./skills/",
   "agents": [
     "./agents/git-learner.md",
-    "./agents/planner.md"
+    "./agents/ltm-planner.md"
   ]
 }

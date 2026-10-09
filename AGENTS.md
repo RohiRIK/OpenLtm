@@ -12,6 +12,8 @@ The memory tools are exposed over MCP as `recall`, `learn`, `context`, `forget`,
 
 Categories: `preference | architecture | gotcha | pattern | workflow | constraint`. Importance `5` never decays; everything else ages out as it goes unused.
 
+The full tool list (including `context_add`, `proposals`, `revalidate`, `graph`) and the memory contract live in [`skills/Ltm/SKILL.md`](skills/Ltm/SKILL.md); memory curation is [`skills/MemoryReview/SKILL.md`](skills/MemoryReview/SKILL.md).
+
 ## Working in this repo
 
 - **Runtime is Bun**, not npm/node. Use `bun`, `bunx`, `bun test`.

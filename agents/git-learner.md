@@ -65,11 +65,12 @@ When unsure, skip. Quality over coverage. A batch of 10 commits commonly yields
 
 Call `mcp__plugin_openltm_memory__learn` once per learning with:
 - `content` — the learning, concise, < 120 chars.
+- `title` — a short noun phrase (≤ 60 chars).
 - `category` — `architecture` | `gotcha` | `pattern`.
 - `importance` — `4` for gotchas, `3` for patterns and decisions.
-- `project_scope` — `PROJECT_NAME`.
-- `source` — `git-commit:<short7hash>`.
-- `tags` — up to 5 changed file paths from that commit.
+- `project` — `PROJECT_NAME`.
+- `tags` — `["git-commit:<short7hash>"]`.
+- `files` — up to 5 repo-relative paths changed by that commit that the learning is about. These anchor the memory, so a later commit touching them flags it stale.
 
 The `learn` tool dedupes by content, so reinforcing an existing memory is safe and
 expected. Optionally call `recall` first on a recurring theme to phrase a learning
