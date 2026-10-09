@@ -8,7 +8,7 @@ export { configureCore, configureDocs } from "./db.js";
 
 // Core memory operations
 export {
-  learn, recall, forget, relate, getSimilarMemories,
+  learn, recall, getMemoryById, forget, relate, getSimilarMemories,
   getContextMerge, getContextMergeWithGraph, computeDecayScore,
   exportMarkdown, exportGraphJson, flagStaleByPaths, revalidate,
 } from "./db.js";
@@ -33,7 +33,8 @@ export { setEmbedding, getEmbedding, deleteEmbedding, listMemoryIdsMissingEmbedd
 export { listByProject, upsertGoal, appendProgress, addDecision, addGotcha } from "./dao/contextItems.js";
 
 // Utilities
-export { scrubSecrets } from "./secretsScrubber.js";
+export { scrubSecrets, scrubOrRefuse, scrubForEgress, isEgressScrubFailed, SCRUB_FAILED_PLACEHOLDER, _forceScrubThrowForTesting } from "./secretsScrubber.js";
+export { PRIVATE_TAG, hasPrivateTag, filterPrivateMemories } from "./privacy.js";
 export { normalizeKey } from "./dedup.js";
 export { normalizeAnchorPath, normalizeAnchorPaths } from "./anchors.js";
 export { embedText, getLlmConfig, callLlm } from "./embeddings.js";
@@ -71,9 +72,11 @@ export {
   runArchive, touchMemory,
   approveMemory, getPendingMemories, rejectMemory,
   mergeMemories, parseDedupSource,
-  supersede,
+  supersede, stageContradictions, listStagedConflicts, detectContradictions,
+  acceptStagedConflict, rejectStagedConflict, coexistStagedConflict,
   getEmbeddingProvider, semanticSearch, findSimilarMemories,
 } from "./janitor/index.js";
+export type { Contradiction, StagedConflict } from "./janitor/index.js";
 export { runDecay } from "./janitor/decay.js";
 export { SETTING_KEYS, SETTING_DEFAULTS } from "./janitor/providers/types.js";
 export { anthropicLLM } from "./janitor/providers/anthropic.js";

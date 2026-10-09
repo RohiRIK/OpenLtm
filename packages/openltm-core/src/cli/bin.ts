@@ -49,6 +49,40 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
+
+  // Sub-command: conflict (list | accept | reject | coexist)
+  if (argv[0] === "conflict") {
+    const { waitForInit } = await import("../shared-db.js");
+    await waitForInit();
+    const {
+      listStagedConflicts,
+      acceptStagedConflict,
+      rejectStagedConflict,
+      coexistStagedConflict,
+    } = await import("../index.js");
+    const action = argv[1] ?? "list";
+    if (action === "list") {
+      const rows = listStagedConflicts(50);
+      process.stdout.write(JSON.stringify(rows, null, 2) + "\n");
+      process.exit(0);
+    }
+    const id = Number.parseInt(argv[2] ?? "", 10);
+    if (!Number.isFinite(id)) {
+      process.stderr.write("  ltm conflict: need staging id\n");
+      process.exit(1);
+    }
+    let ok = false;
+    if (action === "accept") ok = acceptStagedConflict(id);
+    else if (action === "reject") ok = rejectStagedConflict(id);
+    else if (action === "coexist") ok = coexistStagedConflict(id);
+    else {
+      process.stderr.write(`  ltm conflict: unknown action '${action}'\n`);
+      process.exit(1);
+    }
+    process.stdout.write(JSON.stringify({ ok, action, id }) + "\n");
+    process.exit(ok ? 0 : 1);
+  }
+
   // Sub-command: memory (learn | recall | forget | relate | context)
   if (argv[0] === "memory") {
     const exitCode = await runMemoryCli(argv.slice(1));

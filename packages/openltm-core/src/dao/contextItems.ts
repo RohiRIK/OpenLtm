@@ -5,6 +5,7 @@
 import type { Database } from "bun:sqlite";
 import { getDb } from "../shared-db.js";
 import { writeQueue } from "../lib/writeQueue.js";
+import { scrubOrRefuse } from "../secretsScrubber.js";
 import type { ContextItemRow, ContextItemType } from "./types.js";
 
 export function listByProject(project: string, type?: ContextItemType): ContextItemRow[] {
@@ -22,13 +23,14 @@ export function listByProject(project: string, type?: ContextItemType): ContextI
 }
 
 export function upsertGoal(project: string, content: string): void {
+  const { scrubbed } = scrubOrRefuse(content);
   writeQueue.enqueue(() => {
     const db = getDb();
     db.transaction(() => {
       db.run(`DELETE FROM context_items WHERE project_name=? AND type='goal'`, [project]);
       db.run(
         `INSERT INTO context_items (project_name, type, content, permanent) VALUES (?, 'goal', ?, 0)`,
-        [project, content]
+        [project, scrubbed]
       );
     })();
   });
@@ -49,9 +51,12 @@ function deleteIds(db: Database, ids: number[]): void {
  * a row, so the 20-row cap counts sessions, not calls (the Stop hook calls this
  * every turn). Without a sessionId every call inserts.
  *
+ * Content is secret-scrubbed (fail-closed) before it is written.
+ *
  * Resolves once the write has run, so callers can await it to catch DB errors.
  */
 export function appendProgress(project: string, content: string, sessionId?: string): Promise<void> {
+  const { scrubbed } = scrubOrRefuse(content);
   return writeQueue.enqueue(() => {
     const db = getDb();
     db.transaction(() => {
@@ -61,7 +66,7 @@ export function appendProgress(project: string, content: string, sessionId?: str
         ).all(project, sessionId);
         const [keep, ...duplicates] = rows;
         if (keep) {
-          db.run(`UPDATE context_items SET content=?, created_at=datetime('now') WHERE id=?`, [content, keep.id]);
+          db.run(`UPDATE context_items SET content=?, created_at=datetime('now') WHERE id=?`, [scrubbed, keep.id]);
           deleteIds(db, duplicates.map(r => r.id));
           return;
         }
@@ -72,17 +77,18 @@ export function appendProgress(project: string, content: string, sessionId?: str
       deleteIds(db, existing.slice(MAX_PROGRESS_ROWS - 1).map(r => r.id));
       db.run(
         `INSERT INTO context_items (project_name, type, content, session_id, permanent) VALUES (?, 'progress', ?, ?, 0)`,
-        [project, content, sessionId ?? null]
+        [project, scrubbed, sessionId ?? null]
       );
     })();
   });
 }
 
 function insertPermanent(project: string, type: ContextItemType, content: string): void {
+  const { scrubbed } = scrubOrRefuse(content);
   writeQueue.enqueue(() => {
     getDb().run(
       `INSERT INTO context_items (project_name, type, content, permanent) VALUES (?, ?, ?, 1)`,
-      [project, type, content]
+      [project, type, scrubbed]
     );
   });
 }

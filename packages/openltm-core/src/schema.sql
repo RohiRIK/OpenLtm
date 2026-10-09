@@ -206,3 +206,17 @@ CREATE TABLE IF NOT EXISTS settings (
 
 -- workspace_id + agent_id indexes are created by migration 007_workspaces.sql
 -- after the columns are added via ALTER TABLE. Do not add them here.
+
+-- Staged supersede/contradiction conflicts (review only — no auto-apply)
+CREATE TABLE IF NOT EXISTS memory_conflict_staging (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  older_id INTEGER NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+  newer_id INTEGER NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+  term TEXT,
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK(status IN ('pending', 'accepted', 'rejected', 'coexist')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(older_id, newer_id)
+);
+CREATE INDEX IF NOT EXISTS idx_conflict_staging_status
+  ON memory_conflict_staging(status, created_at DESC);

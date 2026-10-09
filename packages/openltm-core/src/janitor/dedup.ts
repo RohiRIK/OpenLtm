@@ -4,6 +4,8 @@
  * Two modes: automatic (high-confidence merges) and suggested (for review).
  */
 import { getDb, getSetting } from "../shared-db.js";
+import { scrubOrRefuse, scrubForEgress } from "../secretsScrubber.js";
+import { hasPrivateTag } from "../privacy.js";
 import {
   blobToVector,
   cosineSimilarity,
@@ -93,19 +95,27 @@ export async function findDuplicates(
     )
     .all();
 
-  if (memories.length < 2) return result;
+  const publicMemories = memories.filter((m) => {
+    const tags = db.query<{ name: string }, [number]>(
+      `SELECT t.name FROM tags t
+       JOIN memory_tags mt ON mt.tag_id = t.id
+       WHERE mt.memory_id = ?`,
+    ).all(m.id).map((x) => x.name);
+    return !hasPrivateTag(tags);
+  });
+  if (publicMemories.length < 2) return result;
 
   // Convert embeddings upfront
   const vectors: Map<number, EmbeddingVector> = new Map();
-  for (const mem of memories) {
+  for (const mem of publicMemories) {
     vectors.set(mem.id, blobToVector(mem.embedding));
   }
 
   // Pairwise comparison (upper triangle only)
-  for (let i = 0; i < memories.length; i++) {
-    const memA = memories[i]!;
-    for (let j = i + 1; j < memories.length; j++) {
-      const memB = memories[j]!;
+  for (let i = 0; i < publicMemories.length; i++) {
+    const memA = publicMemories[i]!;
+    for (let j = i + 1; j < publicMemories.length; j++) {
+      const memB = publicMemories[j]!;
       result.pairsCompared++;
       const vecA = vectors.get(memA.id)!;
       const vecB = vectors.get(memB.id)!;
@@ -169,7 +179,7 @@ Respond in JSON format: { "verdict": "duplicate"|"related"|"distinct", "reasonin
       },
       {
         role: "user",
-        content: `Memory A [${candidate.memoryA.category}]: ${candidate.memoryA.content}\n\nMemory B [${candidate.memoryB.category}]: ${candidate.memoryB.content}\n\nCosine similarity: ${candidate.similarity.toFixed(3)}`,
+        content: `Memory A [${candidate.memoryA.category}]: ${scrubForEgress(candidate.memoryA.content)}\n\nMemory B [${candidate.memoryB.category}]: ${scrubForEgress(candidate.memoryB.content)}\n\nCosine similarity: ${candidate.similarity.toFixed(3)}`,
       },
     ],
     jsonMode: true,
@@ -226,9 +236,13 @@ export function saveDedupCandidates(candidates: DedupCandidate[]): number {
     const verdict = c.verdict ? ` | ${c.verdict}` : "";
     const reasoning = c.reasoning ? `\nWhy: ${c.reasoning}` : "";
     const suggested = c.mergedContent ? `\nSuggested merge: ${c.mergedContent}` : "";
-    const mergedContent = c.mergedContent
+    const mergedContentRaw = c.mergedContent
       ? `[${pct}% similar${verdict}]${reasoning}${suggested}\n\nA: ${c.memoryA.content}\nB: ${c.memoryB.content}`
       : `[${pct}% similar — no LLM verdict]\nA: ${c.memoryA.content}\nB: ${c.memoryB.content}`;
+    const { scrubbed: mergedContent, redactions } = scrubOrRefuse(mergedContentRaw);
+    if (redactions.length > 0) {
+      process.stderr.write(`[dedup] Scrubbed ${redactions.length} secret(s) in candidate: ${redactions.join(", ")}\n`);
+    }
 
     db.run(
       `INSERT INTO memories (content, category, importance, confidence, source, project_scope, dedup_key, status)
@@ -253,32 +267,37 @@ export function mergeMemories(
   const db = getDb();
 
   db.transaction(() => {
-    // Optionally update the kept memory's content
+    // Optionally update the kept memory's content (scrub before write)
     if (mergedContent) {
+      const { scrubbed, redactions } = scrubOrRefuse(mergedContent);
+      if (redactions.length > 0) {
+        process.stderr.write(`[dedup] Scrubbed ${redactions.length} secret(s) on merge: ${redactions.join(", ")}\n`);
+      }
       db.run("UPDATE memories SET content = ? WHERE id = ?", [
-        mergedContent,
+        scrubbed,
         keepId,
       ]);
     }
 
-    // Mark the other as superseded
-    db.run("UPDATE memories SET status = 'superseded' WHERE id = ?", [
-      supersededId,
-    ]);
+    // Mark superseded: status + superseded_by/at + relation (same SoT as supersede())
+    db.run(
+      `UPDATE memories SET status = 'superseded', superseded_by = ?, superseded_at = datetime('now')
+       WHERE id = ?`,
+      [keepId, supersededId],
+    );
 
-    // Create a supersedes relation
     db.run(
       `INSERT OR IGNORE INTO memory_relations (source_memory_id, target_memory_id, relationship_type)
        VALUES (?, ?, 'supersedes')`,
       [keepId, supersededId],
     );
 
-    // Transfer any tags from superseded to kept
     db.run(
       `INSERT OR IGNORE INTO memory_tags (memory_id, tag_id)
        SELECT ?, tag_id FROM memory_tags WHERE memory_id = ?`,
       [keepId, supersededId],
     );
+
 
     // Repoint any relations targeting the superseded memory.
     // Delete rows that would collide on the unique constraint before updating.

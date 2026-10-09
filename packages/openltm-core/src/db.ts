@@ -6,12 +6,13 @@ import type { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import { normalizeKey } from "./dedup.js";
-import { isNearDuplicate } from "./similarity.js";
+import { isNearDuplicate, jaccardSimilarity } from "./similarity.js";
+import { filterPrivateMemories } from "./privacy.js";
 import { normalizeAnchorPaths } from "./anchors.js";
 import { getDb, DB_PATH, configure as configureDb } from "./shared-db.js";
 import { enqueueEmbedding } from "./queue/index.js";
 import { notifyLtm, notifyMemoryAdded } from "./events/index.js";
-import { scrubSecrets } from "./secretsScrubber.js";
+import { scrubOrRefuse } from "./secretsScrubber.js";
 import { insertProvenance, insertAudit, snapshotMemory, listProvenanceBatch } from "./dao/provenanceAudit.js";
 import type { ProvenanceSourceType } from "./dao/types.js";
 import type { LtmCoreConfig } from "./adapterTypes.js";
@@ -105,9 +106,17 @@ export interface LearnResult {
   action: "created" | "reinforced";
   id: number;
   confirm_count: number;
+  /** How an existing memory was matched (absent on clean create). */
+  matched_by?: "exact" | "containment" | "jaccard";
+  /** Similarity score in [0,1] when matched_by is jaccard/containment. */
+  score?: number;
+  /** Id of the near-duplicate candidate (reinforced or noted on create). */
+  matched_id?: number;
 }
 
 export interface RecallInput {
+  /** Opt-in: include memories tagged `private` (default false). */
+  includePrivate?: boolean;
   since?: string;
   until?: string;
   sort_by?: "relevance" | "created" | "last_recalled" | "recall_count";
@@ -146,25 +155,83 @@ function oneLineForLog(text: string): string {
   return line.length > 80 ? `${line.slice(0, 77)}…` : line;
 }
 
+/** Conservative near-dup thresholds (#16). Strong → reinforce; ambiguous → note only. */
+const JACCARD_REINFORCE = 0.85;
+const JACCARD_AMBIGUOUS = 0.55;
+
+interface NearDupHit {
+  memory: Memory;
+  matched_by: "containment" | "jaccard";
+  score: number;
+  /** True only for strong matches — safe to reinforce silently. */
+  reinforce: boolean;
+}
+
 /**
- * findNearDuplicate — locate an existing memory that says the same thing.
- * Scoped to the same project scope (a global memory never absorbs a scoped one)
- * and only considers recently active rows to keep the probe cheap.
+ * findNearDuplicate — FTS candidate shortlist + containment/Jaccard tiers.
+ * Scoped to the same project scope. Never silently merges ambiguous paraphrases.
  */
 function findNearDuplicate(
   db: Database,
   content: string,
   projectScope: string | null,
   dedupKey: string,
-): Memory | null {
-  const rows = db.query<Memory, [string, string | null, string | null]>(
-    `SELECT * FROM memories
-      WHERE status='active' AND dedup_key<>?
-        AND (project_scope IS ? OR project_scope = ?)
-      ORDER BY decay_score DESC, id DESC
-      LIMIT 100`
-  ).all(dedupKey, projectScope, projectScope);
-  return rows.find((row) => isNearDuplicate(row.content, content)) ?? null;
+): NearDupHit | null {
+  let candidates: Memory[] = [];
+
+  // Tier 0 — FTS shortlist (cheap index probe)
+  try {
+    const ftsQuery = content
+      .trim()
+      .split(/\s+/)
+      .filter((t) => t.length > 2)
+      .slice(0, 12)
+      .map((t) => `"${t.replace(/"/g, '""')}"`)
+      .join(" OR ");
+    if (ftsQuery) {
+      const ftsIds = db.query<{ rowid: number }, [string]>(
+        `SELECT rowid FROM memories_fts WHERE memories_fts MATCH ? ORDER BY rank LIMIT 10`,
+      ).all(ftsQuery);
+      if (ftsIds.length > 0) {
+        const placeholders = ftsIds.map(() => "?").join(",");
+        candidates = db.query<Memory, (string | number | null)[]>(
+          `SELECT * FROM memories
+            WHERE id IN (${placeholders}) AND status='active' AND dedup_key<>?
+              AND (project_scope IS ? OR project_scope = ?)`,
+        ).all(...ftsIds.map((r) => r.rowid), dedupKey, projectScope, projectScope);
+      }
+    }
+  } catch {
+    // FTS unavailable / bad query — fall through to decay shortlist
+  }
+
+  if (candidates.length === 0) {
+    candidates = db.query<Memory, [string, string | null, string | null]>(
+      `SELECT * FROM memories
+        WHERE status='active' AND dedup_key<>?
+          AND (project_scope IS ? OR project_scope = ?)
+        ORDER BY decay_score DESC, id DESC
+        LIMIT 40`,
+    ).all(dedupKey, projectScope, projectScope);
+  }
+
+  // Tier 1 — token containment (existing conservative rule)
+  for (const row of candidates) {
+    if (isNearDuplicate(row.content, content)) {
+      return { memory: row, matched_by: "containment", score: 1, reinforce: true };
+    }
+  }
+
+  // Tier 2 — Jaccard; reinforce only at strong threshold
+  let best: NearDupHit | null = null;
+  for (const row of candidates) {
+    const score = jaccardSimilarity(row.content, content);
+    if (score < JACCARD_AMBIGUOUS) continue;
+    const reinforce = score >= JACCARD_REINFORCE;
+    const hit: NearDupHit = { memory: row, matched_by: "jaccard", score, reinforce };
+    if (!best || score > best.score) best = hit;
+  }
+  return best;
 }
 
 function upsertTag(db: Database, name: string): number {
@@ -558,7 +625,7 @@ export function learn(input: LearnInput): LearnResult {
   const db = getDb();
 
   // Scrub secrets before any DB write or dedup check
-  const { scrubbed, redactions } = scrubSecrets(input.content);
+  const { scrubbed, redactions } = scrubOrRefuse(input.content);
   if (redactions.length > 0) {
     process.stderr.write(`[learn] Scrubbed ${redactions.length} secret(s): ${redactions.join(", ")}\n`);
   }
@@ -579,13 +646,17 @@ export function learn(input: LearnInput): LearnResult {
   const dedupKey = normalizeKey(content);
   const skipExport = input.skipExport ?? false;
 
-  const existing = db.query<Memory, [string]>(`SELECT * FROM memories WHERE dedup_key=?`).get(dedupKey)
-    // Near-duplicate reinforcement: same knowledge, different wording.
-    ?? findNearDuplicate(db, content, input.project_scope ?? null, dedupKey);
+  const exact = db.query<Memory, [string]>(`SELECT * FROM memories WHERE dedup_key=?`).get(dedupKey);
+  const near = exact ? null : findNearDuplicate(db, content, input.project_scope ?? null, dedupKey);
+  // Reinforce only exact or strong near-dup; ambiguous near-dup creates + annotates.
+  const reinforceTarget: Memory | null =
+    exact ?? (near?.reinforce ? near.memory : null);
+  const nearNote = near && !near.reinforce ? near : null;
 
   const actor = input.actor ?? "mcp:ltm_learn";
 
-  if (existing) {
+  if (reinforceTarget) {
+    const existing = reinforceTarget;
     const beforeSnap = snapshotMemory(db, existing.id);
     db.run(
       `UPDATE memories SET confirm_count=confirm_count+1, last_confirmed_at=datetime('now'),
@@ -613,7 +684,14 @@ export function learn(input: LearnInput): LearnResult {
     const updated = db.query<{ confirm_count: number }, [number]>(
       `SELECT confirm_count FROM memories WHERE id=?`
     ).get(existing.id);
-    return { action: "reinforced", id: existing.id, confirm_count: updated?.confirm_count ?? existing.confirm_count + 1 };
+    return {
+      action: "reinforced",
+      id: existing.id,
+      confirm_count: updated?.confirm_count ?? existing.confirm_count + 1,
+      matched_by: exact ? "exact" : near!.matched_by,
+      score: exact ? 1 : near!.score,
+      matched_id: existing.id,
+    };
   }
 
   const title = input.title?.trim().slice(0, 60) || deriveTitle(content);
@@ -681,7 +759,14 @@ export function learn(input: LearnInput): LearnResult {
   // unless the ltm.crossProcessSync flag is on AND Honker is available.
   notifyMemoryAdded({ id: newId, project_scope: input.project_scope ?? null });
 
-  return { action: "created", id: newId, confirm_count: 1 };
+  return {
+    action: "created",
+    id: newId,
+    confirm_count: 1,
+    ...(nearNote
+      ? { matched_by: nearNote.matched_by, score: nearNote.score, matched_id: nearNote.memory.id }
+      : {}),
+  };
 }
 
 export async function recall(input: RecallInput = {}): Promise<MemoryWithRelations[]> {
@@ -824,7 +909,8 @@ export async function recall(input: RecallInput = {}): Promise<MemoryWithRelatio
       sorted.map(m => m.id),
     );
   }
-  const enriched = sorted.map(m => enrichMemory(db, m));
+  let enriched = sorted.map(m => enrichMemory(db, m));
+  enriched = filterPrivateMemories(enriched, input.includePrivate === true);
   if (input.includeProvenance) {
     const provMap = listProvenanceBatch(db, enriched.map(m => m.id));
     for (const m of enriched) {
@@ -866,6 +952,19 @@ export function relate(input: {
      VALUES (?, ?, ?)`,
     [input.source_id, input.target_id, input.relationship_type]
   );
+}
+
+/**
+ * Fetch a single active memory by id (for progressive MCP get-after-index).
+ * Returns null when missing or not active.
+ */
+export function getMemoryById(id: number): MemoryWithRelations | null {
+  const db = getDb();
+  const row = db.query<Memory, [number]>(
+    `SELECT * FROM memories WHERE id=? AND status='active'`
+  ).get(id);
+  if (!row) return null;
+  return enrichMemory(db, row);
 }
 
 export function forget(input: { id: number; reason?: string; skipExport?: boolean; actor?: string; sessionId?: string }): void {
@@ -912,7 +1011,14 @@ export function getSimilarMemories(
   });
 
   scored.sort((a, b) => b.sim - a.sim);
-  return scored.slice(0, limit).map(s => s.mem);
+  const picked: Memory[] = [];
+  for (const s of scored) {
+    const enriched = enrichMemory(db, s.mem);
+    if (filterPrivateMemories([enriched], false).length === 0) continue;
+    picked.push(s.mem);
+    if (picked.length >= limit) break;
+  }
+  return picked;
 }
 
 export function getContextMerge(project: string): { globals: Memory[]; scoped: Memory[] } {
@@ -934,10 +1040,14 @@ export function getContextMerge(project: string): { globals: Memory[]; scoped: M
     `SELECT ${SLIM} FROM memories WHERE project_scope=? AND importance >= 3 AND status = 'active' LIMIT 15`
   ).all(project));
 
-  const allIds = [...globals, ...scoped].map(m => m.id);
+  const gEnriched = globals.map(m => enrichMemory(db, m));
+  const sEnriched = scoped.map(m => enrichMemory(db, m));
+  const gVis = filterPrivateMemories(gEnriched, false);
+  const sVis = filterPrivateMemories(sEnriched, false);
+  const allIds = [...gVis, ...sVis].map(m => m.id);
   updateLastUsed(allIds);
 
-  return { globals, scoped };
+  return { globals: gVis, scoped: sVis };
 }
 
 /**
@@ -982,6 +1092,10 @@ export function exportMarkdown(): void {
 
   // Batch-fetch all tags in one query to avoid N+1
   const tagsByMemory = getTagsBatch(db, rows.map(r => r.id));
+  const visibleRows = rows.filter((m) => {
+    const tags = tagsByMemory.get(m.id) ?? [];
+    return filterPrivateMemories([{ tags }], false).length > 0;
+  });
 
   const timestamp = new Date().toISOString().replace("T", " ").replace(/\..+/, "");
   const lines: string[] = [
@@ -994,7 +1108,7 @@ export function exportMarkdown(): void {
   ];
 
   const byCategory = new Map<string, Memory[]>();
-  for (const m of rows) {
+  for (const m of visibleRows) {
     if (!byCategory.has(m.category)) byCategory.set(m.category, []);
     byCategory.get(m.category)!.push(m);
   }
@@ -1026,10 +1140,17 @@ export function exportGraphJson(): void {
   if (!existsSync(DOCS_DIR)) mkdirSync(DOCS_DIR, { recursive: true });
 
   const memories = db.query<Memory, []>(`SELECT * FROM memories`).all();
-  const relations = db.query<MemoryRelation, []>(`SELECT * FROM memory_relations`).all();
+  const tagsByMemory = getTagsBatch(db, memories.map(m => m.id));
+  const visible = memories.filter((m) => {
+    const tags = tagsByMemory.get(m.id) ?? [];
+    return filterPrivateMemories([{ tags }], false).length > 0;
+  });
+  const visibleIds = new Set(visible.map(m => m.id));
+  const relations = db.query<MemoryRelation, []>(`SELECT * FROM memory_relations`).all()
+    .filter(r => visibleIds.has(r.source_memory_id) && visibleIds.has(r.target_memory_id));
 
   writeFileSync(join(DOCS_DIR, "memory-graph.json"), JSON.stringify({
-    nodes: memories.map(m => ({
+    nodes: visible.map(m => ({
       id: m.id,
       label: m.content.substring(0, 60),
       category: m.category,

@@ -8,8 +8,9 @@ import { EVENTS } from "../lib/eventNames.js";
 import { spawnSync } from "child_process";
 import { getContextMerge, getSimilarMemories, getContextMergeWithGraph, computeDecayScore,
          embedText, getDb, listMemoryIdsMissingEmbedding, exportContextMarkdown,
-         runPendingMigrations, getRecentConflicts, emitEvent } from "@rohirik/openltm-core";
+         runPendingMigrations, getRecentConflicts, listStagedConflicts, emitEvent, scrubForEgress } from "@rohirik/openltm-core";
 import { readConfigSync } from "../../src/config.js";
+import { applyInjectTopN } from "../lib/injectTopN.js";
 
 const TMP_DIR      = join(CLAUDE_DIR, "tmp");
 const COUNTER_FILE = join(TMP_DIR, "session-tool-count.txt");
@@ -18,33 +19,42 @@ const MAX_INJECT_LINES = 60;
 const MAX_LTM_LINES    = 30;
 const MAX_CONFLICT_LINES = 5;
 const MAX_AGE_MS       = 30 * 24 * 60 * 60 * 1000;
-const LTM_REMINDER     = "⚡ LTM MCP live — use mcp__plugin_openltm_memory__recall before tasks, mcp__plugin_openltm_memory__learn after discoveries.\n";
+const LTM_REMINDER     = "⚡ LTM MCP live — recall before tasks, get <id> for full memory from the index, learn after discoveries.\n";
 const LTM_REPO_SLUG    = "RohiRIK/OpenLtm";
-const LTM_DIRECTIVE   = "⚡ LTM Active — Before starting work: call `recall` with task keywords. Check `context` for project state. After decisions: call `learn` to store them.\n\n";
+const LTM_DIRECTIVE   = "⚡ LTM Active — Before starting work: call `recall` with task keywords; use `get` on an index id for full body. Check `context` for project state. After decisions: call `learn`.\n\n";
 
 function defaultName(cwd: string): string {
   const last = cwd.replace(/\/$/, "").split("/").pop() ?? "";
   return last.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
-async function buildLtmSection(project: string, sessionContext?: string): Promise<string> {
+async function buildLtmSection(
+  project: string,
+  sessionContext?: string,
+  injectTopN = 15,
+): Promise<string> {
   if (!existsSync(DB_PATH)) return "";
   try {
-    let globals: Array<{ id: number; content: string }>;
-    let scoped: Array<{ id: number; content: string; importance: number }>;
+    let globals: Array<{ id: number; content: string; title?: string }>;
+    let scoped: Array<{ id: number; content: string; importance: number; title?: string }>;
     let graphInsights: string | undefined;
 
-    const queryVec = sessionContext ? await embedText(sessionContext) : null;
+    const topN = typeof injectTopN === "number" && injectTopN > 0 ? Math.floor(injectTopN) : 15;
+    const globalFetch = Math.max(1, Math.ceil(topN / 3));
+
+    const queryVec = sessionContext ? await embedText(scrubForEgress(sessionContext)) : null;
     if (queryVec) {
       const db = getDb();
-      globals = getSimilarMemories(db, queryVec, { minImportance: 4, limit: 16 });
-      scoped  = getSimilarMemories(db, queryVec, { projectScope: project, minImportance: 2, limit: 15 });
-      process.stderr.write(`[SessionStart] Semantic LTM: ${globals.length} globals, ${scoped.length} scoped\n`);
+      globals = getSimilarMemories(db, queryVec, { minImportance: 4, limit: globalFetch });
+      scoped  = getSimilarMemories(db, queryVec, { projectScope: project, minImportance: 2, limit: topN });
+      process.stderr.write(`[SessionStart] Semantic LTM: ${globals.length} globals, ${scoped.length} scoped (injectTopN=${topN})\n`);
     } else {
       const merged = getContextMerge(project) as { globals: Array<{ id: number; content: string }>; scoped: Array<{ id: number; content: string; importance: number }> };
       globals = merged.globals;
       scoped  = merged.scoped;
     }
+
+    ({ globals, scoped } = applyInjectTopN(globals, scoped, topN));
 
     const cfg = readConfigSync();
     if (cfg?.ltm?.graphReasoning) {
@@ -54,10 +64,18 @@ async function buildLtmSection(project: string, sessionContext?: string): Promis
 
     if (globals.length === 0 && scoped.length === 0) return "";
 
-    const lines: string[] = ["LTM:", ""];
-    if (globals.length > 0) { lines.push("globals:"); for (const m of globals) lines.push(`- [${m.id}] ${m.content}`); lines.push(""); }
-    if (scoped.length > 0) { lines.push("project:"); for (const m of scoped) lines.push(`- [${m.id}] ${m.content}`); lines.push(""); }
-    if (graphInsights) { lines.push(graphInsights); lines.push(""); }
+    /** Compact index line: id + title/snippet — full body via MCP `get`. */
+    const indexLine = (m: { id: number; content: string; title?: string }) => {
+      const title = typeof m.title === "string" ? m.title.trim() : "";
+      const scrubbed = scrubForEgress(title || m.content);
+      const label = scrubbed.length > 80 ? scrubbed.slice(0, 80) + "…" : scrubbed;
+      return `- [${m.id}] ${label}`;
+    };
+
+    const lines: string[] = ["LTM index (use MCP get <id> for full memory):", ""];
+    if (globals.length > 0) { lines.push("globals:"); for (const m of globals) lines.push(indexLine(m)); lines.push(""); }
+    if (scoped.length > 0) { lines.push("project:"); for (const m of scoped) lines.push(indexLine(m)); lines.push(""); }
+    if (graphInsights) { lines.push(scrubForEgress(graphInsights)); lines.push(""); }
 
     const allLines = lines.join("\n").split("\n");
     if (allLines.length > MAX_LTM_LINES) return allLines.slice(0, MAX_LTM_LINES).join("\n") + "\n… (truncated)\n";
@@ -72,16 +90,25 @@ function buildConflictSection(project: string): string {
   if (!existsSync(DB_PATH)) return "";
   try {
     const db = getDb();
-    const conflicts = getRecentConflicts(db, project, MAX_CONFLICT_LINES);
+    const applied = getRecentConflicts(db, project, MAX_CONFLICT_LINES);
+    const staged = listStagedConflicts(MAX_CONFLICT_LINES);
 
-    if (conflicts.length === 0) return "";
+    if (applied.length === 0 && staged.length === 0) return "";
 
-    const lines: string[] = ["⚠️ Memory Conflicts Detected", ""];
-    for (const c of conflicts) {
-      lines.push(`- [${c.olderId}] superseded by [${c.newerId}]`);
+    const lines: string[] = ["⚠️ Memory Conflicts", ""];
+    if (staged.length > 0) {
+      lines.push("Pending review (ltm conflict accept|reject <stagingId>):");
+      for (const s of staged) {
+        const term = s.term ? scrubForEgress(s.term) : "";
+        lines.push(`- staging #${s.id}: [${s.olderId}] vs [${s.newerId}]${term ? ` (${term})` : ""}`);
+      }
+      lines.push("");
     }
-    if (conflicts.length >= MAX_CONFLICT_LINES) {
-      lines.push(`… and ${conflicts.length - MAX_CONFLICT_LINES + 1} more conflicts`);
+    if (applied.length > 0) {
+      lines.push("Recently applied:");
+      for (const c of applied) {
+        lines.push(`- [${c.olderId}] superseded by [${c.newerId}]`);
+      }
     }
     return lines.join("\n");
   } catch (err) {
@@ -208,9 +235,9 @@ async function main(): Promise<void> {
   let useDirective = true;
   try { const cfg = readConfigSync(); useDirective = cfg?.ltm?.autoRecall !== false; } catch (_) {} // silent: missing/malformed config falls back to default (autoRecall=true)
 
-  // Override injectTopN from project settings if set
+  // injectTopN caps how many LTM memories appear in the SessionStart block
   const injectTopN = readConfigSync().ltm?.injectTopN ?? 15;
-  const ltmSection = await buildLtmSection(name, sessionContext);
+  const ltmSection = await buildLtmSection(name, sessionContext, injectTopN);
   const directive = useDirective ? LTM_DIRECTIVE : "";
   const conflictSection = buildConflictSection(name);
   const backfillHint = buildBackfillHint();

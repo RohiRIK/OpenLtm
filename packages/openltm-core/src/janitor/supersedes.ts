@@ -31,7 +31,12 @@ export function supersede(
        VALUES (?, ?, 'supersedes')`,
       [newId, oldId],
     );
-    db.run("UPDATE memories SET status = 'superseded' WHERE id = ?", [oldId]);
+    // Single source of truth: status + superseded_by/at + relation
+    db.run(
+      `UPDATE memories SET status = 'superseded', superseded_by = ?, superseded_at = datetime('now')
+       WHERE id = ?`,
+      [newId, oldId],
+    );
     if (transferTags) {
       db.run(
         `INSERT OR IGNORE INTO memory_tags (memory_id, tag_id)
@@ -101,7 +106,11 @@ export function unsupersede(newId: number, oldId: number): void {
     ).get(oldId) as { cnt: number } | undefined;
 
     if ((stillSuperseded?.cnt ?? 0) === 0) {
-      db.run("UPDATE memories SET status = 'active' WHERE id = ? AND status = 'superseded'", [oldId]);
+      db.run(
+        `UPDATE memories SET status = 'active', superseded_by = NULL, superseded_at = NULL
+         WHERE id = ? AND status = 'superseded'`,
+        [oldId],
+      );
     }
   })();
 }
@@ -177,23 +186,88 @@ export function detectContradictions(
   return contradictions;
 }
 
-export function applyContradictions(contradictions: Contradiction[]): number {
+/**
+ * Stage contradiction pairs for human review. Does NOT supersede or mutate
+ * memory status — UX / explicit accept calls supersede().
+ */
+export function stageContradictions(contradictions: Contradiction[]): number {
   const db = getDb();
-  let applied = 0;
+  let staged = 0;
 
   for (const con of contradictions) {
-    const existing = db.query(
+    const already = db.query(
       `SELECT id FROM memories WHERE id = ? AND superseded_by IS NOT NULL`
     ).get(con.olderId) as { id: number } | null;
+    if (already) continue;
 
-    if (existing) continue;
-
-    db.run(
-      `UPDATE memories SET superseded_by = ?, superseded_at = datetime('now') WHERE id = ?`,
-      [con.newerId, con.olderId],
+    const result = db.run(
+      `INSERT OR IGNORE INTO memory_conflict_staging (older_id, newer_id, term, status)
+       VALUES (?, ?, ?, 'pending')`,
+      [con.olderId, con.newerId, con.term],
     );
-    applied++;
+    if (Number(result.changes) > 0) staged++;
   }
 
-  return applied;
+  return staged;
+}
+
+/** @deprecated Use stageContradictions — auto-apply is forbidden. */
+export function applyContradictions(contradictions: Contradiction[]): number {
+  return stageContradictions(contradictions);
+}
+
+export interface StagedConflict {
+  id: number;
+  olderId: number;
+  newerId: number;
+  term: string | null;
+  status: string;
+  createdAt: string;
+}
+
+export function listStagedConflicts(limit = 50): StagedConflict[] {
+  const db = getDb();
+  return db.query<StagedConflict, [number]>(
+    `SELECT id, older_id as olderId, newer_id as newerId, term, status, created_at as createdAt
+     FROM memory_conflict_staging
+     WHERE status = 'pending'
+     ORDER BY created_at DESC
+     LIMIT ?`,
+  ).all(limit);
+}
+
+/**
+ * Accept a staged conflict: apply supersede(newer, older) and mark staging accepted.
+ * Returns false if not found / not pending.
+ */
+export function acceptStagedConflict(stagingId: number): boolean {
+  const db = getDb();
+  const row = db.query<{ id: number; older_id: number; newer_id: number; status: string }, [number]>(
+    `SELECT id, older_id, newer_id, status FROM memory_conflict_staging WHERE id = ?`,
+  ).get(stagingId);
+  if (!row || row.status !== "pending") return false;
+
+  supersede(row.newer_id, row.older_id, true);
+  db.run(`UPDATE memory_conflict_staging SET status = 'accepted' WHERE id = ?`, [stagingId]);
+  return true;
+}
+
+/** Reject a staged conflict without superseding. */
+export function rejectStagedConflict(stagingId: number): boolean {
+  const db = getDb();
+  const result = db.run(
+    `UPDATE memory_conflict_staging SET status = 'rejected' WHERE id = ? AND status = 'pending'`,
+    [stagingId],
+  );
+  return Number(result.changes) > 0;
+}
+
+/** Mark staged conflict as coexist (keep both active). */
+export function coexistStagedConflict(stagingId: number): boolean {
+  const db = getDb();
+  const result = db.run(
+    `UPDATE memory_conflict_staging SET status = 'coexist' WHERE id = ? AND status = 'pending'`,
+    [stagingId],
+  );
+  return Number(result.changes) > 0;
 }

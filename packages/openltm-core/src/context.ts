@@ -8,6 +8,7 @@ import { join } from "path";
 import { homedir } from "os";
 import { getDb, DB_PATH } from "./shared-db.js";
 import { learn } from "./db.js";
+import { scrubOrRefuse } from "./secretsScrubber.js";
 
 export { DB_PATH };
 const CLAUDE_DIR   = join(homedir(), ".claude");
@@ -54,6 +55,11 @@ export function addItem(
   skipExport = false
 ): void {
   const db = getDb();
+  const { scrubbed, redactions } = scrubOrRefuse(content);
+  if (redactions.length > 0) {
+    process.stderr.write(`[context] Scrubbed ${redactions.length} secret(s): ${redactions.join(", ")}\n`);
+  }
+  content = scrubbed;
 
   if (type === "goal") {
     db.transaction(() => {

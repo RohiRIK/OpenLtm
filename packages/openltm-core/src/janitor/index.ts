@@ -209,7 +209,8 @@ export function stopAutoRun(): void {
 // Re-export sub-modules for direct access from server routes
 export { approveMemory, getPendingMemories, rejectMemory } from "./promote.js";
 export { mergeMemories, parseDedupSource } from "./dedup.js";
-export { supersede } from "./supersedes.js";
+export { supersede, stageContradictions, listStagedConflicts, detectContradictions, acceptStagedConflict, rejectStagedConflict, coexistStagedConflict } from "./supersedes.js";
+export type { Contradiction, StagedConflict } from "./supersedes.js";
 export { touchMemory } from "./decay.js";
 export { getEmbeddingProvider, semanticSearch, findSimilarMemories } from "./embeddings.js";
 export { runArchive } from "./archive.js";
