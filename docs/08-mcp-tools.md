@@ -25,7 +25,7 @@ If you ever need to call them yourself (e.g. from a custom hook or script), this
 
 ### Optional `project`
 
-`context`, `context_items` and `context_add` take an optional `project` (the LTM registry name). When it's omitted, the server uses the current project — the plugin resolves it from the server's working directory exactly like the hooks do (`~/.claude/projects/registry.json`, longest path prefix, else a slug of the path). If no project can be resolved (e.g. a bare `bunx @rohirik/openltm-core mcp-serve` host that supplies no default), the tool returns an error asking for `project`. `context` echoes the project it used: `{ project, globals, scoped }`.
+`context`, `context_items` and `context_add` take an optional `project` (the LTM registry name). When it's omitted, the server uses the current project — the plugin resolves it from the server's working directory exactly like the hooks do (registry exact or longest-prefix match, else the git repo root's folder name, else the working directory's). If no project can be resolved (e.g. a host that supplies no default — `bunx @rohirik/openltm-core mcp-serve` now defaults to its working directory), the tool returns an error asking for `project`. `context` echoes the project it used: `{ project, globals, scoped }`.
 
 Hosts embedding the server pick the default with `buildMcpServer({ defaultProject: () => "<name>" })` / `startMcpServer({ defaultProject })`.
 
@@ -91,8 +91,8 @@ Recall falls back to **full-text only**, with identical results, when any of the
 
 ## When each tool runs
 
-- **`recall`** — fired by the `Learned` skill at session start, and by `/openltm:memory recall`
-- **`learn`** — fired by the `ContinuousLearning` skill on session end, and by `/openltm:memory learn`
+- **`recall`** — called before non-trivial work (the `Ltm` skill's ritual), and by `/openltm:memory recall`; the `UserPromptSubmit` hook does its own lightweight full-text recall per prompt
+- **`learn`** — called after a durable discovery (the `Ltm` skill's ritual), on `proposals` accept, and by `/openltm:memory learn`
 - **`forget`** — fired by `/openltm:memory forget <id>`
 - **`revalidate`** — clears a stale flag set by code-anchored invalidation; also cleared automatically when the memory is re-confirmed via `learn`
 - **`relate`** — fired by `/openltm:memory relate <src> <tgt> <type>`, and by `autoRelate: true` in config

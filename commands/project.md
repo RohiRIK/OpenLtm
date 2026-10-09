@@ -102,15 +102,15 @@ Maps the current directory (or any path) to a friendly name in the context regis
 
 **Step 2 — Validate name:** lowercase, alphanumeric + hyphens only, 3–40 chars.
 
-**Step 3 — Read registry:** `cat ~/.claude/projects/registry.json` (treat missing as `{}`).
+**Step 3 — Read registry:** `cat "${LTM_DATA_DIR:-${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/OpenLtm-openltm}}/projects/registry.json"` (treat missing as `{}`). Legacy installs may also have `~/.claude/projects/registry.json`; its entries are still read, but always write the new file.
 
 **Step 4 — Check for conflicts:** warn if name used by different path, or path registered under different name.
 
 **Step 5 — Write registry:** add/update `{ "<path>": "<name>" }`.
 
-**Step 6 — Create context folder:** `~/.claude/projects/<name>/` if missing.
+**Step 6 — Create context folder:** `<data dir>/projects/<name>/` if missing (same data dir as Step 3).
 
-**Step 7 — Offer migration:** if `~/.claude/projects/<slug>/` has context files, offer to copy them.
+**Step 7 — Offer migration:** if legacy `~/.claude/projects/<slug>/` or `~/.claude/projects/<name>/` has context files, offer to copy them into the new folder. Never delete or edit the legacy files — that directory belongs to Claude Code.
 
 **Step 8 — Confirm:**
 > Registered `<path>` as **<name>**.

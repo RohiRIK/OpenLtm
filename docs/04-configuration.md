@@ -29,9 +29,12 @@ still read (and written in place) when the new file does not exist. See
 | `autoRelate` | `true` | Automatically link related memories |
 | `graphReasoning` | `false` | Enable graph-based reasoning during recall |
 | `evaluateSessionLlm` | `false` | Use LLM to evaluate sessions (costs tokens) |
-| `semanticFallback` | `true` | Fall back to embedding search when FTS returns no results |
+| `semanticFallback` | `true` | Run embedding search alongside full-text search and fuse the rankings (RRF). `false` = full-text only |
+| `autoRecall` | `true` | SessionStart recall directive and per-prompt recall. `false` turns both off |
+| `promptRecall` | `true` | `UserPromptSubmit` adds memories relevant to each prompt (full-text only, ~50ms) |
+| `promptRecallLimit` | `5` | Max memories added per prompt (1–20) |
 | `crossProcessSync` | `false` | Enable cross-agent memory notify via Honker pub-sub (opt-in; requires Honker extension loaded) |
-| `gitInvalidateEnabled` | `true` | When git-learn runs, also flag memories stale if a commit touches their anchored files (code-anchored invalidation). Set `false` to keep git-learn without invalidation. |
+| `gitInvalidateEnabled` | `true` | Flag memories stale when a commit touches their anchored files — from the `PostToolUse` hook when Claude commits, and from git-learn. Set `false` to turn off code-anchored invalidation. |
 
 
 ## Embeddings

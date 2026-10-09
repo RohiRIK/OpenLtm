@@ -61,7 +61,7 @@ If the `ltm_*` tools are missing **inside** the OpenCode TUI:
 SQLite allows one writer at a time. A lock usually means a previous process didn't release the WAL.
 
 1. Close other agent sessions touching the same database.
-2. Check for an orphaned graph server: `/openltm:admin server status`, then `/openltm:admin server stop`.
+2. Check for an orphaned graph server: `/openltm:server status`, then `/openltm:server stop`.
 3. Background processes can hold the lock invisibly. If you launched one, kill it before retrying.
 
 ---
@@ -88,8 +88,8 @@ Claude Code labels `additionalContext` injections from `PreToolUse` hooks as err
 
 The graph server runs on port **7332**.
 
-1. `/openltm:admin server start`, then open the printed URL.
-2. If the port is taken, stop the stale instance: `/openltm:admin server stop`.
+1. `/openltm:server start`, then open the printed URL.
+2. If the port is taken, stop the stale instance: `/openltm:server stop`.
 
 ---
 

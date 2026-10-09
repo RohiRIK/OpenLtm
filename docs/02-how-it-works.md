@@ -11,12 +11,13 @@ The one-page tour. The [Architecture](03-architecture.md) doc is the 1000-line d
 |                        Claude Code                            |
 |                                                               |
 |  +-------------------+  +-----------+  +------------------+   |
-|  | 4 Commands        |  | 5 Skills  |  | 4 Claude Code    |   |
-|  | /openltm:memory       |  | Continu-  |  |    hooks         |   |
-|  | /openltm:project      |  | ousLearn  |  | SessionStart     |   |
-|  | /openltm:health       |  | LtmServer |  | UpdateContext    |   |
-|  | /openltm:admin        |  | GitLearn  |  | EvaluateSession  |   |
-|  |                   |  | Learned   |  | PreCompact       |   |
+|  | 7 Commands        |  | 4 Skills  |  | 7 Claude Code    |   |
+|  | /openltm:memory   |  | Ltm       |  |    hooks         |   |
+|  | /openltm:project  |  | Memory-   |  | SessionStart     |   |
+|  | /openltm:health   |  |   Review  |  | UserPromptSubmit |   |
+|  | /openltm:server   |  | GitLearn  |  | PostToolUse      |   |
+|  | /openltm:admin …  |  | Spec      |  | Stop, SessionEnd |   |
+|  |                   |  |           |  | PreCompact       |   |
 |  +--------+----------+  +-----+-----+  +------------------+   |
 |           +-------------------+---------+                     |   |
 |                               |                            |   |
@@ -46,9 +47,11 @@ Three surfaces — **commands** (you talk), **skills** (Claude's prompt workflow
 
 | Phase | What Happens |
 |-------|-------------|
-| **Session Start** | `SessionStart` hook injects top memories (importance ≥ 3) + project context (goals, decisions, gotchas) |
+| **Session Start** | `SessionStart` injects project context (goals, decisions, gotchas) + a compact LTM index (id + title) of global and project memories |
+| **Each prompt** | `UserPromptSubmit` adds a few memories relevant to the prompt. `PostToolUse` flags memories stale when Claude commits files they reference. |
 | **During Work** | Use `/openltm:memory recall` before tasks, `/openltm:memory learn` after discoveries. MCP tools called automatically. |
-| **Session Stop** | `UpdateContext` saves progress. `EvaluateSession` extracts patterns from the transcript. |
+| **Every turn (Stop)** | `UpdateContext` updates this session's single progress line. |
+| **Session End** | `EvaluateSession` writes a session summary and queues memory proposals for review; the janitor runs if due. |
 | **Pre-Compact** | `PreCompact` snapshots context to `context-summary.md` so it survives compaction. |
 
 You never have to remember any of this. The hooks are wired on install. If you want the playbook, see [Hooks](06-hooks.md).

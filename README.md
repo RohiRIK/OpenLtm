@@ -140,7 +140,7 @@ claude plugin marketplace add https://github.com/RohiRIK/OpenLtm
 claude plugin install openltm
 ```
 
-Restart Claude Code. Five hooks auto-wire, seven commands load, four skills and two agents activate, and your `openltm.db` migrates or creates itself.
+Restart Claude Code. Seven hooks auto-wire, seven commands load, four skills and two agents activate, and your `openltm.db` migrates or creates itself.
 
 ### bunx (no clone)
 
