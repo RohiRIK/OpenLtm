@@ -1,5 +1,47 @@
 # Changelog
 
+## [2.17.0] — 2026-10-09
+
+Hardening and "recall everywhere". Consolidates open PRs #27–#38 with six parallel workstreams into one release.
+
+### Security
+- **Graph server no longer exposed to the network.** It bound `0.0.0.0` and `GET /api/settings` returned provider API keys in plain text. It now binds `127.0.0.1` (override: `LTM_SERVER_HOST`, with a warning), rejects non-loopback `Host`/`X-Forwarded-Host`/`Origin` (DNS-rebinding and cross-site requests), requires `Content-Type: application/json` on mutations, masks secrets in settings/config responses (masked values sent back never overwrite the real key), and confines `/api/reveal` to the database directory. The Next UI on :7332 now binds loopback too.
+- **Fail-closed secret scrubbing on every durable write** (#29) **and on egress** — SessionStart injection, MCP recall/context/context_items/resources, categorise, dedup prompts, embeddings (#31).
+- **Private tags** — memories tagged `private` are left out of recall, SessionStart, exports, `get` and janitor candidates unless `includePrivate` is passed. Private is not encryption (#37).
+- **Proposals**: `accept`/`reject` refuse path-like session ids (previously `../x` could rewrite or delete JSON outside the proposals dir).
+- Staging terms are scrubbed before `memory_conflict_staging` writes (#34 follow-up that was missing from the PR stack tip).
+
+### Added
+- **Prompt-time recall** — new `UserPromptSubmit` hook adds up to 5 memories relevant to each prompt (full-text only, ~50ms, never repeats a memory in a session). Config: `ltm.promptRecall`, `ltm.promptRecallLimit`.
+- **Commit-driven stale flagging inside Claude Code** — new `PostToolUse` (Bash) hook flags memories anchored to files Claude commits, without the global git hook.
+- **MCP tools** — `get` (fetch one memory by id, #32), `context_add` (goal/decision/gotcha/progress), `proposals` (list/accept/reject). `context`/`context_items`/`context_add` default `project` to the current one. Every tool carries MCP annotations (`readOnlyHint`, `destructiveHint`, …) and the server reports the real package version.
+- **Hybrid recall** — full-text (stopwords dropped, prefix + plural matching) and semantic results fused with Reciprocal Rank Fusion; query relevance now leads ranking. Golden-query eval: right memory first 8/8 (was 1/8). `RecallInput.semantic: false` forces full-text.
+- **SessionStart compact index** — `- [id] title`, capped by `injectTopN` (now actually wired, #30/#33), full body via `get`.
+- **Supersede review** — contradictions are staged, never auto-applied; SessionStart lists pending ones; `ltm conflict list|accept|reject|coexist` (#34, #35).
+- **Learn near-dedup** — FTS shortlist + Jaccard tiers with `matched_by`/`score`/`matched_id` on the result (#36).
+- **Standalone janitor** — `ltm janitor run|status|schedule|daemon`, single-instance lock, `SessionEnd` trigger, systemd/launchd/cron units (#27).
+- **Skills** — one `Ltm` memory skill (merges ContinuousLearning, session-context, Learned) with reference files; new `MemoryReview` curation skill; `/openltm:server` command replaces the LtmServer skill; trigger evals under `evals/`.
+
+### Changed
+- **Hook lifecycle.** `Stop` fires after every turn, so it now only upserts one progress row per session; session evaluation moved to `SessionEnd`. SessionStart is source-aware (startup/resume/clear/compact), no longer runs `git fetch` or edits `known_marketplaces.json`, onboards with an absolute bun path, keeps summary headers when trimming, injects globals for new projects, and announces pending proposals. All hooks have explicit timeouts. Dev installs are wired the same way.
+- **One project identity across hosts.** Claude Code, Pi, OpenCode and OpenClaw resolve names the same way (registry → git repo root → folder name). A host's previous name is kept while it is the only one holding data, so nothing is orphaned.
+- **OpenLTM state moved out of `~/.claude/projects`** (Claude Code's transcript directory) to `<dataDir>/projects/`; config read order `LTM_CONFIG_PATH` → `<dataDir>/config.json` → legacy `~/.claude/config.json`. Legacy files are copied on first use and never modified.
+- Session pattern logs moved from the plugin install dir to `${CLAUDE_PLUGIN_DATA}/learned/`.
+- Agent `planner` → `ltm-planner`: valid Claude Code `tools:` list, reads LTM itself (read-only), narrower trigger.
+- Tests run with an isolated `HOME`/`CLAUDE_CONFIG_DIR` and fail if the real `~/.claude` changes (#38).
+
+### Fixed
+- **Progress history wiped by one long session** — 20 turns replaced every earlier session's progress row.
+- **Memories differing by a marker, number, or negation were merged** — "plan A"/"plan B", "retry 3"/"5" (#36's Jaccard tier) and "do not run X"/"do run X" (older containment rule) now stay separate.
+- `git-learner` passed fields `learn` doesn't accept, so mined memories were stored as global.
+- New projects were registered under the subfolder name the session started in.
+- The bundled git hook ran core CLI entry points on every commit (printed `Usage: bun embeddings.ts …`).
+- Graph server ignored SIGTERM.
+- Janitor dedup queried a column removed in migration 010 and never produced suggestions; embedding counts and llama.cpp vector alignment (#27).
+
+### Removed
+- Skills `ContinuousLearning`, `session-context`, `Learned`, `LtmServer`; committed session logs; `r2-split-harness/`, `scripts/tmp_*`, `verify_split*.ts`.
+
 ## [2.16.2] — 2026-10-04
 
 ### Fixed
