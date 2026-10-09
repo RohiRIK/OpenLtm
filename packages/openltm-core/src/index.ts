@@ -43,6 +43,24 @@ export { categorise } from "./recall/categorise.js";
 export { buildExplainer, computeTemperature } from "./recall/explainer.js";
 export type { MemoryTemperature, RecallExplainer, ExplainerInput } from "./recall/explainer.js";
 
+// Project identity — the one cwd → project_scope resolver every host uses
+export {
+  normalizeProjectName, findRepoRoot, repoIdentityRoot, fallbackProjectName,
+  resolveProjectName, resolveProjectNameDetailed,
+  legacyClaudeSlug, legacyLastSegment,
+  readRegistryFile, loadProjectRegistry, migrateLegacyRegistry,
+  migrateLegacyContextFiles, hasContextFiles, isSafeProjectDirName, CONTEXT_FILES,
+  projectHasData, getHomeDir, getLegacyClaudeDir, getClaudeTranscriptsDir, getLegacyRegistryPath,
+} from "./project.js";
+export type {
+  ProjectRegistry, ProjectDataProbe, ProjectNameSource, ResolveProjectNameOptions,
+  ProjectNameResolution, ProbeDb, ProbeDbOpener,
+} from "./project.js";
+export { createProjectDataProbe } from "./projectProbe.js";
+
+// Storage locations (data dir, registry, config)
+export { getDataDir, getProjectsDir, getRegistryPath, getConfigPath, getLegacyConfigPath } from "./paths.js";
+
 // Session prefill helpers
 export { buildPrefillContext, deriveProjectFromCwd, selectPrefillMemories } from "./prefill.js";
 export type { PrefillOptions, PrefillSelection, PrefillCategory, PrefillQuotaReport } from "./prefill.js";

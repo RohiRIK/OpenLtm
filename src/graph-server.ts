@@ -26,6 +26,7 @@ import {
 } from "@rohirik/openltm-core";
 import { detectCommunities, generateClusterLabel, assignClusterColors } from "./cluster.js";
 import { getDbPath, getSchemaPath } from "./paths.js";
+import { getConfigPath } from "@rohirik/openltm-core";
 import type { Cluster } from "./graph-app/lib/types.js";
 
 const CLAUDE_DIR = join(homedir(), ".claude");
@@ -143,18 +144,22 @@ async function fetchProviderModels(
 }
 
 const DB_PATH = getDbPath();
-const CONFIG_PATH = join(CLAUDE_DIR, "config.json");
 
+// LTM config: resolved per call (LTM_CONFIG_PATH → <dataDir>/config.json → legacy
+// ~/.claude/config.json), so writes land in whichever file is already in use.
 function readClaudeConfig(): Record<string, unknown> {
-  if (!existsSync(CONFIG_PATH)) return {};
-  try { return JSON.parse(readFileSync(CONFIG_PATH, "utf-8")) as Record<string, unknown>; }
+  const configPath = getConfigPath();
+  if (!existsSync(configPath)) return {};
+  try { return JSON.parse(readFileSync(configPath, "utf-8")) as Record<string, unknown>; }
   catch { return {}; }
 }
 
 function writeClaudeConfig(patch: Record<string, unknown>): void {
   const current = readClaudeConfig();
   const merged = deepMerge(current, patch);
-  writeFileSync(CONFIG_PATH, JSON.stringify(merged, null, 2) + "\n");
+  const configPath = getConfigPath();
+  mkdirSync(dirname(configPath), { recursive: true });
+  writeFileSync(configPath, JSON.stringify(merged, null, 2) + "\n");
 }
 
 function deepMerge(base: Record<string, unknown>, patch: Record<string, unknown>): Record<string, unknown> {

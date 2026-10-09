@@ -5,13 +5,12 @@
  */
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
-import { homedir } from "os";
 import { getDb, DB_PATH } from "./shared-db.js";
 import { learn } from "./db.js";
+import { getDataDir, getProjectsDir } from "./paths.js";
+import { isSafeProjectDirName, migrateLegacyContextFiles } from "./project.js";
 
 export { DB_PATH };
-const CLAUDE_DIR   = join(homedir(), ".claude");
-const PROJECTS_DIR = join(CLAUDE_DIR, "projects");
 
 export type ContextType = "goal" | "decision" | "progress" | "gotcha";
 
@@ -133,7 +132,12 @@ export function trimProgress(project: string, max = 20): void {
  * Keeps the file as a human-readable snapshot and backward-compat fallback.
  */
 export function exportContextMarkdown(project: string): void {
-  const projectDir = join(PROJECTS_DIR, project);
+  if (!isSafeProjectDirName(project)) return;
+  const projectsDir = getProjectsDir(getDataDir(DB_PATH));
+  // Copy legacy ~/.claude/projects/<name>/context-*.md first: once the summary
+  // below exists, the new dir counts as migrated and the rest would be skipped.
+  migrateLegacyContextFiles(project, projectsDir);
+  const projectDir = join(projectsDir, project);
   if (!existsSync(projectDir)) mkdirSync(projectDir, { recursive: true });
 
   const date = new Date().toISOString().slice(0, 10);

@@ -1,15 +1,65 @@
 /**
  * paths.ts (openltm-core) — Path resolution without any host-specific defaults.
- * Priority: LTM_DB_PATH env var > CLAUDE_PLUGIN_DATA env var > dev fallback.
- * The CLAUDE_DIR constant is intentionally absent — adapters inject paths via LtmCoreConfig.
+ *
+ * Database:  LTM_DB_PATH env var > CLAUDE_PLUGIN_DATA env var > dev fallback.
+ * Data dir:  LTM_DATA_DIR > CLAUDE_PLUGIN_DATA > directory of the database.
+ *   <dataDir>/projects/registry.json   cwd → project name
+ *   <dataDir>/projects/<name>/         per-project context markdown
+ *   <dataDir>/config.json              LTM config (see getConfigPath)
+ *
+ * OpenLTM state used to live in ~/.claude/projects/ — Claude Code's own
+ * transcript directory. That location is now a read-only migration source.
  */
-import { join } from "path";
+import { dirname, join } from "path";
 import { existsSync } from "fs";
+import { getLegacyClaudeDir } from "./project.js";
 
 export function getDbPath(): string {
   if (process.env["LTM_DB_PATH"]) return process.env["LTM_DB_PATH"];
   if (process.env["CLAUDE_PLUGIN_DATA"]) return join(process.env["CLAUDE_PLUGIN_DATA"], "openltm.db");
   return join(import.meta.dir, "..", "..", "..", "data", "openltm.db");
+}
+
+/**
+ * Where OpenLTM keeps its own files (registry, context markdown, config).
+ * `dbPath` is only the last-resort anchor; hosts with their own DB resolution
+ * (the Claude hooks) pass theirs so registry and DB stay side by side.
+ */
+export function getDataDir(dbPath: string = getDbPath()): string {
+  return process.env["LTM_DATA_DIR"] || process.env["CLAUDE_PLUGIN_DATA"] || dirname(dbPath);
+}
+
+/** `<dataDir>/projects` — registry + per-project context markdown. */
+export function getProjectsDir(dataDir: string = getDataDir()): string {
+  return join(dataDir, "projects");
+}
+
+/** `<dataDir>/projects/registry.json`. */
+export function getRegistryPath(dataDir: string = getDataDir()): string {
+  return join(getProjectsDir(dataDir), "registry.json");
+}
+
+/** `~/.claude/config.json` — pre-2.17 config location, still read as a fallback. */
+export function getLegacyConfigPath(): string {
+  return join(getLegacyClaudeDir(), "config.json");
+}
+
+/**
+ * The LTM config file. Read order:
+ *   1. LTM_CONFIG_PATH env var (returned even if missing — explicit wins)
+ *   2. <dataDir>/config.json        if it exists
+ *   3. ~/.claude/config.json        if it exists (legacy)
+ *   4. <dataDir>/config.json        (where a new config is written)
+ * Writers write to this path too, so an existing legacy file keeps being
+ * updated in place rather than forked.
+ */
+export function getConfigPath(dataDir: string = getDataDir()): string {
+  if (process.env["LTM_CONFIG_PATH"]) return process.env["LTM_CONFIG_PATH"];
+  const preferred = join(dataDir, "config.json");
+  if (existsSync(preferred)) return preferred;
+  const legacy = getLegacyConfigPath();
+  if (existsSync(legacy)) return legacy;
+  return preferred;
 }
 
 export function getSchemaPath(): string {

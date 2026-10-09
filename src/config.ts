@@ -1,16 +1,11 @@
 #!/usr/bin/env bun
 /**
- * config.ts — Loader and validator for ~/.claude/config.json
+ * config.ts — Loader and validator for the LTM config.json.
+ * Location: core getConfigPath() — LTM_CONFIG_PATH → <dataDir>/config.json → legacy ~/.claude/config.json
  */
-import { join } from "path";
-import { homedir } from "os";
 import { existsSync, readFileSync } from "fs";
+import { getConfigPath } from "@rohirik/openltm-core";
 import { getDbPath } from "./paths.js";
-
-// Lazy-computed config path
-function getConfigPath(): string {
-  return join(homedir(), ".claude", "config.json");
-}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
