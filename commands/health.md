@@ -27,7 +27,7 @@ Status: 🟢 ≥70 · 🟡 40–69 · 🔴 <40
 | Context coverage (goal/decision/gotcha/progress) | 20% |
 | Session activity (any access ≤14 days) | 20% |
 
-If the server is NOT running, show: `(graph server offline — start with /openltm:admin server)`
+If the server is NOT running, show: `(graph server offline — start with /openltm:server start)`
 
 ---
 

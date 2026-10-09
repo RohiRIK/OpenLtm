@@ -1,0 +1,1 @@
+{"globals":[{"id":3,"content":"Always use bun, never npm, in this workspace","category":"preference","importance":5,"project_scope":null}],"scoped":[{"id":12,"content":"Refresh tokens are stored in an httpOnly, SameSite=Strict cookie — never in localStorage.","category":"architecture","importance":4,"project_scope":"demo-api"}]}
