@@ -10,6 +10,8 @@ Hardening and "recall everywhere". Consolidates open PRs #27–#38 with six para
 - **Private tags** — memories tagged `private` are left out of recall, SessionStart, exports, `get` and janitor candidates unless `includePrivate` is passed. Private is not encryption (#37).
 - **Proposals**: `accept`/`reject` refuse path-like session ids (previously `../x` could rewrite or delete JSON outside the proposals dir).
 - Staging terms are scrubbed before `memory_conflict_staging` writes (#34 follow-up that was missing from the PR stack tip).
+- **Private memories never leave the machine.** Before this, a `private` memory was still sent to the embedding provider by `learn()` (its vector and auto-relations), to the categorise LLM, injected by prompt recall, listed by the `memory://` MCP resources, and reachable through graph traversal. All of those paths now skip it.
+- Prompt recall and the SessionStart context summary are egress-scrubbed too (rows and legacy context files written before the scrubber existed reached the model verbatim).
 
 ### Added
 - **Prompt-time recall** — new `UserPromptSubmit` hook adds up to 5 memories relevant to each prompt (full-text only, ~50ms, never repeats a memory in a session). Config: `ltm.promptRecall`, `ltm.promptRecallLimit`.
@@ -20,6 +22,7 @@ Hardening and "recall everywhere". Consolidates open PRs #27–#38 with six para
 - **Supersede review** — contradictions are staged, never auto-applied; SessionStart lists pending ones; `ltm conflict list|accept|reject|coexist` (#34, #35).
 - **Learn near-dedup** — FTS shortlist + Jaccard tiers with `matched_by`/`score`/`matched_id` on the result (#36).
 - **Standalone janitor** — `ltm janitor run|status|schedule|daemon`, single-instance lock, `SessionEnd` trigger, systemd/launchd/cron units (#27).
+- **QA harness** — `bun run qa:smoke` (MCP over stdio, every hook as a subprocess, the semantic path against a stub embeddings server, the built Pi/OpenClaw bundles under Node and OpenCode under Bun, graph-server network guards) and `bun run qa:ui` (the graph UI in Chromium via Playwright). `scripts/qa/prompt-recall-eval.ts` measures prompt-recall precision/recall on a labelled corpus.
 - **Skills** — one `Ltm` memory skill (merges ContinuousLearning, session-context, Learned) with reference files; new `MemoryReview` curation skill; `/openltm:server` command replaces the LtmServer skill; trigger evals under `evals/`.
 
 ### Changed
@@ -38,6 +41,23 @@ Hardening and "recall everywhere". Consolidates open PRs #27–#38 with six para
 - The bundled git hook ran core CLI entry points on every commit (printed `Usage: bun embeddings.ts …`).
 - Graph server ignored SIGTERM.
 - Janitor dedup queried a column removed in migration 010 and never produced suggestions; embedding counts and llama.cpp vector alignment (#27).
+
+### Fixed after end-to-end verification
+Found by running the plugin in a real Claude Code session, the smoke scripts above, and a review of the whole release.
+- **SessionStart injected no memories when an embeddings provider was up** (it read vectors from a column dropped in migration 010) and its index showed no titles.
+- **Prompt recall** skipped memories SessionStart had only indexed, and its matching was retuned: light stemming, IDF weighting, generic words ("add", "test", "fix") count half, one distinctive word suffices, weak partial matches are dropped. On a labelled corpus of 71 prompts (17 held out), precision went from 85.5% to 95.2% and recall from 67.3% to 94.5%.
+- **recall()** took its full-text and semantic top-N before applying the project/status/privacy filters, so a busy project could crowd out the current one's memories.
+- MCP `learn` with `files` and no `project` stored an anchored memory as global; it now uses the current project. Log notifications were rejected (missing `logging` capability).
+- Commits run as `git -c k=v commit` or `git -C dir commit` were not detected by the PostToolUse hook.
+- Accepted proposals lost their session's project.
+- Near-dedup merged antonym pairs (sync/async, read/write, enable/disable, …).
+- `bunx @rohirik/openltm-core --claude` wrote MCP and hook config that Claude Code ignores (0 hooks, no server); it now writes `~/.claude.json` and the current hook format. The portable SessionStart crashed on a brand-new DB.
+- `bun install` in any checkout wired global hooks and could set `core.hooksPath`; dev wiring is now opt-in (`LTM_WIRE_HOOKS=1`), and the git hook only with `ltm.gitLearnEnabled`.
+- Pi looked for the plugin cache under an old path, sorted versions as strings, and kept its own DB; it now shares Claude Code's DB, saves progress on compaction through the bridge, and its dead `hooks.ts`/`tools.ts` are gone. OpenCode resolves the project from its path while keeping memories stored under the old name.
+- Janitor: graph-server, its interval and the scheduler now take the cross-process lock. Generated systemd units failed to load when the DB path contained a space. Scheduled units ignored `ltm.janitor.intervalMinutes`.
+- Folder names in non-Latin scripts normalized to an empty name, splitting one repository into a different project per host.
+- SessionStart listed every project's staged conflicts; identical permanent decisions/gotchas were stored repeatedly.
+- `hooks/GitCommit.bundle.mjs` rebuilt. Eight graph-app e2e tests still targeted the pre-2.8 UI and failed on `main` too; they now test the current shell.
 
 ### Removed
 - Skills `ContinuousLearning`, `session-context`, `Learned`, `LtmServer`; committed session logs; `r2-split-harness/`, `scripts/tmp_*`, `verify_split*.ts`.
