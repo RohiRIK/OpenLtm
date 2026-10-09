@@ -135,6 +135,14 @@ How each channel is published, and what to do when one breaks: [`docs/11-publish
 
 ### Marketplace (recommended for Claude Code)
 
+One step (Claude Code 2.1.275 or later):
+
+```bash
+claude plugin install openltm --marketplace RohiRIK/OpenLtm
+```
+
+Or in a session: `/plugin install openltm --marketplace RohiRIK/OpenLtm`. On older versions, add the marketplace first:
+
 ```bash
 claude plugin marketplace add https://github.com/RohiRIK/OpenLtm
 claude plugin install openltm
