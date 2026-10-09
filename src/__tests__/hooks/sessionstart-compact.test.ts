@@ -4,7 +4,7 @@
  */
 import { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdirSync } from "fs";
+import { mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import { applyInjectTopN } from "../../../hooks/lib/injectTopN.js";
 import { initSandboxDb, makeSandbox, markOnboarded, runHook, seedMemory, writeConfig, type Sandbox } from "./hookHarness";
@@ -40,6 +40,16 @@ describe("SessionStart compact index (behaviour)", () => {
     const longLine = lines.find((l) => l.startsWith(`- [${long}] `))!;
     expect(longLine.endsWith("…")).toBe(true);
     expect(longLine.length).toBeLessThanOrEqual(`- [${long}] `.length + 81);
+    expect(out).not.toContain(AWS_KEY);
+  }, 30_000);
+
+  it("scrubs a legacy context summary before injecting it (compact keeps the file as is)", async () => {
+    await start("startup");
+    const projectDir = join(sb.data, "projects", "ledger-app");
+    mkdirSync(projectDir, { recursive: true });
+    writeFileSync(join(projectDir, "context-summary.md"), `# Context Summary\n## Gotchas\n- CI deploy key ${AWS_KEY} lives in the runner env\n`);
+    const out = await start("compact");
+    expect(out).toContain("lives in the runner env");
     expect(out).not.toContain(AWS_KEY);
   }, 30_000);
 

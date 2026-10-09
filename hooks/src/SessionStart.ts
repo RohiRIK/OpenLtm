@@ -240,7 +240,8 @@ async function main(): Promise<void> {
     process.stderr.write(`[SessionStart] Context for "${name}" is older than 30 days — skipping\n`);
     notRestored = "stale_context";
   } else {
-    summaryText = readFileSync(summaryPath, "utf-8");
+    // Legacy/file-built summaries were never scrubbed on write — scrub before injecting.
+    summaryText = scrubForEgress(readFileSync(summaryPath, "utf-8"));
   }
 
   const sessionContext = summaryText.slice(0, 500).trim() || undefined;
