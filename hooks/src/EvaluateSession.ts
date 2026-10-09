@@ -183,11 +183,11 @@ async function llmProposals(
   }
 }
 
-function queueProposals(sessionId: string | undefined, proposals: MemoryProposal[]): void {
+function queueProposals(sessionId: string | undefined, proposals: MemoryProposal[], project: string): void {
   if (proposals.length === 0) return;
   const fileId = sessionId ? sessionId.replace(/[^\w-]/g, "_") : `unknown-${Date.now()}`;
   const proposalsPath = join(PROPOSALS_DIR, `${fileId}.json`);
-  writeProposals(proposalsPath, proposals);
+  writeProposals(proposalsPath, proposals, project);
   logHook("EvaluateSession", "info", `${proposals.length} proposals written`, proposalsPath);
 }
 
@@ -226,7 +226,7 @@ async function main(): Promise<void> {
   const errorProposals: MemoryProposal[] = errors.slice(0, MAX_ERROR_PROPOSALS).map(content => ({
     content, category: "gotcha", importance: 3, source: "evaluate-session",
   }));
-  queueProposals(sessionId, [...errorProposals, ...await llmProposals(entries, projectName, sessionId)]);
+  queueProposals(sessionId, [...errorProposals, ...await llmProposals(entries, projectName, sessionId)], projectName);
 
   logEvent("EvaluateSession", EVENTS.SESSION_EVALUATED, { project: projectName, count: messageCount });
   emitEvent({ hook: "EvaluateSession", event: EVENTS.SESSION_EVALUATED, project: projectName, count: messageCount, ts: new Date().toISOString() });

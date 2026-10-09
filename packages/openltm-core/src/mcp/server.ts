@@ -443,6 +443,7 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
             category: p.category,
             importance: p.importance,
             source: p.source,
+            project: p.project,
             generated_at: Number.isFinite(p.generatedAt) ? new Date(p.generatedAt).toISOString() : null,
           })),
         });

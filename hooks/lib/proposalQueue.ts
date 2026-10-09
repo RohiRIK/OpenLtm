@@ -8,8 +8,9 @@ export interface MemoryProposal {
   source: string
 }
 
-export function writeProposals(proposalsPath: string, proposals: MemoryProposal[]): void {
+/** `project` is the session's project — accepted proposals are scoped to it. */
+export function writeProposals(proposalsPath: string, proposals: MemoryProposal[], project?: string): void {
   const dir = dirname(proposalsPath)
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-  writeFileSync(proposalsPath, JSON.stringify({ proposals, generatedAt: Date.now() }, null, 2), "utf8")
+  writeFileSync(proposalsPath, JSON.stringify({ proposals, generatedAt: Date.now(), ...(project ? { project } : {}) }, null, 2), "utf8")
 }

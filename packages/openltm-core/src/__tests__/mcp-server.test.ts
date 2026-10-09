@@ -267,6 +267,21 @@ describe("mcp/server — proposals", () => {
     expect(res.proposals[0]!.generated_at).toBe(new Date(1_700_000_000_000).toISOString());
   });
 
+  it("accept scopes the memory to the proposal's project; list shows it", async () => {
+    const dir = useProposalsDir();
+    writeFileSync(join(dir, "sess-proj.json"), JSON.stringify({
+      generatedAt: 1_700_000_000_000, project: "proposal-proj",
+      proposals: [{ content: "proposal scoped to its session project zebra", category: "gotcha", importance: 3, source: "eval" }],
+    }));
+    const client = await connect();
+    const list = json<{ proposals: Array<{ session_id: string; project: string | null }> }>(await call(client, "proposals", { action: "list" }));
+    expect(list.proposals.find((p) => p.session_id === "sess-proj")?.project).toBe("proposal-proj");
+    expect((await call(client, "proposals", { action: "accept", session_id: "sess-proj", index: 0 })).isError).toBeFalsy();
+    const core = await import("../index.js");
+    const row = core.getDb().query("SELECT project_scope FROM memories WHERE content = ?").get("proposal scoped to its session project zebra") as { project_scope: string | null };
+    expect(row.project_scope).toBe("proposal-proj");
+  });
+
   it("accept stores the memory and removes the proposal", async () => {
     const dir = useProposalsDir();
     writeProposals(dir, "sess-b", [

@@ -121,9 +121,12 @@ describe("EvaluateSession hook (SessionEnd)", () => {
   it("queues only real, deduplicated errors as proposals", async () => {
     const proposalsPath = join(pluginData, "proposals", `${sessionId}.json`);
     expect(existsSync(proposalsPath)).toBe(true);
-    const { proposals } = JSON.parse(readFileSync(proposalsPath, "utf-8")) as {
+    const { proposals, project } = JSON.parse(readFileSync(proposalsPath, "utf-8")) as {
       proposals: Array<{ content: string; category: string; source: string }>;
+      project?: string;
     };
+    expect(typeof project).toBe("string"); // accepted proposals are scoped to it
+    expect(project!.length).toBeGreaterThan(0);
     expect(proposals).toHaveLength(1);
     expect(proposals[0]!.content).toBe(REAL_ERROR.replace(/\s+/g, " "));
     expect(proposals[0]!.category).toBe("gotcha");
