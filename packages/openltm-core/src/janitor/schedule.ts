@@ -61,7 +61,11 @@ export interface ScheduleSpec {
   bin: string;
   /** Absolute DB path baked into the unit as LTM_DB_PATH. */
   dbPath: string;
-  runIntervalMinutes: number;
+  /**
+   * Baked into the unit as --interval-minutes only when the user chose one; otherwise
+   * each run resolves it (LTM_JANITOR_INTERVAL_MINUTES > ltm.janitor.intervalMinutes > 6h).
+   */
+  runIntervalMinutes?: number;
   checkMinutes: number;
   /** PATH for the unit (so the janitor can find e.g. ollama/llama-server helpers). */
   pathEnv?: string;
@@ -90,7 +94,8 @@ export interface RenderedSchedule {
  * `bunfig.toml` preload) from there and could redirect provider URLs/keys.
  */
 function runArgs(spec: ScheduleSpec): string[] {
-  return [spec.runtime, "--no-env-file", spec.bin, "janitor", "run", "--if-due", "--quiet", "--interval-minutes", String(spec.runIntervalMinutes)];
+  const interval = spec.runIntervalMinutes ? ["--interval-minutes", String(spec.runIntervalMinutes)] : [];
+  return [spec.runtime, "--no-env-file", spec.bin, "janitor", "run", "--if-due", "--quiet", ...interval];
 }
 
 /** Neutral working directory for the janitor process: the DB's folder. */
@@ -98,14 +103,30 @@ export function janitorWorkingDirectory(spec: ScheduleSpec): string {
   return dirname(spec.dbPath);
 }
 
-/** Quote one argument for a systemd ExecStart= line. */
+/** systemd expands `%` specifiers in every setting; `%%` is a literal percent. */
+function systemdEscapeSpecifiers(value: string): string {
+  return value.replace(/%/g, "%%");
+}
+
+/** Quote one word for systemd Environment= (unquoted by systemd; `$` is literal there). */
 function systemdQuote(arg: string): string {
-  return /^[A-Za-z0-9_@%+=:,./-]+$/.test(arg) ? arg : `"${arg.replace(/(["\\])/g, "\\$1")}"`;
+  const escaped = systemdEscapeSpecifiers(arg);
+  return /^[A-Za-z0-9_@%+=:,./-]+$/.test(escaped) ? escaped : `"${escaped.replace(/(["\\])/g, "\\$1")}"`;
+}
+
+/** Quote one ExecStart= argument: as Environment=, plus `$$` because ExecStart expands `$VAR`. */
+function systemdExecQuote(arg: string): string {
+  return systemdQuote(arg.replace(/\$/g, "$$$$"));
 }
 
 /** Quote one argument for a POSIX shell (crontab). */
 function shQuote(arg: string): string {
-  return /^[A-Za-z0-9_@%+=:,./-]+$/.test(arg) ? arg : `'${arg.replace(/'/g, `'\\''`)}'`;
+  return /^[A-Za-z0-9_@+=:,./-]+$/.test(arg) ? arg : `'${arg.replace(/'/g, `'\\''`)}'`;
+}
+
+/** cron turns an unescaped `%` into a newline, even inside quotes. */
+function cronEscape(command: string): string {
+  return command.replace(/%/g, "\\%");
 }
 
 function xmlEscape(s: string): string {
@@ -122,9 +143,11 @@ export function renderSystemd(spec: ScheduleSpec, home = homedir()): RenderedSch
     "",
     "[Service]",
     "Type=oneshot",
-    `WorkingDirectory=${systemdQuote(janitorWorkingDirectory(spec))}`,
+    // WorkingDirectory= is a bare path: systemd does not unquote it (a quoted
+    // path is "not absolute" and the unit fails to load), so only escape `%`.
+    `WorkingDirectory=${systemdEscapeSpecifiers(janitorWorkingDirectory(spec))}`,
     ...env,
-    `ExecStart=${runArgs(spec).map(systemdQuote).join(" ")}`,
+    `ExecStart=${runArgs(spec).map(systemdExecQuote).join(" ")}`,
     "# 4 = another janitor run holds the lock; not a failure.",
     "SuccessExitStatus=4",
     "Nice=10",
@@ -224,7 +247,7 @@ export function renderCron(spec: ScheduleSpec): RenderedSchedule {
   const when = minutes >= 60 && minutes % 60 === 0
     ? (minutes === 60 ? "0 * * * *" : `0 */${minutes / 60} * * *`)
     : `*/${Math.min(Math.max(minutes, 1), 59)} * * * *`;
-  const line = `${when} cd ${shQuote(janitorWorkingDirectory(spec))} && LTM_DB_PATH=${shQuote(spec.dbPath)} ${runArgs(spec).map(shQuote).join(" ")} >/dev/null 2>&1`;
+  const line = `${when} ${cronEscape(`cd ${shQuote(janitorWorkingDirectory(spec))} && LTM_DB_PATH=${shQuote(spec.dbPath)} ${runArgs(spec).map(shQuote).join(" ")} >/dev/null 2>&1`)}`;
   return {
     kind: "cron",
     files: [],

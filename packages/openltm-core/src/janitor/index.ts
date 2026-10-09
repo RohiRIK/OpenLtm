@@ -42,13 +42,6 @@ let _lastResult: JanitorRunResult | null = null;
 let _interval: ReturnType<typeof setInterval> | null = null;
 
 /**
- * Run all janitor tasks in sequence:
- * 1. Embed missing memories (required for dedup)
- * 2. Decay stale memories
- * 3. Promote eligible context_items
- * 4. Find duplicates (no auto-merge without LLM verification)
- */
-/**
  * Run the janitor under the cross-process file lock the standalone CLI uses
  * (`<db>.janitor.lock`), so graph-server, its interval, the Honker scheduler,
  * the SessionEnd trigger and `ltm janitor run` never curate one DB at once.
@@ -66,6 +59,13 @@ export async function runJanitorExclusive(): Promise<JanitorRunResult | null> {
   }
 }
 
+/**
+ * Run all janitor tasks in sequence:
+ * 1. Embed missing memories (required for dedup)
+ * 2. Decay stale memories
+ * 3. Promote eligible context_items
+ * 4. Find duplicates (no auto-merge without LLM verification)
+ */
 export async function runJanitor(): Promise<JanitorRunResult> {
   if (_running) {
     throw new Error("Janitor is already running");

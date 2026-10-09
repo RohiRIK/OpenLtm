@@ -337,7 +337,9 @@ function schedule(parsed: ParsedJanitorArgs): JanitorCommandResult {
   const kind = parsed.scheduleKind ?? defaultScheduleKind();
   const runtime = parsed.runtime ?? (typeof Bun !== "undefined" ? process.execPath : "bun");
   const bin = resolve(parsed.bin ?? LTM_BIN_PATH);
-  const runIntervalMinutes = resolveRunIntervalMinutes({ flag: parsed.intervalMinutes, env: process.env["LTM_JANITOR_INTERVAL_MINUTES"] });
+  // Only an explicit choice is baked in; without one each run reads the DB setting.
+  const envInterval = Number.parseInt(process.env["LTM_JANITOR_INTERVAL_MINUTES"] ?? "", 10);
+  const runIntervalMinutes = parsed.intervalMinutes ?? (envInterval > 0 ? envInterval : undefined);
   const rendered = renderSchedule(kind, {
     runtime, bin, dbPath, runIntervalMinutes, checkMinutes: parsed.checkMinutes, pathEnv: process.env["PATH"],
   });

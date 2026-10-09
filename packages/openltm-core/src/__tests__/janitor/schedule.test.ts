@@ -96,7 +96,7 @@ describe("renderers", () => {
 
   it("S6: every unit runs bun with --no-env-file from the DB directory, never $HOME or /", () => {
     const service = renderSystemd(spec, "/home/me").files[0]!.content;
-    expect(service).toContain(`WorkingDirectory="/home/me/data dir"`);
+    expect(service).toContain("WorkingDirectory=/home/me/data dir\n");
     expect(service).toMatch(/^ExecStart=\/opt\/bun\/bin\/bun --no-env-file /m);
 
     const plist = renderLaunchd(spec, "/Users/me").files[0]!.content;
@@ -106,6 +106,25 @@ describe("renderers", () => {
     const cron = renderCron(spec).activate[1]!;
     expect(cron).toContain("cd '/home/me/data dir' && LTM_DB_PATH=");
     expect(cron).toContain("/opt/bun/bin/bun --no-env-file ");
+  });
+
+  it("escapes systemd specifiers/variables and cron's % in paths", () => {
+    const odd = { ...spec, dbPath: "/home/me/100% $HOME/openltm.db" };
+    const service = renderSystemd(odd, "/home/me").files[0]!.content;
+    expect(service).toContain("WorkingDirectory=/home/me/100%% $HOME\n");
+    expect(service).toContain(`Environment="LTM_DB_PATH=/home/me/100%% $HOME/openltm.db"`);
+    const exec = renderSystemd({ ...odd, bin: "/opt/$x/bin.ts" }, "/home/me").files[0]!.content;
+    expect(exec).toContain(` "/opt/$$x/bin.ts" janitor run`);
+    const cron = renderCron(odd).activate[1]!;
+    expect(cron).toContain("cd '/home/me/100\\% $HOME' && LTM_DB_PATH='/home/me/100\\% $HOME/openltm.db'");
+    expect(cron.replace(/\\%/g, "")).not.toContain("%");
+  });
+
+  it("bakes --interval-minutes in only when one was chosen", () => {
+    const { runIntervalMinutes: _omit, ...unset } = spec;
+    const service = renderSystemd(unset, "/home/me").files[0]!.content;
+    expect(service).toMatch(/janitor run --if-due --quiet\n/);
+    expect(service).not.toContain("--interval-minutes");
   });
 
   it("platform default: launchd on macOS, systemd elsewhere", () => {
