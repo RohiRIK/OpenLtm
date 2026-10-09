@@ -37,6 +37,10 @@ export interface LtmConfig {
   /** Flag memories stale when a commit touches their anchored files (runs inside the git-learn extract path). */
   gitInvalidateEnabled: boolean;
   autoRecall: boolean;
+  /** UserPromptSubmit hook: FTS-only recall of memories relevant to each prompt (also gated by autoRecall). */
+  promptRecall: boolean;
+  /** Max memories the UserPromptSubmit hook injects per prompt. */
+  promptRecallLimit: number;
 }
 
 export interface ServerConfig {
@@ -78,6 +82,8 @@ const DEFAULTS: Config = {
     gitLearnIgnorePatterns: [],
     gitInvalidateEnabled: true,
     autoRecall: true,
+    promptRecall: true,
+    promptRecallLimit: 5,
   },
   server: {
     apiPort: 7331,
@@ -162,6 +168,8 @@ export async function loadConfig(): Promise<Config> {
       gitLearnIgnorePatterns: ltm.gitLearnIgnorePatterns ?? DEFAULTS.ltm.gitLearnIgnorePatterns,
       gitInvalidateEnabled: ltm.gitInvalidateEnabled ?? DEFAULTS.ltm.gitInvalidateEnabled,
       autoRecall: ltm.autoRecall ?? DEFAULTS.ltm.autoRecall,
+      promptRecall: ltm.promptRecall ?? DEFAULTS.ltm.promptRecall,
+      promptRecallLimit: ltm.promptRecallLimit ?? DEFAULTS.ltm.promptRecallLimit,
     },
     server: { apiPort: server.apiPort ?? DEFAULTS.server.apiPort, uiPort: server.uiPort ?? DEFAULTS.server.uiPort },
     sync: { enabled: sync.enabled ?? DEFAULTS.sync.enabled, provider: sync.provider ?? DEFAULTS.sync.provider },

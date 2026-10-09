@@ -7,7 +7,32 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/bin/run-hook.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/src/SessionStart.ts\""
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/bin/run-hook.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/src/SessionStart.ts\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/bin/run-hook.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/src/UserPromptSubmit.ts\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/bin/run-hook.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/src/PostToolUse.ts\"",
+            "timeout": 10
           }
         ]
       }
@@ -38,7 +63,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/bin/run-hook.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/src/PreCompact.ts\""
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/bin/run-hook.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/src/PreCompact.ts\"",
+            "timeout": 30
           }
         ]
       }
