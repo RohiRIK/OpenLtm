@@ -23,7 +23,7 @@ import { listPendingProposals, acceptProposal, rejectProposal } from "../proposa
 import { traverseGraph, buildReasoningContext } from "../graph.js";
 import { categorise } from "../recall/categorise.js";
 import { scrubForEgress } from "../secretsScrubber.js";
-import { hasPrivateTag } from "../privacy.js";
+import { hasPrivateTag, notPrivateSql } from "../privacy.js";
 
 // ─── Options ─────────────────────────────────────────────────────────────────
 
@@ -471,7 +471,7 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
     async () => {
       const db = getDb();
       const rows = db.query<Memory, []>(
-        `SELECT * FROM memories WHERE importance = 5 AND project_scope IS NULL AND status = 'active' ORDER BY created_at DESC`,
+        `SELECT * FROM memories WHERE importance = 5 AND project_scope IS NULL AND status = 'active' AND ${notPrivateSql()} ORDER BY created_at DESC`,
       ).all();
       return { contents: [{ uri: "memory://globals", text: JSON.stringify(scrubMemoryPayload(rows)), mimeType: "application/json" }] };
     },
@@ -484,7 +484,7 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
     async () => {
       const db = getDb();
       const rows = db.query<Memory, []>(
-        `SELECT * FROM memories WHERE status = 'active' ORDER BY created_at DESC LIMIT 20`,
+        `SELECT * FROM memories WHERE status = 'active' AND ${notPrivateSql()} ORDER BY created_at DESC LIMIT 20`,
       ).all();
       return { contents: [{ uri: "memory://recent", text: JSON.stringify(scrubMemoryPayload(rows)), mimeType: "application/json" }] };
     },
@@ -514,12 +514,12 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
       const projectName = (Array.isArray(name) ? name[0] : name) ?? "";
       const db = getDb();
       const rows = db.query<Memory, [string]>(
-        `SELECT * FROM memories WHERE project_scope = ? AND status = 'active' ORDER BY importance DESC, created_at DESC`,
+        `SELECT * FROM memories WHERE project_scope = ? AND status = 'active' AND ${notPrivateSql()} ORDER BY importance DESC, created_at DESC`,
       ).all(projectName);
       return {
         contents: [{
           uri: uri.href,
-          text: JSON.stringify(rows, null, 2),
+          text: JSON.stringify(scrubMemoryPayload(rows), null, 2),
           mimeType: "application/json",
         }],
       };

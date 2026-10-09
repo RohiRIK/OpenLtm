@@ -3,6 +3,7 @@
  * per-session dedupe, output format.
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import {
@@ -50,6 +51,17 @@ describe("promptRecall helpers", () => {
   });
 });
 
+function tagMemory(sb: Sandbox, memoryId: number, tag: string): void {
+  const db = new Database(sb.dbPath);
+  try {
+    db.run("INSERT OR IGNORE INTO tags (name) VALUES (?)", [tag]);
+    const tagId = db.query<{ id: number }, [string]>("SELECT id FROM tags WHERE name = ?").get(tag)!.id;
+    db.run("INSERT INTO memory_tags (memory_id, tag_id) VALUES (?, ?)", [memoryId, tagId]);
+  } finally {
+    db.close();
+  }
+}
+
 describe("UserPromptSubmit hook (subprocess)", () => {
   let sb: Sandbox;
   let cwd: string;
@@ -68,6 +80,8 @@ describe("UserPromptSubmit hook (subprocess)", () => {
     ids.stale = seedMemory(sb, { content: "SQLite busy timeout for concurrent hook writes is 1000ms", category: "gotcha", stale: true });
     ids.deprecated = seedMemory(sb, { content: "SQLite busy timeout concurrent hooks write deprecated note", category: "gotcha", status: "deprecated" });
     ids.weak = seedMemory(sb, { content: "Timeout handling in the HTTP client", category: "pattern" });
+    ids.private = seedMemory(sb, { content: "SQLite busy timeout private note: hooks write concurrently with my secret tuning", category: "gotcha" });
+    tagMemory(sb, ids.private, "private");
   });
 
   afterAll(() => sb.cleanup());
@@ -83,11 +97,12 @@ describe("UserPromptSubmit hook (subprocess)", () => {
     expect(lines[1]).toBe(`- [${ids.global}] (gotcha) SQLite WAL needs busy_timeout: hooks and the MCP server write concurrently`);
   }, 30_000);
 
-  it("excludes stale, non-active, single-weak-token and other-project memories", async () => {
+  it("excludes stale, non-active, private, single-weak-token and other-project memories", async () => {
     const { stdout } = await run({ prompt: PROMPT, session_id: "s-filters" });
     expect(stdout).not.toContain(`[${ids.stale}]`);
     expect(stdout).not.toContain(`[${ids.deprecated}]`);
     expect(stdout).not.toContain(`[${ids.weak}]`);
+    expect(stdout).not.toContain(`[${ids.private}]`);
 
     const deploy = await run({ prompt: "how do deploys work with the blue-green pipeline?", session_id: "s-scope" });
     expect(deploy.stdout).toContain(`[${ids.alpha}]`);

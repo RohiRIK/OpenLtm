@@ -6,7 +6,8 @@
  *   - opens the DB read-only and never writes (no recall_count bumps, no migrations)
  *   - never calls an embedding provider (no network in the prompt hot path)
  *
- * Filters mirror core recall(): status = 'active' and project_scope NULL-or-current.
+ * Filters mirror core recall(): status = 'active', project_scope NULL-or-current,
+ * and no `private` tag.
  * Stale-flagged memories are skipped as well — recall() only demotes them, but an
  * unprompted injection should not surface knowledge a commit already invalidated.
  *
@@ -154,7 +155,9 @@ export function searchPromptMemories(
     // (AND/OR/NEAR, column filters). A prefix query per stem fetches every
     // inflection; OR keeps partial matches, scored precisely below.
     const match = stems.map(t => (t.length >= 3 ? `"${t}"*` : `"${t}"`)).join(" OR ");
-    const visible = `m.status = 'active' AND m.stale_flagged_at IS NULL AND (m.project_scope IS NULL OR m.project_scope = ?)`;
+    // Private-tagged memories are never auto-injected (same SQL as core's notPrivateSql).
+    const visible = `m.status = 'active' AND m.stale_flagged_at IS NULL AND (m.project_scope IS NULL OR m.project_scope = ?)
+      AND m.id NOT IN (SELECT mt.memory_id FROM memory_tags mt JOIN tags t ON t.id = mt.tag_id WHERE lower(t.name) = 'private')`;
     const rows = db.query<{ id: number; category: string; content: string; project_scope: string | null; title: string }, [string, string | null]>(
       `SELECT m.id AS id, m.category AS category, m.content AS content,
               m.project_scope AS project_scope, coalesce(m.title, '') AS title

@@ -363,3 +363,26 @@ describe("mcp/server — recall workspace / agent filters", () => {
     expect(agent2).not.toContain(a.id);
   });
 });
+
+// Found in review: recall hid private memories but the resources listed them.
+describe("mcp/server — resources respect the private tag", () => {
+  it("memory://globals, memory://recent and memory://project/{name} omit private memories", async () => {
+    const core = await import("../index.js");
+    const priv = core.learn({ content: "okapi private global note never listed", category: "preference", importance: 5, tags: ["private"], skipExport: true });
+    const pub = core.learn({ content: "okapi public global note always listed", category: "preference", importance: 5, skipExport: true });
+    const privScoped = core.learn({ content: "okapi private project note", category: "gotcha", tags: ["Private"], project_scope: "okapi-proj", skipExport: true });
+    const pubScoped = core.learn({ content: "okapi public project note", category: "gotcha", project_scope: "okapi-proj", skipExport: true });
+
+    const client = await connect();
+    const read = async (uri: string) =>
+      JSON.parse((await client.readResource({ uri })).contents[0]!.text as string) as Array<{ id: number }>;
+    for (const uri of ["memory://globals", "memory://recent"]) {
+      const ids = (await read(uri)).map((m) => m.id);
+      expect(ids).not.toContain(priv.id);
+    }
+    expect((await read("memory://globals")).map((m) => m.id)).toContain(pub.id);
+    const scoped = (await read("memory://project/okapi-proj")).map((m) => m.id);
+    expect(scoped).toContain(pubScoped.id);
+    expect(scoped).not.toContain(privScoped.id);
+  });
+});

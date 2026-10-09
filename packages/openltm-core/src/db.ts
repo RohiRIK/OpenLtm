@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import { normalizeKey } from "./dedup.js";
 import { differsMeaningfully, isNearDuplicate, jaccardSimilarity } from "./similarity.js";
-import { filterPrivateMemories, PRIVATE_TAG } from "./privacy.js";
+import { filterPrivateMemories, notPrivateSql } from "./privacy.js";
 import { normalizeAnchorPaths } from "./anchors.js";
 import { getDb, DB_PATH, configure as configureDb } from "./shared-db.js";
 import { enqueueEmbedding } from "./queue/index.js";
@@ -1002,7 +1002,7 @@ export async function recall(input: RecallInput = {}): Promise<MemoryWithRelatio
   // Exclude private-tagged memories in SQL (not after ranking), so they never take
   // a result slot from the limit and never get recall_count/last_recalled bumps.
   if (input.includePrivate !== true) {
-    filters.push(`id NOT IN (SELECT mt.memory_id FROM memory_tags mt JOIN tags t ON t.id = mt.tag_id WHERE lower(t.name) = '${PRIVATE_TAG}')`);
+    filters.push(notPrivateSql());
   }
   if (input.since) {
     filters.push("(created_at > ? OR last_recalled_at > ?)");
