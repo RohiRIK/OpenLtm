@@ -50,10 +50,22 @@ function isShortMarker(token: string): boolean {
  * tokenize() drops "not"/"no" as stopwords and the rest of the text matches.
  */
 const POLARITY_WORDS = new Set([
-  "not", "no", "never", "always", "dont", "cannot", "cant", "wont", "without",
-  "avoid", "allow", "deny", "forbid", "enable", "enabled", "disable", "disabled",
-  "true", "false", "must", "should", "only", "required", "optional", "deprecated",
-  "before", "after", "increase", "decrease", "more", "less", "min", "max",
+  // negation, modality, obligation
+  "not", "no", "yes", "never", "always", "dont", "cannot", "cant", "wont", "without",
+  "must", "should", "only", "required", "optional", "deprecated",
+  "avoid", "allow", "deny", "forbid", "block", "permit", "accept", "reject",
+  // switches and directions
+  "enable", "enabled", "disable", "disabled", "true", "false", "off",
+  "start", "stop", "open", "close", "add", "remove", "include", "exclude",
+  "before", "after", "first", "last", "upper", "lower", "down", "inner", "outer",
+  "increase", "decrease", "reduce", "raise", "more", "less", "min", "max",
+  "ascending", "descending", "asc", "desc",
+  // opposing modes
+  "sync", "async", "synchronous", "asynchronous", "eager", "lazy",
+  "mutable", "immutable", "strict", "loose", "read", "write", "input", "output",
+  "client", "server", "local", "remote", "public", "private", "internal", "external",
+  "success", "failure", "pass", "fail", "allowlist", "denylist", "whitelist", "blacklist",
+  "production", "prod", "development", "dev", "staging",
 ]);
 
 /** A marker-like token: short (counter/suffix/letter) or containing a digit. */

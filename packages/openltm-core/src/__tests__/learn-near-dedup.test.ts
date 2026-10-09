@@ -88,6 +88,13 @@ describe("learn near-dedup #16", () => {
      "Do run the janitor dedup pass against the production memory database during business hours"],
     ["Always enable the write queue for hook writers that share the sqlite database with the MCP server process today",
      "Never enable the write queue for hook writers that share the sqlite database with the MCP server process today"],
+    ["To fix the flaky janitor test increase the polling interval used by the background scheduler loop",
+     "To fix the flaky janitor test reduce the polling interval used by the background scheduler loop"],
+    ["The embedding provider client uses the sync request path for every backfill batch it sends to the server",
+     "The embedding provider client uses the async request path for every backfill batch it sends to the server"],
+    ["Hook timeout for the session start handler is 30s in the plugin manifest",
+     "Hook timeout for the session start handler is 30ms in the plugin manifest"],
+    ["Run the release workflow on node 18 runners for the publish job", "Run the release workflow on node 20 runners for the publish job"],
   ]) {
     it(`keeps meaningfully different facts apart: "${second.slice(0, 40)}…"`, () => {
       const a = core.learn({ content: first, category: "pattern", skipExport: true });
