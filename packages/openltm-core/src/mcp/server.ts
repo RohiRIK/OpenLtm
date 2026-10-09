@@ -114,8 +114,14 @@ const CONTEXT_WRITERS: Record<ContextType, (project: string, content: string) =>
 export function buildMcpServer(options: McpServerOptions = {}): McpServer {
   const server = new McpServer(
     { name: "openltm", version: SERVER_VERSION },
-    {},
+    // `logging` lets learn/graph send notifications/message; without it the SDK rejects them.
+    { capabilities: { logging: {} } },
   );
+
+  /** Best-effort log notification — never fails a tool call (the promise is not awaited). */
+  const notify = (data: string): void => {
+    void server.server.sendLoggingMessage({ level: "info", logger: "ltm", data }).catch(() => { /* client gone or not listening */ });
+  };
 
   /** Explicit `project`, else the host's default project, else null. */
   async function resolveProjectArg(project: string | undefined): Promise<string | null> {
@@ -196,13 +202,16 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
         importance: z.number().int().min(1).max(5).optional().describe("Importance 1-5 (default 3, 5=never decays)"),
         tags: z.array(z.string()).optional().describe("Tags for categorization"),
         files: z.array(z.string()).optional().describe("Repo-relative file paths this memory references — anchors so a commit touching them flags the memory stale"),
-        project: z.string().optional().describe("Scope to a specific project"),
+        project: z.string().optional().describe("Scope to a specific project. Omit for a cross-project memory; when `files` is given it defaults to the current project"),
         workspace_id: z.string().optional().describe("Workspace for this memory"),
         agent_id: z.string().optional().describe("Agent ID for this memory"),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
     async ({ content, title, category, importance, tags, files, project, workspace_id, agent_id }) => {
+      // File anchors are repo-relative, so an anchored memory belongs to a project:
+      // without one, a commit to the same path in any repo would flag it stale.
+      const scope = project?.trim() || (files && files.length > 0 ? (await resolveProjectArg(undefined)) ?? undefined : undefined);
       let resolvedCategory = category;
       let categoriseSource: string | undefined;
 
@@ -224,18 +233,13 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
         importance,
         tags,
         files,
-        project_scope: project,
+        project_scope: scope,
         workspace_id,
         agent_id,
         actor: "mcp:ltm_learn",
       });
 
-      try {
-        server.server.notification({
-          method: "notifications/message",
-          params: { level: "info", logger: "ltm", data: `memory_stored: id=${result.id} category=${resolvedCategory}${categoriseSource ? ` (auto:${categoriseSource})` : ""} importance=${importance ?? 3} action=${result.action}` },
-        });
-      } catch { /* notifications not supported by this client — ignore */ }
+      notify(`memory_stored: id=${result.id} category=${resolvedCategory}${categoriseSource ? ` (auto:${categoriseSource})` : ""} importance=${importance ?? 3} action=${result.action}`);
 
       return jsonResult({ ...result, category: resolvedCategory, categoriseSource });
     },
@@ -366,12 +370,7 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
         }
       }
 
-      try {
-        server.server.notification({
-          method: "notifications/message",
-          params: { level: "info", logger: "ltm", data: `graph_traversal: nodes=${totalNodes} edges=${totalEdges} depth=${depth}` },
-        });
-      } catch { /* notifications not supported by this client — ignore */ }
+      notify(`graph_traversal: nodes=${totalNodes} edges=${totalEdges} depth=${depth}`);
 
       return { content: [{ type: "text", text: blocks.join("\n\n") || "No reasoning context found." }] };
     },

@@ -184,6 +184,18 @@ describe("mcp/server — context tools without project", () => {
     const res = await call(client, "context_items");
     expect(res.isError).toBe(true);
   });
+
+  // Found in a live Claude Code run: an anchored learn without `project` was stored
+  // global, so a commit to the same repo-relative path in any project flagged it.
+  it("learn with files and no project is scoped to the current project; without files it stays global", async () => {
+    const core = await import("../index.js");
+    const client = await connect({ defaultProject: () => "anchor-proj" });
+    const anchored = json<{ id: number }>(await call(client, "learn", { content: "anchored learn scoping check: parser lives in src/parser.ts", category: "architecture", files: ["src/parser.ts"] }));
+    const crossProject = json<{ id: number }>(await call(client, "learn", { content: "cross project learn scoping check: prefer bun over npm", category: "preference" }));
+    const scopeOf = (id: number) => (core.getDb().query("SELECT project_scope FROM memories WHERE id = ?").get(id) as { project_scope: string | null }).project_scope;
+    expect(scopeOf(anchored.id)).toBe("anchor-proj");
+    expect(scopeOf(crossProject.id)).toBeNull();
+  });
 });
 
 describe("mcp/server — context_add", () => {
