@@ -14,9 +14,12 @@
 import { spawn, execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { findCoreCli } from "./find-core.js";
+// Relative on purpose: esbuild inlines this Node-safe module into dist/index.js,
+// whereas the `@rohirik/openltm-core` package entry is Bun-only and external.
+import { dataDirFor, legacyLastSegment, loadProjectRegistry, resolveProjectName } from "../../openltm-core/src/project.js";
 import { Type } from "typebox";
 
 const BRIDGE_DEPTH_ENV = "LTM_BRIDGE_DEPTH";
@@ -266,10 +269,34 @@ export default definePluginEntry({
       } as never);
     };
 
+    // The database the bridge's core server opens — same precedence as core's
+    // getDbPath(), whose dev fallback is <core>/src/../../../data/openltm.db.
+    const bridgeDbPath = (): string | null => {
+      const explicit = readConfig().dbPath ?? process.env["LTM_DB_PATH"];
+      if (explicit) return explicit;
+      if (process.env["CLAUDE_PLUGIN_DATA"]) return join(process.env["CLAUDE_PLUGIN_DATA"], "openltm.db");
+      const core = findCoreCli(import.meta.url);
+      return core ? join(dirname(core.script), "..", "..", "..", "..", "data", "openltm.db") : null;
+    };
+
+    // Shared resolver (registry → repo root → cwd basename), resolved once per
+    // process. Before unified identity this host used the raw cwd basename; that
+    // name is kept while it is the only one with rows, so no memory is orphaned.
+    let cwdProject: string | null = null;
     const projectOf = (explicit: unknown): string => {
       const given = typeof explicit === "string" && explicit.trim() ? explicit : "";
       if (given) return given;
-      return process.cwd().replace(/\/$/, "").split("/").pop() ?? "";
+      if (cwdProject === null) {
+        const cwd = process.cwd();
+        const dbPath = bridgeDbPath();
+        cwdProject = resolveProjectName(cwd, {
+          registry: dbPath ? loadProjectRegistry(join(dataDirFor(dbPath), "projects", "registry.json")) : null,
+          legacyName: legacyLastSegment(cwd),
+          legacyScope: "all",
+          dbPath,
+        });
+      }
+      return cwdProject;
     };
 
     // ── Auto-recall ────────────────────────────────────────────────────────

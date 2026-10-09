@@ -142,6 +142,21 @@ describe("runOnboard --non-interactive", () => {
     clearFlag();
   });
 
+  it("keeps an already-registered name and writes the OpenLTM registry, not ~/.claude/projects", async () => {
+    clearFlag();
+    const { registerPath, getRegistryPath, CLAUDE_TRANSCRIPTS_DIR } = await import("../../hooks/lib/resolveProject.js");
+    const cwd = join(TEST_DIR, "Registered_App");
+    registerPath(cwd, "custom-name");
+    const result = await runOnboard({ nonInteractive: true, cwd });
+    expect(result.projectName).toBe("custom-name");
+    expect(JSON.parse(readFileSync(getRegistryPath(), "utf-8"))[cwd]).toBe("custom-name");
+    const legacyRegistry = join(CLAUDE_TRANSCRIPTS_DIR, "registry.json");
+    if (existsSync(legacyRegistry)) {
+      expect(JSON.parse(readFileSync(legacyRegistry, "utf-8"))[cwd]).toBeUndefined();
+    }
+    clearFlag();
+  });
+
   it("is idempotent — returns success without re-running if already onboarded", async () => {
     writeOnboardedFlag(PLUGIN_DATA);
     const result = await runOnboard({ nonInteractive: true, cwd: PROJECT_CWD });
@@ -173,15 +188,17 @@ describe("runOnboard CRITICAL abort", () => {
 describe("HOME isolation", () => {
   let isolatedProjectName = "";
 
-  it("writes registry + project dir under the temp HOME", async () => {
+  it("writes registry + project dir under the plugin data dir (not ~/.claude/projects)", async () => {
     clearFlag();
     const result = await runOnboard({ nonInteractive: true, force: true, cwd: PROJECT_CWD });
     expect(result.success).toBe(true);
-    const fakeRegistry = JSON.parse(
-      readFileSync(join(FAKE_CLAUDE_DIR, "projects", "registry.json"), "utf-8"),
+    // 2.17: OpenLTM state lives in <dataDir>/projects, out of Claude Code's own transcript dir.
+    const registry = JSON.parse(
+      readFileSync(join(PLUGIN_DATA, "projects", "registry.json"), "utf-8"),
     ) as Record<string, string>;
-    expect(fakeRegistry[PROJECT_CWD]).toBe(result.projectName!);
-    expect(existsSync(join(FAKE_CLAUDE_DIR, "projects", result.projectName!))).toBe(true);
+    expect(registry[PROJECT_CWD]).toBe(result.projectName!);
+    expect(existsSync(join(PLUGIN_DATA, "projects", result.projectName!))).toBe(true);
+    expect(existsSync(join(FAKE_CLAUDE_DIR, "projects", result.projectName!))).toBe(false);
     isolatedProjectName = result.projectName!;
     clearFlag();
   });

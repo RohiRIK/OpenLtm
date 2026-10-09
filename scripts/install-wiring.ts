@@ -229,7 +229,7 @@ if (!existingPostCommit.includes("GitCommit.bundle.mjs")) {
 try {
   execSync(`git config --global core.hooksPath ${shQuote(gitHooksDir)}`, { stdio: "ignore" });
   console.log("  ✔ Global git post-commit hook installed (~/.claude/hooks/git/)");
-  console.log("  ℹ  Enable with: ltm.gitLearnEnabled=true in ~/.claude/config.json");
+  console.log("  ℹ  Enable with: ltm.gitLearnEnabled=true in the LTM config.json ($CLAUDE_PLUGIN_DATA/config.json; legacy ~/.claude/config.json is still read)");
 } catch {
   console.log("  ⚠  Could not set git core.hooksPath — set manually: git config --global core.hooksPath " + gitHooksDir);
 }

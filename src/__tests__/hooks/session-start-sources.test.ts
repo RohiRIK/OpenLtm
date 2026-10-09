@@ -121,7 +121,7 @@ describe("SessionStart — injection", () => {
     expect(stdout).toContain('registered this project as **"demo-app"**');
     expect(stdout).toContain("globals:");
     expect(stdout).toContain("never commit secrets to the repo");
-    const registry = JSON.parse(readFileSync(join(sb.home, ".claude", "projects", "registry.json"), "utf-8"));
+    const registry = JSON.parse(readFileSync(join(sb.data, "projects", "registry.json"), "utf-8"));
     expect(registry[cwd]).toBe("demo-app");
   }, 30_000);
 
