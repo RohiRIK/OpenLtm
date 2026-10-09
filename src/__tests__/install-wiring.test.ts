@@ -4,7 +4,7 @@
  * Runs the script in a subprocess with an isolated HOME (also isolates git --global).
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
@@ -93,5 +93,64 @@ describe("install-wiring hooks", () => {
     expect(r.code).toBe(0);
     expect(r.out).toContain("Skipping");
     expect(readFileSync(join(home, ".claude.json"), "utf-8")).toBe("nope{");
+  });
+
+  // Found in a live container: every `bun install` in a clone/worktree added one
+  // more set of hooks to the global settings (9× SessionStart, 18× Stop).
+  it("dev install replaces LTM hooks from other roots instead of piling up duplicates", () => {
+    const other = (r: string, f: string) => `CLAUDE_PLUGIN_ROOT=${r} bun run ${r}/hooks/src/${f}`;
+    writeFileSync(settingsPath, JSON.stringify({
+      hooks: {
+        SessionStart: [
+          { matcher: "", hooks: [{ type: "command", command: other("/old/clone", "SessionStart.ts") }] },
+          { matcher: "", hooks: [{ type: "command", command: other("/repo/.claude/worktrees/agent-1", "SessionStart.ts") }] },
+          { matcher: "", hooks: [{ type: "command", command: "echo another tool" }] },
+        ],
+        Stop: [
+          { matcher: "", hooks: [{ type: "command", command: other("/old/clone", "UpdateContext.ts") }] },
+          { matcher: "", hooks: [{ type: "command", command: other("/old/clone", "EvaluateSession.ts") }] },
+        ],
+        SessionEnd: [{ matcher: "", hooks: [{ type: "command", command: OTHER_SESSION_END }] }],
+      },
+    }));
+    expect(run().code).toBe(0);
+    const ltm = (file: string) => `CLAUDE_PLUGIN_ROOT='${root}' bun run '${root}/hooks/src/${file}'`;
+    expect(commands("SessionStart")).toEqual(["echo another tool", ltm("SessionStart.ts")]);
+    expect(commands("Stop")).toEqual([ltm("UpdateContext.ts")]);
+    expect(commands("SessionEnd")).toEqual([OTHER_SESSION_END, ltm("EvaluateSession.ts"), ltm("SessionEnd.ts")]);
+  });
+
+  it("does not set the global git core.hooksPath unless git-learn is enabled, and never overrides another one", () => {
+    const gitGet = (env: Record<string, string> = {}) =>
+      Bun.spawnSync(["git", "config", "--global", "--get", "core.hooksPath"], { env: { ...process.env, HOME: home, GIT_CONFIG_GLOBAL: join(home, ".gitconfig"), ...env } }).stdout.toString().trim();
+    expect(run().code).toBe(0);
+    expect(gitGet()).toBe(""); // gitLearnEnabled defaults to false
+
+    writeFileSync(join(home, ".claude", "config.json"), JSON.stringify({ ltm: { gitLearnEnabled: true } }));
+    expect(run().code).toBe(0);
+    expect(gitGet()).toBe(join(home, ".claude", "hooks", "git"));
+
+    Bun.spawnSync(["git", "config", "--global", "core.hooksPath", "/team/hooks"], { env: { ...process.env, HOME: home, GIT_CONFIG_GLOBAL: join(home, ".gitconfig") } });
+    const r = run();
+    expect(r.code).toBe(0);
+    expect(gitGet()).toBe("/team/hooks");
+    expect(r.out).toContain("Left your global core.hooksPath");
+  });
+});
+
+describe("update-wiring (postinstall)", () => {
+  it("leaves ~/.claude alone for a development checkout unless LTM_WIRE_HOOKS=1", () => {
+    const home = mkdtempSync(join(tmpdir(), "ltm-postinstall-"));
+    try {
+      const script = join(import.meta.dir, "..", "..", "scripts", "update-wiring.ts");
+      const env = { ...process.env, HOME: home, GIT_CONFIG_GLOBAL: join(home, ".gitconfig"), CLAUDE_PLUGIN_DATA: "" } as Record<string, string>;
+      delete env.CLAUDE_PLUGIN_DATA;
+      const r = Bun.spawnSync([process.execPath, script], { env, stdout: "pipe", stderr: "pipe" });
+      expect(r.exitCode).toBe(0);
+      expect(r.stdout.toString()).toContain("development checkout");
+      expect(existsSync(join(home, ".claude", "settings.json"))).toBe(false);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });

@@ -6,7 +6,7 @@
  * Usage: bun run scripts/install-wiring.ts <plugin-root>
  */
 import { existsSync, readFileSync, readdirSync, writeFileSync, copyFileSync, mkdirSync, chmodSync, rmSync } from "fs";
-import { join, basename } from "path";
+import { join, basename, resolve, sep } from "path";
 import { homedir } from "os";
 import { execSync } from "child_process";
 
@@ -112,12 +112,16 @@ if (!permissions.allow.includes(LTM_MCP_RULE)) {
 // hooks.json exists in both dev and marketplace installs, but the plugin system
 // only reads it for marketplace installs. Best signal: CLAUDE_PLUGIN_DATA is set,
 // or the plugin cache directory exists.
-const pluginCacheDir = join(CLAUDE_DIR, "plugins", "cache", "ltm");
-const pluginDataDir = join(CLAUDE_DIR, "plugins", "data");
+// Names: the marketplace was "ltm" before 2.x and is "OpenLtm" now (cache/OpenLtm/openltm,
+// data/OpenLtm-openltm). A root inside ~/.claude/plugins is the plugin system's own copy.
+const pluginsDir = join(CLAUDE_DIR, "plugins");
+const pluginDataDir = join(pluginsDir, "data");
 const hasPluginData = existsSync(pluginDataDir)
-  && readdirSync(pluginDataDir).some(d => d.startsWith("ltm-"));
+  && readdirSync(pluginDataDir).some(d => d.startsWith("ltm-") || d.startsWith("OpenLtm-"));
 const isMarketplaceInstall = !!process.env.CLAUDE_PLUGIN_DATA
-  || existsSync(pluginCacheDir)
+  || resolve(root).startsWith(resolve(pluginsDir) + sep)
+  || existsSync(join(pluginsDir, "cache", "ltm"))
+  || existsSync(join(pluginsDir, "cache", "OpenLtm"))
   || hasPluginData;
 
 // Dev/git-clone hook commands for this root. Paths are shell-quoted so a root
@@ -142,24 +146,31 @@ const LTM_HOOK_PATTERNS = [
 // this script writes.
 const GENERIC_HOOK_FILES = ["SessionEnd.ts", "UserPromptSubmit.ts", "PostToolUse.ts"];
 const LTM_EXACT_COMMANDS = new Set(GENERIC_HOOK_FILES.flatMap((f) => [hookCommand(f), legacyHookCommand(f)]));
+// The exact shape this script writes, for any root — quoted or legacy unquoted.
+const LTM_WRITTEN_COMMAND_RE =
+  /^CLAUDE_PLUGIN_ROOT=('?)(.+)\1 bun run ('?)\2\/hooks\/src\/(SessionStart|UserPromptSubmit|PostToolUse|UpdateContext|EvaluateSession|SessionEnd|PreCompact)\.ts\3$/;
 const isLtmHookCommand = (cmd: string): boolean =>
-  LTM_EXACT_COMMANDS.has(cmd) || LTM_HOOK_PATTERNS.some((p) => cmd.includes(p));
+  LTM_EXACT_COMMANDS.has(cmd) || LTM_WRITTEN_COMMAND_RE.test(cmd) || LTM_HOOK_PATTERNS.some((p) => cmd.includes(p));
+/** Drop every LTM hook entry (any root) so one install never leaves duplicates behind. */
+function removeLtmHooks(): number {
+  let removed = 0;
+  for (const event of Object.keys(hooks)) {
+    for (const e of hooks[event]!) {
+      const before = e.hooks.length;
+      e.hooks = e.hooks.filter((h) => !isLtmHookCommand(h.command));
+      removed += before - e.hooks.length;
+    }
+    hooks[event] = hooks[event]!.filter((e) => e.hooks.length > 0);
+    if (hooks[event]!.length === 0) delete hooks[event];
+  }
+  return removed;
+}
 
 if (isMarketplaceInstall) {
   // Marketplace install: plugin system reads hooks/hooks.json directly.
   // Clean up any stale LTM hook entries from settings.json (e.g. leftover from
   // a previous dev/git-clone install or an earlier version of this script).
-  let cleaned = false;
-  for (const event of Object.keys(hooks)) {
-    const before = hooks[event]!.length;
-    hooks[event] = hooks[event]!.filter(
-      (e) => !e.hooks.some((h) => isLtmHookCommand(h.command))
-    );
-    if (hooks[event]!.length === 0) {
-      delete hooks[event];
-    }
-    if (hooks[event]?.length !== before) cleaned = true;
-  }
+  const cleaned = removeLtmHooks() > 0;
   writeFileSync(settingsJson, JSON.stringify(settings, null, 2));
   if (cleaned) {
     console.log("  ✔ Removed stale LTM hooks from ~/.claude/settings.json (now managed by plugin system)");
@@ -198,27 +209,12 @@ if (isMarketplaceInstall) {
     ["PreCompact",       "PreCompact.ts",       "",     30],
   ];
 
-  // 2.17 moved EvaluateSession from Stop (fires every turn) to SessionEnd —
-  // drop the Stop entry older dev installs wrote.
-  if (hooks["Stop"]) {
-    hooks["Stop"] = hooks["Stop"].filter((e) => !e.hooks.some((h) => h.command.includes("hooks/src/EvaluateSession.ts")));
-    if (hooks["Stop"].length === 0) delete hooks["Stop"];
-  }
-
+  // Start clean: drop LTM entries for every root (other clones, deleted worktrees,
+  // duplicates, the pre-2.17 Stop→EvaluateSession), then wire this root once.
+  const removed = removeLtmHooks();
+  if (removed > 0) console.log(`  ✔ Replaced ${removed} existing LTM hook entr${removed === 1 ? "y" : "ies"}`);
   for (const [event, file, matcher, timeout] of LTM_HOOKS) {
-    const command = hookCommand(file);
-    const legacy = legacyHookCommand(file);
-    hooks[event] ??= [];
-    let present = false;
-    for (const e of hooks[event]!) {
-      for (const h of e.hooks) {
-        if (h.command === command) present = true;
-        else if (h.command === legacy) { h.command = command; present = true; } // upgrade to quoted form in place
-      }
-    }
-    if (!present) {
-      hooks[event]!.push({ matcher, hooks: [{ type: "command", command, ...(timeout ? { timeout } : {}) }] });
-    }
+    (hooks[event] ??= []).push({ matcher, hooks: [{ type: "command", command: hookCommand(file), ...(timeout ? { timeout } : {}) }] });
   }
 
   writeFileSync(settingsJson, JSON.stringify(settings, null, 2));
@@ -238,12 +234,34 @@ if (!existingPostCommit.includes("GitCommit.bundle.mjs")) {
   chmodSync(postCommitPath, 0o755);
 }
 
-try {
-  execSync(`git config --global core.hooksPath ${shQuote(gitHooksDir)}`, { stdio: "ignore" });
-  console.log("  ✔ Global git post-commit hook installed (~/.claude/hooks/git/)");
-  console.log("  ℹ  Enable with: ltm.gitLearnEnabled=true in the LTM config.json ($CLAUDE_PLUGIN_DATA/config.json; legacy ~/.claude/config.json is still read)");
-} catch {
-  console.log("  ⚠  Could not set git core.hooksPath — set manually: git config --global core.hooksPath " + gitHooksDir);
+// A global core.hooksPath replaces every repository's own .git/hooks, so only set
+// it when git-learn is on, and never over a hooksPath someone else configured.
+// (Claude Code sessions get commit stale-flagging from the PostToolUse hook anyway.)
+function gitLearnEnabled(): boolean {
+  const candidates = [process.env.LTM_CONFIG_PATH, pluginData && join(pluginData, "config.json"), join(CLAUDE_DIR, "config.json")];
+  for (const p of candidates) {
+    if (!p || !existsSync(p)) continue;
+    const cfg = readJsonConfig(p, { required: false });
+    return cfg?.ltm?.gitLearnEnabled === true;
+  }
+  return false;
+}
+let currentHooksPath = "";
+try { currentHooksPath = execSync("git config --global --get core.hooksPath", { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] }).trim(); } catch { /* unset */ }
+if (currentHooksPath && resolve(currentHooksPath.replace(/^~(?=\/)/, homedir())) !== resolve(gitHooksDir)) {
+  console.log(`  ℹ  Left your global core.hooksPath (${currentHooksPath}) alone. To use git-learn, chain ${postCommitPath} from your own post-commit hook.`);
+} else if (currentHooksPath) {
+  console.log("  ✔ Global git post-commit hook already active (~/.claude/hooks/git/)");
+} else if (gitLearnEnabled()) {
+  try {
+    execSync(`git config --global core.hooksPath ${shQuote(gitHooksDir)}`, { stdio: "ignore" });
+    console.log("  ✔ Global git post-commit hook installed (~/.claude/hooks/git/) for git-learn");
+  } catch {
+    console.log("  ⚠  Could not set git core.hooksPath — set manually: git config --global core.hooksPath " + gitHooksDir);
+  }
+} else {
+  console.log(`  ℹ  Git post-commit hook written to ${postCommitPath} but not activated (ltm.gitLearnEnabled is off).`);
+  console.log(`     To enable git-learn: set ltm.gitLearnEnabled=true, then: git config --global core.hooksPath ${shQuote(gitHooksDir)}`);
 }
 
 // ── Ensure run-hook.sh is executable (defensive — git preserves bit, but cache copies may not) ──
@@ -259,16 +277,3 @@ try {
   }
 }
 
-// ── Patch known_marketplaces.json to use GitHub API source ───────────────────
-// The plugin system defaults to "git" source (requires local git fetch).
-// "github" source uses the GitHub API — no fetch needed for update checks.
-const knownMarketplacesPath = join(CLAUDE_DIR, "plugins", "known_marketplaces.json");
-const marketplaces = existsSync(knownMarketplacesPath) ? readJsonConfig(knownMarketplacesPath, { required: false }) : null;
-if (marketplaces) {
-  const ltm = marketplaces.ltm;
-  if (ltm?.source?.source === "git" && ltm.source.url?.includes("RohiRIK/OpenLtm")) {
-    marketplaces.ltm.source = { source: "github", repo: "RohiRIK/OpenLtm" };
-    writeFileSync(knownMarketplacesPath, JSON.stringify(marketplaces, null, 2));
-    console.log("  ✔ Switched ltm marketplace source to github (enables API-based update checks)");
-  }
-}

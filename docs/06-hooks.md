@@ -1,6 +1,6 @@
 # Hooks
 
-Hooks are the lifeblood of OpenLTM. They run automatically at session boundaries — no manual setup, no opt-in checklist, no "remember to run this." On install, seven Claude Code lifecycle hooks and one git post-commit hook wire themselves automatically. You see them only when something goes wrong.
+Hooks are the lifeblood of OpenLTM. They run automatically at session boundaries — no manual setup, no opt-in checklist, no "remember to run this." On install, seven Claude Code lifecycle hooks wire themselves automatically; an optional git post-commit hook serves git-learn. You see them only when something goes wrong.
 
 If a hook fails, run `/openltm:health` to diagnose.
 
@@ -20,7 +20,7 @@ If a hook fails, run `/openltm:health` to diagnose.
 | `SessionEnd` | `SessionEnd` — once | Spawns a detached `ltm janitor run --if-due`, at most once per 6h. No graph-server needed. Opt out with `LTM_JANITOR_ON_SESSION_END=0`. See [Janitor](13-janitor.md). |
 | `PreCompact` | Before compaction (30s) | Snapshots context to `context-summary.md` so it survives compaction. |
 
-**One git post-commit hook** (wired into the global `core.hooksPath` by `scripts/install-wiring.ts`):
+**One optional git post-commit hook** (written to `~/.claude/hooks/git/post-commit` by `scripts/install-wiring.ts`; the global `core.hooksPath` is only set when `ltm.gitLearnEnabled` is on and no other `core.hooksPath` is configured, because a global hooks path replaces every repository's own `.git/hooks`):
 
 | Hook | Event | What It Does |
 |------|-------|-------------|
@@ -81,7 +81,7 @@ All hooks run via `hooks/bin/run-hook.sh` — a small wrapper that locates `bun`
 
 This is not a luxury. Claude Code spawns hooks in a stripped-PATH subprocess environment, and bare `bun` lookups fail with `exit 127` on a fresh shell. The wrapper checks common install paths before giving up. If you ever move `bun` somewhere unusual, add the path to `run-hook.sh`.
 
-Git-clone (dev) installs get the same events, matchers and timeouts wired into `~/.claude/settings.json` by `scripts/install-wiring.ts`.
+Git-clone installs (`bash install.sh`) get the same events, matchers and timeouts wired into `~/.claude/settings.json` by `scripts/install-wiring.ts`; re-running it replaces LTM hooks from other checkouts rather than duplicating them. A plain `bun install` in a development checkout does not wire anything (opt in with `LTM_WIRE_HOOKS=1`).
 
 ---
 

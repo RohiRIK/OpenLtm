@@ -21,6 +21,8 @@ cd OpenLtm
 bun install
 ```
 
+`bun install` in a checkout does **not** touch your `~/.claude` — it no longer wires hooks into your global settings (it used to add one more set per clone or worktree). To run this checkout's hooks in your own Claude Code, load it for one session with `claude --plugin-dir .`, or wire it with `bash install.sh` (or `LTM_WIRE_HOOKS=1 bun install`). Re-wiring replaces any LTM hooks from other checkouts instead of adding duplicates.
+
 The project is a Bun workspace. The storage engine lives in `packages/openltm-core`; host adapters live in `packages/adapter-opencode` and `packages/adapter-pi`.
 
 ### Useful scripts

@@ -30,7 +30,7 @@ claude plugin marketplace add https://github.com/RohiRIK/OpenLtm
 claude plugin install openltm
 ```
 
-Restart Claude Code. Four Claude Code hooks plus one git post-commit hook auto-wire, four commands load, five skills activate, and the database creates or migrates itself.
+Restart Claude Code. Seven Claude Code hooks auto-wire, seven commands load, four skills and two agents activate, and the database creates or migrates itself. The git post-commit hook (for git-learn) is installed but only activated when you turn on `ltm.gitLearnEnabled`.
 
 To update later:
 
