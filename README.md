@@ -35,11 +35,11 @@ Persistent semantic memory that survives every session, every update, every comp
 
 ## Read this before you store anything
 
-**The database is local. Embeddings are local by default. The janitor LLM is not.**
+**The database is local. Embeddings and the janitor LLM are local by default.**
 
-Semantic search needs vectors. The default embedding provider is a local [llama.cpp](https://github.com/ggerganov/llama.cpp) server (`llama-server --embeddings`), model `bge-m3`, via the OpenAI-compatible `POST /v1/embeddings` endpoint. If that server is not running, recall stays on FTS5 — memory text is not sent anywhere. Gemini, OpenAI, and Cohere are opt-in (`LTM_EMBED_PROVIDER=gemini` plus an API key).
+Semantic search needs vectors. The default embedding provider is a local [llama.cpp](https://github.com/ggerganov/llama.cpp) server (`llama-server --embeddings`), model `bge-m3`, via the OpenAI-compatible `POST /v1/embeddings` endpoint. If that server is not running, recall stays on FTS5 — memory text is not sent anywhere. Gemini, OpenAI, and Cohere embeddings are opt-in (`LTM_EMBED_PROVIDER=gemini` plus an API key).
 
-The janitor's LLM providers — Anthropic, Cohere, Gemini — still receive memory content when a summary or relation call is configured. That default is unchanged.
+The janitor LLM defaults to local [Ollama](https://ollama.com) (`LTM_LLM_PROVIDER` unset → `ollama`). Gemini, Anthropic, OpenAI, Cohere, and OpenRouter stay supported as opt-in providers; they receive memory content only when you pin them.
 
 There is no telemetry and no analytics in any configuration.
 
@@ -51,7 +51,7 @@ llama-server -m bge-m3.gguf --embeddings --pooling mean --port 8080
 export LTM_LLAMA_CPP_URL=http://127.0.0.1:8080
 export LTM_EMBED_MODEL=bge-m3
 export LTM_EMBED_PROVIDER=gemini      # opt out of local embeddings
-export LTM_LLM_PROVIDER=ollama        # janitor summaries stay local
+export LTM_LLM_PROVIDER=gemini        # opt into cloud janitor LLM
 ```
 
 Full detail, including which write paths scrub secrets and which don't: [Security notes](#security-notes).
@@ -112,9 +112,9 @@ Hermes gets a native Python plugin rather than an adapter: a separate implementa
 | npm | `@rohirik/openclaw-ltm` | [npmjs.com/package/@rohirik/openclaw-ltm](https://www.npmjs.com/package/@rohirik/openclaw-ltm) | automatic on every tag |
 | Pi Package Catalog | `@rohirik/pi-ltm` extension | [Pi marketplace listing](https://pi.dev/packages/@rohirik/pi-ltm) · [catalog search](https://pi.dev/packages?name=%40rohirik%2Fpi-ltm) | indexed from npm via the `pi-package` keyword |
 | ClawHub (OpenClaw) | `@rohirik/openclaw-ltm` | [OpenLTM Memory on ClawHub](https://clawhub.ai/rohirik/plugins/openclaw-ltm) | dispatch `publish.yml` at the release tag after npm succeeds ([procedure](docs/11-publishing.md#publishing-to-clawhub--dispatch-after-npm)) |
-| Hermes Plugin Catalog | `openltm` | [`plugin-catalog/openltm.yaml`](https://github.com/NousResearch/hermes-agent/blob/main/plugin-catalog/openltm.yaml) · [catalog page](https://hermes-agent.nousresearch.com/docs/plugins/openltm) | pinned to a commit; each update is a reviewed PR to NousResearch |
+| Hermes Plugin Catalog | `openltm` | [`plugin-catalog/openltm.yaml`](https://github.com/NousResearch/hermes-agent/blob/main/plugin-catalog/openltm.yaml) · [catalog page](https://hermes-agent.nousresearch.com/docs/plugins/openltm) | pinned to 2.16.2 (`68793456…`); each update is a reviewed PR to NousResearch |
 
-The Hermes Plugin Catalog remains pinned to 2.15.1 until Nous maintainers merge the [2.16.2 catalog update](https://github.com/NousResearch/hermes-agent/pull/132746). The current OpenLTM release is 2.16.2; the catalog’s exact commit pin, not the latest repository tag, determines what catalog installs receive.
+The Hermes Plugin Catalog is pinned to **2.16.2** at sha `687934564e68878ff9646a57aa72f6d3fc4f5fc8` ([merged PR #132746](https://github.com/NousResearch/hermes-agent/pull/132746)). The catalog’s exact commit pin, not the latest repository tag, determines what catalog installs receive.
 
 How each channel is published, and what to do when one breaks: [`docs/11-publishing.md`](docs/11-publishing.md).
 
@@ -237,7 +237,7 @@ Three things worth knowing before this holds anything you care about.
 |---|---|
 | `LTM_DB_PATH` | Where the SQLite file lives. Overrides the default location. |
 | `LTM_EMBED_PROVIDER` | Embedding provider. Unset probes local llama.cpp (`llamacpp`); falls back to FTS if the server is down. `gemini` / `openai` / `ollama` / `disabled` opt in or out. |
-| `LTM_LLM_PROVIDER` | Provider for janitor summaries. |
+| `LTM_LLM_PROVIDER` | Provider for janitor summaries. Unset → `ollama` (local). `gemini` / `openai` / `anthropic` / `cohere` / `openrouter` are opt-in. |
 | `LTM_DISABLE_VEC` | Turn off the sqlite-vec loader; falls back to JS-cosine. |
 | `LTM_DISABLE_HONKER` | Turn off the Honker loader. |
 | `LTM_SQLITE_LIB` | Explicit path to a SQLite library. Loads native code. |

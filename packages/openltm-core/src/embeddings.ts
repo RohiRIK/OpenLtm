@@ -44,8 +44,8 @@ function loadConfig(type: "embed" | "llm"): ProviderConfig | null {
     const s = Object.fromEntries(rows.map(r => [r.key, r.value])) as Record<string, string | undefined>;
 
     const envProvider = t === "embed" ? process.env.LTM_EMBED_PROVIDER : process.env.LTM_LLM_PROVIDER;
-    // Embed default is local llama.cpp. LLM classification stays on Gemini unless pinned.
-    const fallback = t === "embed" ? "llamacpp" : "gemini";
+    // Embed default is local llama.cpp. Janitor LLM defaults to local Ollama; Gemini is opt-in.
+    const fallback = t === "embed" ? "llamacpp" : "ollama";
     const provider = (envProvider ?? s[`ltm.${t}.provider`] ?? fallback) as EmbedProvider;
 
     const DEFAULTS: Record<EmbedProvider, { model: string }> = {
