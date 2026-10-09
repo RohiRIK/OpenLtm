@@ -1,13 +1,11 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { existsSync, mkdirSync, readFileSync } from "fs";
 import { join } from "path";
-import { homedir, tmpdir } from "os";
+import { homedir } from "os";
+import { makeSandbox, markOnboarded, runHook, type Sandbox } from "./hooks/hookHarness";
 
-const PROJECT_ROOT = join(import.meta.dir, "..", "..");
-const HOOK_SCRIPT  = join(PROJECT_ROOT, "hooks", "src", "SessionStart.ts");
-
-// Real ~/.claude — the spawned hook must never write here. The test wrapper
-// passes the pre-isolation home; fall back to homedir() otherwise.
+// Real ~/.claude — the spawned hook must never write here. The isolated test
+// wrapper passes the pre-isolation home; fall back to homedir() otherwise.
 const REAL_REGISTRY = join(process.env.LTM_TEST_REAL_HOME || homedir(), ".claude", "projects", "registry.json");
 
 function readRegistry(path: string): Record<string, string> {
@@ -15,80 +13,54 @@ function readRegistry(path: string): Record<string, string> {
   catch { return {}; }
 }
 
-let testRoot: string;
-let fakeHome: string;
-let projectCwd: string;
-let dbPath: string;
-
-async function runHook(pluginDataDir: string): Promise<{ exitCode: number | null; stdout: string }> {
-  const input = JSON.stringify({ cwd: projectCwd });
-  const proc = Bun.spawn(
-    ["bun", "run", HOOK_SCRIPT],
-    {
-      stdin: new Blob([input]),
-      stdout: "pipe",
-      stderr: "pipe",
-      env: {
-        ...process.env,
-        // Isolate everything under ~/.claude (registry, projects/, logs, tmp) to a temp HOME.
-        HOME: fakeHome,
-        CLAUDE_CONFIG_DIR: join(fakeHome, ".claude"),
-        LTM_DB_PATH: dbPath,
-        CLAUDE_PLUGIN_DATA: pluginDataDir,
-        CLAUDE_PLUGIN_ROOT: undefined, // no root → skip actual spawn, message still fires
-      },
-      cwd: PROJECT_ROOT,
-    }
-  );
-  const stdout = await new Response(proc.stdout).text();
-  const exitCode = await proc.exited;
-  return { exitCode, stdout };
-}
-
-beforeAll(() => {
-  testRoot = mkdtempSync(join(tmpdir(), "ltm-autoonboard-test-"));
-  fakeHome = join(testRoot, "home");
-  projectCwd = join(testRoot, "test-autoonboard-project");
-  dbPath = join(testRoot, "test-ltm-autoonboard.db");
-  mkdirSync(fakeHome, { recursive: true });
-  mkdirSync(projectCwd, { recursive: true });
-});
-
-afterAll(() => {
-  try { rmSync(testRoot, { recursive: true, force: true }); } catch {}
-});
-
 describe("SessionStart auto-onboard (P5-0.5)", () => {
-  let tmpPluginData: string;
+  let sb: Sandbox;
+  let cwd: string;
 
   beforeEach(() => {
-    tmpPluginData = mkdtempSync(join(testRoot, "plugin-data-"));
+    sb = makeSandbox("autoonboard");
+    cwd = join(sb.base, "Test AutoOnboard Project");
+    mkdirSync(cwd, { recursive: true });
   });
 
-  afterEach(() => {
-    try { rmSync(tmpPluginData, { recursive: true, force: true }); } catch {}
-  });
+  afterEach(() => sb.cleanup());
 
-  it("prints auto-onboard message when flag is absent", async () => {
-    const { exitCode, stdout } = await runHook(tmpPluginData);
+  it("onboards on first startup and names the registered project, not a path slug", async () => {
+    const { exitCode, stdout } = await runHook("SessionStart.ts", { cwd, source: "startup" }, sb);
     expect(exitCode).toBe(0);
-    expect(stdout).toContain("auto-onboarded");
+    expect(stdout).toContain('auto-onboarded "test-autoonboard-project"');
     expect(stdout).toContain("/openltm:onboard to customize");
+    expect(existsSync(join(sb.data, "onboarded.flag"))).toBe(true);
+  }, 30_000);
+
+  it("treats a payload without `source` as startup (older Claude Code builds)", async () => {
+    const { stdout } = await runHook("SessionStart.ts", { cwd }, sb);
+    expect(stdout).toContain("auto-onboarded");
   }, 30_000);
 
   it("does not print auto-onboard message when flag is present", async () => {
-    writeFileSync(join(tmpPluginData, "onboarded.flag"), new Date().toISOString(), "utf-8");
-    const { exitCode, stdout } = await runHook(tmpPluginData);
+    markOnboarded(sb);
+    const { exitCode, stdout } = await runHook("SessionStart.ts", { cwd, source: "startup" }, sb);
     expect(exitCode).toBe(0);
-    expect(stdout).not.toContain("auto-onboarded");
+    expect(stdout).not.toContain("auto-onboard");
   }, 30_000);
 
-  it("writes only under the temp HOME, never the real ~/.claude", async () => {
-    await runHook(tmpPluginData);
-    expect(existsSync(join(fakeHome, ".claude"))).toBe(true);
-    expect(Object.keys(readRegistry(REAL_REGISTRY))).not.toContain(projectCwd);
+  it("fires once: a second startup does not onboard again", async () => {
+    await runHook("SessionStart.ts", { cwd, source: "startup" }, sb);
+    const { stdout } = await runHook("SessionStart.ts", { cwd, source: "startup" }, sb);
+    expect(stdout).not.toContain("auto-onboard");
+  }, 30_000);
+
+  it("skips onboarding without CLAUDE_PLUGIN_DATA (not a plugin install)", async () => {
+    const { exitCode, stdout } = await runHook("SessionStart.ts", { cwd, source: "startup" }, sb, { CLAUDE_PLUGIN_DATA: undefined });
+    expect(exitCode).toBe(0);
+    expect(stdout).not.toContain("auto-onboard");
+  }, 30_000);
+
+  it("writes only under the sandbox HOME, never the real ~/.claude", async () => {
+    await runHook("SessionStart.ts", { cwd, source: "startup" }, sb);
     for (const key of Object.keys(readRegistry(REAL_REGISTRY))) {
-      expect(key.startsWith(testRoot)).toBe(false);
+      expect(key.startsWith(sb.base)).toBe(false);
     }
   }, 30_000);
 });

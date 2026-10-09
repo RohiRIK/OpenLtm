@@ -44,7 +44,7 @@ describe("applyInjectTopN", () => {
 describe("SessionStart wiring", () => {
   it("passes injectTopN into buildLtmSection (not a dead local)", () => {
     const src = readFileSync(SESSION_START, "utf-8");
-    expect(src).toContain("buildLtmSection(name, sessionContext, injectTopN)");
+    expect(src).toContain("buildLtmSection(name, sessionContext, injectTopN");
     expect(src).toContain("applyInjectTopN(globals, scoped, topN)");
     expect(src).toContain('from "../lib/injectTopN.js"');
     expect(src).not.toMatch(

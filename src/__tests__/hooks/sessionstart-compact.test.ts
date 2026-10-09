@@ -11,7 +11,7 @@ describe("SessionStart compact index", () => {
     expect(src).toContain("LTM index (use MCP get <id> for full memory)");
     expect(src).toContain("indexLine");
     expect(src).toContain("applyInjectTopN");
-    expect(src).toContain("buildLtmSection(name, sessionContext, injectTopN)");
+    expect(src).toContain("buildLtmSection(name, sessionContext, injectTopN");
     expect(src).toContain("scrubForEgress");
     expect(src).toContain("scrubForEgress(graphInsights)");
   });
