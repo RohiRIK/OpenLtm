@@ -411,3 +411,18 @@ describe("mcp/server — learn never sends a private memory to the categorise LL
     }
   });
 });
+
+describe("mcp/server — graph traversal skips private memories", () => {
+  it("a relation never pulls a private memory's content into the graph output", async () => {
+    const core = await import("../index.js");
+    const pub = core.learn({ content: "Axolotl service uses the blue deploy pipeline", category: "architecture", skipExport: true });
+    const priv = core.learn({ content: "Axolotl private escalation phone tree", category: "workflow", tags: ["private"], skipExport: true });
+    const other = core.learn({ content: "Axolotl blue pipeline needs manual approval", category: "workflow", skipExport: true });
+    core.relate({ source_id: pub.id, target_id: priv.id, relationship_type: "related_to" });
+    core.relate({ source_id: pub.id, target_id: other.id, relationship_type: "supports" });
+    const client = await connect();
+    const text = (await call(client, "graph", { memory_ids: [pub.id], depth: 2 })).content[0]!.text;
+    expect(text).not.toContain("escalation phone tree");
+    expect(text).toContain("manual approval");
+  });
+});

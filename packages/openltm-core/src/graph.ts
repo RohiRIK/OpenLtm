@@ -5,6 +5,7 @@
  */
 import type { Database } from "bun:sqlite";
 import { getDb } from "./shared-db.js";
+import { notPrivateSql } from "./privacy.js";
 import type { Memory, RelationshipType } from "./db.js";
 
 export interface MemoryNode {
@@ -56,9 +57,10 @@ function getNeighbors(db: Database, id: number): EdgeRow[] {
   ).all(id, id);
 }
 
+/** Active, non-private node — traversal never walks into a private memory. */
 function getMemoryNode(db: Database, id: number): MemoryNode | null {
   return db.query<MemoryNode, [number]>(
-    `SELECT id, content, category, importance, project_scope FROM memories WHERE id=? AND status='active'`
+    `SELECT id, content, category, importance, project_scope FROM memories WHERE id=? AND status='active' AND ${notPrivateSql()}`
   ).get(id) ?? null;
 }
 

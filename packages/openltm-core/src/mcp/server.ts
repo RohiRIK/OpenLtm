@@ -367,7 +367,7 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
           const block = buildReasoningContext(r.value);
           totalNodes += r.value.chain.length;
           totalEdges += r.value.reinforcements.length + r.value.conflicts.length;
-          if (block) blocks.push(block);
+          if (block) blocks.push(scrubForEgress(block));
         }
       }
 
