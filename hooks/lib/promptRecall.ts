@@ -26,6 +26,8 @@ import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import type { Config } from "../../src/config.js";
+// Dependency-free module — importing it directly does not load core.
+import { scrubForEgress } from "../../packages/openltm-core/src/secretsScrubber.js";
 
 export const MIN_PROMPT_CHARS = 15;
 export const MAX_CONTENT_CHARS = 200;
@@ -209,8 +211,9 @@ export function searchPromptMemories(
 
 // ── Output ────────────────────────────────────────────────────────────────────
 
+/** Egress-scrubbed (rows written before scrubbing existed still reach the model), flattened, clipped. */
 function clip(text: string): string {
-  const flat = text.replace(/\s+/g, " ").trim();
+  const flat = scrubForEgress(text).replace(/\s+/g, " ").trim();
   return flat.length <= MAX_CONTENT_CHARS ? flat : `${flat.slice(0, MAX_CONTENT_CHARS - 1)}…`;
 }
 

@@ -109,6 +109,13 @@ describe("UserPromptSubmit hook (subprocess)", () => {
     expect(deploy.stdout).not.toContain(`[${ids.beta}]`);
   }, 30_000);
 
+  it("scrubs secrets from injected content (rows written before scrubbing existed)", async () => {
+    const leaky = seedMemory(sb, { content: "SQLite busy timeout debugging used AWS key AKIAIOSFODNN7EXAMPLE on the hooks box", category: "gotcha" });
+    const { stdout } = await run({ prompt: PROMPT, session_id: "s-scrub" });
+    expect(stdout).toContain(`[${leaky}]`);
+    expect(stdout).not.toContain("AKIAIOSFODNN7EXAMPLE");
+  }, 30_000);
+
   it("never re-injects a memory within the same session", async () => {
     const first = await run({ prompt: PROMPT, session_id: "s-dedupe" });
     expect(first.stdout).toContain(`[${ids.global}]`);
