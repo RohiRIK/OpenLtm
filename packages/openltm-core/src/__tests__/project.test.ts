@@ -54,6 +54,14 @@ describe("normalizeProjectName", () => {
     expect(normalizeProjectName("___")).toBe("");
   });
 
+  it("keeps letters of any script, so non-Latin folders get one shared name", () => {
+    expect(normalizeProjectName("פרויקט חדש")).toBe("פרויקט-חדש");
+    expect(normalizeProjectName("Café_App")).toBe("café-app");
+    expect(normalizeProjectName("Cafe\u0301")).toBe(normalizeProjectName("Café")); // NFD == NFC
+    expect(normalizeProjectName("プロジェクト")).toBe("プロジェクト");
+    expect(resolveProjectName("/tmp/nowhere/פרויקט", { legacyName: "פרויקט" })).toBe("פרויקט");
+  });
+
   it("matches the legacy helpers' inputs", () => {
     expect(legacyLastSegment("/home/user/OpenLtm/")).toBe("OpenLtm");
     expect(legacyClaudeSlug("/home/user/OpenLtm")).toBe("-home-user-OpenLtm");

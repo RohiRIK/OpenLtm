@@ -103,13 +103,9 @@ function trimLines(lines: string[], maxLines: number): string[] {
 
 /**
  * Project name for `cwd`, via the shared resolver (registry → repo root → cwd
- * basename). Hosts that call this (Pi, OpenCode, the bunx hook CLI) used the raw
- * last path segment before unified identity; that name is kept while it is the only one
- * with rows in the database, so no existing memory is orphaned.
- */
-/**
- * `legacyName` is the name this host used before 2.17 (default: the raw folder
- * name); it is kept while it is the only name with data, so nothing is orphaned.
+ * basename). `legacyName` is the name this host used before unified identity
+ * (default: the raw folder name, as Pi, OpenCode and the bunx hook CLI did); it
+ * is kept while it is the only name with rows, so no existing memory is orphaned.
  */
 export function deriveProjectFromCwd(cwd: string, legacyName?: string): string {
   const dataDir = getDataDir(DB_PATH);

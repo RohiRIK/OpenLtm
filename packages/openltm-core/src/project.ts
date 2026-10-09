@@ -60,9 +60,14 @@ export function getLegacyRegistryPath(): string {
 
 // ── Name derivation ──────────────────────────────────────────────────────────
 
-/** Lowercase, every non-alphanumeric run → "-", trim leading/trailing dashes. */
+/**
+ * Lowercase, every run of non-letters/non-digits → "-", trim leading/trailing
+ * dashes. Letters and digits of any script are kept ("פרויקט", "café-app"), so a
+ * non-Latin folder gets a real name instead of "" (which forced each host back
+ * to its own legacy name and split one repo into several projects).
+ */
 export function normalizeProjectName(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return s.normalize("NFC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "");
 }
 
 function stripTrailingSep(p: string): string {
