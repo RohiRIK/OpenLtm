@@ -11,7 +11,7 @@
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "fs";
 import { join } from "path";
 import { spawnSync } from "child_process";
-import { resolveProject, registerPath, PROJECTS_DIR, CLAUDE_DIR, getDbPath } from "../lib/resolveProject.js";
+import { resolveProject, registerPath, CLAUDE_DIR, getDbPath } from "../lib/resolveProject.js";
 import { readStdin, parseHookInput, safeRun } from "../lib/hookUtils.js";
 import { logHook, logEvent } from "../lib/hookLogger.js";
 import { EVENTS } from "../lib/eventNames.js";
@@ -48,10 +48,6 @@ function parseSource(value: unknown): Source {
   return value === "resume" || value === "clear" || value === "compact" ? value : "startup";
 }
 
-function defaultName(cwd: string): string {
-  const last = cwd.replace(/\/$/, "").split("/").pop() ?? "";
-  return last.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "project";
-}
 
 function injectTopNFrom(cfg: Cfg): number {
   const n = cfg.ltm?.injectTopN;
@@ -211,11 +207,12 @@ async function main(): Promise<void> {
   const { cwd } = parsed;
   const promptsAllowed = source === "startup" || source === "clear";
 
-  const { isNew } = resolveProject(cwd);
+  const first = resolveProject(cwd);
+  const { isNew } = first;
   if (isNew) {
-    const suggested = defaultName(cwd);
-    registerPath(cwd, suggested);
-    mkdirSync(join(PROJECTS_DIR, suggested), { recursive: true });
+    // Register the resolved name (repo root, not the subfolder the session started in).
+    registerPath(cwd, first.name);
+    mkdirSync(first.projectDir, { recursive: true });
   }
   const onboard = source === "startup" ? autoOnboard(cwd) : null;
   // Resolve after registration/onboarding so every message shows the final name.
