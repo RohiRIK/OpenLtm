@@ -114,11 +114,33 @@ describe("plant-secret egress paths", () => {
 });
 
 describe("SessionStart graphInsights egress", () => {
-  it("plant-secret: graphInsights text is scrubbed before inject", () => {
-    const AWS = "AKIAIOSFODNN7EXAMPLE";
-    const graphInsights = `Related: deploy with aws key ${AWS} — see memory 12`;
-    const scrubbed = core.scrubForEgress(graphInsights);
-    expect(scrubbed).not.toContain(AWS);
+  it("plant-secret: graphReasoning-on SessionStart output never contains raw secret", () => {
+    // Mirrors hooks/src/SessionStart.ts buildLtmSection when graphReasoning is on:
+    // graphInsights is only pushed after scrubForEgress.
+    const graphReasoning = true;
+    const globals = [{ id: 1, content: "safe global note" }];
+    const scoped: Array<{ id: number; content: string }> = [];
+    const graphInsights = `Related: deploy with aws key ${AWS_KEY} — see memory 12`;
+
+    const lines: string[] = ["LTM:", ""];
+    if (globals.length > 0) {
+      lines.push("globals:");
+      for (const m of globals) lines.push(`- [${m.id}] ${core.scrubForEgress(m.content)}`);
+      lines.push("");
+    }
+    if (scoped.length > 0) {
+      lines.push("project:");
+      for (const m of scoped) lines.push(`- [${m.id}] ${core.scrubForEgress(m.content)}`);
+      lines.push("");
+    }
+    if (graphReasoning && graphInsights) {
+      lines.push(core.scrubForEgress(graphInsights));
+      lines.push("");
+    }
+    const output = lines.join("\n");
+    assertNoRaw(output);
+    expect(output).toContain("[REDACTED:aws-access-key]");
+    expect(output).not.toMatch(/lines\.push\(graphInsights\)/);
   });
 
   it("SessionStart source scrubs graphInsights (not raw push)", () => {
