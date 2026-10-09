@@ -56,6 +56,11 @@ function injectTopNFrom(cfg: Cfg): number {
 
 type IndexMemory = { id: number; content: string; title?: string };
 
+function uniqueById<T extends { id: number }>(items: T[]): T[] {
+  const seen = new Set<number>();
+  return items.filter((m) => !seen.has(m.id) && (seen.add(m.id), true));
+}
+
 /** Compact index line: id + title (or a snippet), secret-scrubbed — full body via MCP `get`. */
 function indexLine(m: IndexMemory): string {
   const title = typeof m.title === "string" ? m.title.trim() : "";
@@ -73,24 +78,23 @@ async function buildLtmSection(
   if (!existsSync(DB_PATH)) return none;
   try {
     const queryVec = sessionContext ? await embedText(scrubForEgress(sessionContext)) : null;
-    const merged = graphReasoning
-      ? await getContextMergeWithGraph(project)
-      : queryVec ? null : getContextMerge(project);
+    const merged = graphReasoning ? await getContextMergeWithGraph(project) : getContextMerge(project);
 
-    let globals: IndexMemory[];
-    let scoped: IndexMemory[];
+    let globals: IndexMemory[] = merged.globals;
+    let scoped: IndexMemory[] = merged.scoped;
     if (queryVec) {
+      // Semantic matches lead; the decay-ranked merge fills the rest, so memories
+      // without an embedding (learned while the provider was down) still appear.
       const db = getDb();
-      globals = getSimilarMemories(db, queryVec, { minImportance: 4, limit: Math.ceil(topN / 3) });
-      scoped  = getSimilarMemories(db, queryVec, { projectScope: project, minImportance: 2, limit: topN });
-      process.stderr.write(`[SessionStart] Semantic LTM: ${globals.length} globals, ${scoped.length} scoped\n`);
-    } else {
-      globals = merged!.globals;
-      scoped  = merged!.scoped;
+      const semGlobals = getSimilarMemories(db, queryVec, { minImportance: 4, limit: Math.ceil(topN / 3) });
+      const semScoped  = getSimilarMemories(db, queryVec, { projectScope: project, minImportance: 2, limit: topN });
+      process.stderr.write(`[SessionStart] Semantic LTM: ${semGlobals.length} globals, ${semScoped.length} scoped\n`);
+      globals = uniqueById([...semGlobals, ...globals]);
+      scoped  = uniqueById([...semScoped, ...scoped]);
     }
     // injectTopN caps the whole index; globals get at most a third so they can't crowd out project memories.
     ({ globals, scoped } = applyInjectTopN(globals, scoped, topN));
-    const graphInsights = (merged as { graphInsights?: string } | null)?.graphInsights;
+    const graphInsights = (merged as { graphInsights?: string }).graphInsights;
 
     if (globals.length === 0 && scoped.length === 0) return none;
 
@@ -274,9 +278,10 @@ async function main(): Promise<void> {
   output += buildBackfillHint(cfg);
 
   process.stdout.write(output);
-  // Seed UserPromptSubmit's per-session dedupe; a new context window (anything
-  // but resume) starts a fresh set so prompt recall may surface them again.
-  recordInjectedIds(sessionId, ltm.ids, { reset: source !== "resume" });
+  // A new context window (anything but resume) starts UserPromptSubmit's dedupe
+  // afresh. The index only shows titles, so its ids are NOT marked as injected:
+  // prompt recall must still be able to bring a matching memory's body in.
+  if (source !== "resume") recordInjectedIds(sessionId, [], { reset: true });
   logHook("SessionStart", "info", `Injected context for "${name}" (${source}, ${registeredPath ? "registry" : "slug fallback"})`);
   logEvent("SessionStart", EVENTS.SESSION_START, { project: name, count: ltm.ids.length, detail: source });
   emitEvent({ hook: "SessionStart", event: EVENTS.SESSION_START, project: name, count: ltm.ids.length, ts: new Date().toISOString() });

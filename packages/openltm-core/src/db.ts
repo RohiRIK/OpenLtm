@@ -953,7 +953,7 @@ async function semanticHits(query: string, topN: number, enabled: boolean | unde
 const RECALL_COLUMNS = `id, content, category, importance, confidence, source, project_scope, dedup_key,
               created_at, last_confirmed_at, last_used_at, confirm_count, status,
               first_recalled_at, last_recalled_at, recall_count, superseded_by, superseded_at,
-              workspace_id, agent_id, decay_score, stale_flagged_at, stale_reason`;
+              workspace_id, agent_id, decay_score, stale_flagged_at, stale_reason, title`;
 
 /** SQL ORDER BY for a recall without a query (no relevance signal to rank on). */
 function recallSqlOrder(sortBy: RecallInput["sort_by"]): string {
@@ -1186,23 +1186,22 @@ export function getSimilarMemories(
   const { projectScope, limit = 15, minImportance = 2 } = opts;
   const { blobToVec, cosineSimilarity } = require("./embeddings.js") as typeof import("./embeddings.js");
 
-  let query: string;
-  let params: (string | number)[];
-
-  if (projectScope) {
-    query = `SELECT * FROM memories WHERE project_scope=? AND importance>=? AND embedding IS NOT NULL AND status='active' LIMIT ${limit * 3}`;
-    params = [projectScope, minImportance];
-  } else {
-    query = `SELECT * FROM memories WHERE project_scope IS NULL AND importance>=? AND embedding IS NOT NULL AND status='active' LIMIT ${limit * 3}`;
-    params = [minImportance];
-  }
-
-  const rows = db.query<Memory & { embedding: Buffer }, typeof params>(query).all(...params);
+  // Vectors live in memory_embeddings since migration 010 (memories.embedding was
+  // dropped). Only vectors with the query's dimension are comparable.
+  const scopeSql = projectScope ? "m.project_scope = ?" : "m.project_scope IS NULL";
+  const params: (string | number)[] = projectScope
+    ? [projectScope, minImportance, queryVec.length]
+    : [minImportance, queryVec.length];
+  const rows = db.query<Memory & { vec_blob: Buffer }, typeof params>(
+    `SELECT m.*, e.embedding AS vec_blob FROM memories m
+       JOIN memory_embeddings e ON e.memory_id = m.id
+      WHERE ${scopeSql} AND m.importance >= ? AND m.status = 'active' AND e.dim = ?`,
+  ).all(...params);
 
   const scored = rows.map(row => {
-    const { embedding, ...mem } = row as Memory & { embedding: Buffer };
-    const sim = cosineSimilarity(queryVec, blobToVec(embedding));
-    return { mem, sim };
+    const { vec_blob, ...mem } = row as Memory & { vec_blob: Buffer };
+    const sim = cosineSimilarity(queryVec, blobToVec(vec_blob));
+    return { mem: mem as Memory, sim };
   });
 
   scored.sort((a, b) => b.sim - a.sim);
@@ -1226,7 +1225,7 @@ export function getContextMerge(project: string): { globals: Memory[]; scoped: M
   const SLIM = `id, content, category, importance, confidence, source, project_scope, dedup_key,
                created_at, last_confirmed_at, last_used_at, confirm_count, status,
                first_recalled_at, last_recalled_at, recall_count, superseded_by, superseded_at,
-               workspace_id, agent_id`;
+               workspace_id, agent_id, title`;
   const globals = sortByDecay(db.query<Memory, []>(
     `SELECT ${SLIM} FROM memories WHERE importance >= 4 AND project_scope IS NULL AND status = 'active'`
   ).all());
