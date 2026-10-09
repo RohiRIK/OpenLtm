@@ -48,6 +48,24 @@ let _interval: ReturnType<typeof setInterval> | null = null;
  * 3. Promote eligible context_items
  * 4. Find duplicates (no auto-merge without LLM verification)
  */
+/**
+ * Run the janitor under the cross-process file lock the standalone CLI uses
+ * (`<db>.janitor.lock`), so graph-server, its interval, the Honker scheduler,
+ * the SessionEnd trigger and `ltm janitor run` never curate one DB at once.
+ * Returns null when another process holds the lock.
+ */
+export async function runJanitorExclusive(): Promise<JanitorRunResult | null> {
+  const { acquireJanitorLock } = await import("./lock.js");
+  const { getConfiguredDbPath } = await import("../shared-db.js");
+  const lock = acquireJanitorLock(getConfiguredDbPath());
+  if (!lock.acquired) return null;
+  try {
+    return await runJanitor();
+  } finally {
+    lock.release();
+  }
+}
+
 export async function runJanitor(): Promise<JanitorRunResult> {
   if (_running) {
     throw new Error("Janitor is already running");
@@ -191,7 +209,7 @@ export function startAutoRun(): void {
   const intervalMs = intervalMinutes * 60 * 1000;
   _interval = setInterval(async () => {
     try {
-      await runJanitor();
+      await runJanitorExclusive();
     } catch {
       // Logged in result.errors — don't crash the interval
     }

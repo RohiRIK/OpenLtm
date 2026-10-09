@@ -8,8 +8,8 @@
  * Usage (repo root): bun run scripts/qa/server-smoke.ts
  */
 import { Database } from "bun:sqlite";
-import { mkdtempSync, readFileSync, rmSync } from "fs";
-import { tmpdir } from "os";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { hostname, tmpdir } from "os";
 import { join } from "path";
 
 const ROOT = join(import.meta.dir, "..", "..");
@@ -54,6 +54,12 @@ try {
   await req("/api/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: got.body });
   const stored = new Database(dbPath, { readonly: true }).query<{ value: string }, []>("SELECT value FROM settings WHERE key='ltm.openai.apiKey'").get()?.value;
   check("PUTting the masked settings back keeps the real key", stored === KEY, stored);
+
+  // Another process (e.g. `ltm janitor run`) holds the janitor lock → the server must not run a second janitor.
+  writeFileSync(dbPath + ".janitor.lock", JSON.stringify({ pid: process.pid, host: hostname(), startedAt: new Date().toISOString() }));
+  const busy = await req("/api/janitor/run", { method: "POST", headers: { "Content-Type": "application/json" } });
+  check("POST /api/janitor/run → 409 while another process holds the janitor lock", busy.status === 409, busy);
+  rmSync(dbPath + ".janitor.lock", { force: true });
 
   check("/api/reveal outside the DB dir → 403", (await req("/api/reveal", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: "/etc/passwd" }) })).status === 403);
 } catch (err) {

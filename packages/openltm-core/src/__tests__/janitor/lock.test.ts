@@ -76,3 +76,21 @@ describe("janitor lock", () => {
     expect(existsSync(lock.path)).toBe(true);
   });
 });
+
+describe("runJanitorExclusive — every in-process janitor path takes the file lock", () => {
+  it("returns null without running while another process holds <db>.janitor.lock", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "ltm-janitor-excl-"));
+    try {
+      const core = await import("../../index.js");
+      const dbPath = join(dir, "ltm.db");
+      core.configure({ dbPath });
+      // Stand-in for another process (graph-server, the CLI, the SessionEnd trigger).
+      writeFileSync(janitorLockPath(dbPath), JSON.stringify({ pid: process.pid, host: hostname(), startedAt: new Date().toISOString() }));
+      expect(await core.runJanitorExclusive()).toBeNull();
+      expect(core.getJanitorStatus().running).toBe(false);
+      expect(existsSync(janitorLockPath(dbPath))).toBe(true); // someone else's lock is left alone
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

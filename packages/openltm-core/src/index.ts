@@ -3,7 +3,7 @@ export type { LtmCoreConfig, LtmAdapterContext, LtmAdapterOptions } from "./adap
 
 // DB singleton + configuration
 export { getDb, initDb, configure, waitForInit, _setDbForTesting, withRetry, DB_PATH,
-         getSetting, setSetting, getAllSettings } from "./shared-db.js";
+         getSetting, setSetting, getAllSettings, getConfiguredDbPath } from "./shared-db.js";
 export { configureCore, configureDocs } from "./db.js";
 
 // Core memory operations
@@ -87,7 +87,7 @@ export type { PendingProposal } from "./proposals.js";
 
 // Janitor
 export {
-  runJanitor, getJanitorStatus, startAutoRun, stopAutoRun,
+  runJanitor, runJanitorExclusive, getJanitorStatus, startAutoRun, stopAutoRun,
   runArchive, touchMemory,
   approveMemory, getPendingMemories, rejectMemory,
   mergeMemories, parseDedupSource,
@@ -96,6 +96,7 @@ export {
   getEmbeddingProvider, semanticSearch, findSimilarMemories,
 } from "./janitor/index.js";
 export type { Contradiction, StagedConflict } from "./janitor/index.js";
+export { acquireJanitorLock, janitorLockPath } from "./janitor/lock.js";
 export { runDecay } from "./janitor/decay.js";
 export { SETTING_KEYS, SETTING_DEFAULTS } from "./janitor/providers/types.js";
 export { anthropicLLM } from "./janitor/providers/anthropic.js";

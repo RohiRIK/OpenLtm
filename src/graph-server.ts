@@ -22,7 +22,7 @@ import {
   runPendingMigrations,
   startEmbeddingWorker, startJanitorScheduler,
   startLtmListener,
-  getCapabilities,
+  getCapabilities, acquireJanitorLock,
 } from "@rohirik/openltm-core";
 import { detectCommunities, generateClusterLabel, assignClusterColors } from "./cluster.js";
 import { getDbPath, getSchemaPath } from "./paths.js";
@@ -1080,10 +1080,15 @@ Bun.serve({
       if (status.running) {
         return Response.json({ ok: false, error: "Janitor already running" }, { status: 409 });
       }
+      // Same cross-process lock as `ltm janitor run` and the SessionEnd trigger.
+      const lock = acquireJanitorLock(DB_PATH);
+      if (!lock.acquired) {
+        return Response.json({ ok: false, error: `Janitor already running in another process (pid ${lock.holder?.pid ?? "?"})` }, { status: 409 });
+      }
       // Fire-and-forget — LLM dedup can take >10s, respond immediately
       runJanitor().then(result => {
         broadcast({ type: "janitor-complete", result });
-      }).catch(() => {});
+      }).catch(() => {}).finally(() => lock.release());
       return Response.json({ ok: true, started: true });
     }
 
