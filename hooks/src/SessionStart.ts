@@ -113,7 +113,7 @@ function buildConflictSection(project: string): string {
   if (!existsSync(DB_PATH)) return "";
   try {
     const applied = getRecentConflicts(getDb(), project, MAX_CONFLICT_LINES);
-    const staged = listStagedConflicts(MAX_CONFLICT_LINES);
+    const staged = listStagedConflicts(MAX_CONFLICT_LINES, project);
     if (applied.length === 0 && staged.length === 0) return "";
 
     const lines: string[] = ["⚠️ Memory Conflicts", ""];

@@ -243,15 +243,24 @@ export interface StagedConflict {
   createdAt: string;
 }
 
-export function listStagedConflicts(limit = 50): StagedConflict[] {
+/**
+ * Pending staged conflicts, newest first. With `project`, only conflicts that
+ * touch that project or a global memory (a session in one project is not shown
+ * another project's conflicts); without it, all of them (the CLI).
+ */
+export function listStagedConflicts(limit = 50, project?: string): StagedConflict[] {
   const db = getDb();
-  return db.query<StagedConflict, [number]>(
-    `SELECT id, older_id as olderId, newer_id as newerId, term, status, created_at as createdAt
-     FROM memory_conflict_staging
-     WHERE status = 'pending'
-     ORDER BY created_at DESC
+  const scoped = project
+    ? `AND EXISTS (SELECT 1 FROM memories m WHERE m.id IN (s.older_id, s.newer_id)
+                     AND (m.project_scope IS NULL OR m.project_scope = ?))`
+    : "";
+  return db.query<StagedConflict, Array<number | string>>(
+    `SELECT s.id, s.older_id as olderId, s.newer_id as newerId, s.term, s.status, s.created_at as createdAt
+     FROM memory_conflict_staging s
+     WHERE s.status = 'pending' ${scoped}
+     ORDER BY s.created_at DESC
      LIMIT ?`,
-  ).all(limit);
+  ).all(...(project ? [project] : []), limit);
 }
 
 /**
