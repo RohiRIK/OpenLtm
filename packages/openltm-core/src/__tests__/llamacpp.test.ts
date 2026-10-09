@@ -93,11 +93,16 @@ describe("listMemoryIdsNeedingEmbedding", () => {
       CREATE TABLE memory_embeddings (
         memory_id INTEGER PRIMARY KEY, embedding BLOB, model TEXT, dim INTEGER, created_at TEXT
       );
+      CREATE TABLE tags (id INTEGER PRIMARY KEY, name TEXT UNIQUE);
+      CREATE TABLE memory_tags (memory_id INTEGER, tag_id INTEGER);
       INSERT INTO memories (id, status, importance, created_at, content) VALUES
         (1, 'active', 5, '2026-01-01', 'a'),
         (2, 'active', 4, '2026-01-02', 'b'),
         (3, 'active', 3, '2026-01-03', 'c'),
-        (4, 'archived', 9, '2026-01-04', 'd');
+        (4, 'archived', 9, '2026-01-04', 'd'),
+        (5, 'active', 5, '2026-01-05', 'private, never embedded');
+      INSERT INTO tags (id, name) VALUES (1, 'private');
+      INSERT INTO memory_tags (memory_id, tag_id) VALUES (5, 1);
       INSERT INTO memory_embeddings (memory_id, embedding, model, dim) VALUES
         (2, X'00', 'text-embedding-004', 768),
         (3, X'00', 'bge-m3', 1024);
@@ -107,6 +112,7 @@ describe("listMemoryIdsNeedingEmbedding", () => {
     expect(ids).toContain(2);
     expect(ids).not.toContain(3);
     expect(ids).not.toContain(4);
+    expect(ids).not.toContain(5);
   });
 });
 

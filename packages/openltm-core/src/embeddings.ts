@@ -8,6 +8,7 @@ import type { Database } from "bun:sqlite";
 import type { EmbeddingProvider } from "./providers/embeddingProvider.js";
 import { setEmbedding, listMemoryIdsNeedingEmbedding } from "./dao/embeddings.js";
 import { scrubForEgress } from "./secretsScrubber.js";
+import { notPrivateSql } from "./privacy.js";
 
 // --- Provider config (retained for LLM/auto-relate path) ---
 
@@ -213,8 +214,9 @@ export async function embedText(text: string): Promise<Float32Array | null> {
  * Embed a memory by ID and write the embedding to the memory_embeddings table.
  */
 export async function embedMemory(db: Database, id: number): Promise<void> {
+  // Private-tagged memories never leave the machine: no vector, no provider call.
   const row = db.query<{ content: string }, [number]>(
-    `SELECT content FROM memories WHERE id=?`
+    `SELECT content FROM memories WHERE id=? AND ${notPrivateSql()}`
   ).get(id);
   if (!row) return;
 

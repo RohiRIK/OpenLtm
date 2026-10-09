@@ -16,6 +16,8 @@ import { join } from "path";
 const ROOT = join(import.meta.dir, "..", "..");
 const DIM = 256;
 let delayMs = 0;
+/** Every text the stub was asked to embed — what left the machine. */
+const egress: string[] = [];
 
 function embed(text: string): number[] {
   const v = new Array<number>(DIM).fill(0);
@@ -38,6 +40,7 @@ const stub = Bun.serve({
       if (delayMs) await Bun.sleep(delayMs);
       const body = (await req.json()) as { input: string | string[]; model?: string };
       const inputs = Array.isArray(body.input) ? body.input : [body.input];
+      egress.push(...inputs);
       return Response.json({ object: "list", model: body.model ?? "stub", data: inputs.map((t, i) => ({ object: "embedding", index: i, embedding: embed(t) })) });
     }
     return new Response("not found", { status: 404 });
@@ -108,6 +111,16 @@ try {
 
   const down = await core(`return (await c.recall({ query: "how do we retry payment calls safely" })).map((m) => m.content.slice(0, 40));`, DOWN);
   check("recall with provider down falls back to full-text", String(down[0]).startsWith("Payments client"), down);
+
+  // A private-tagged memory must never be sent to the embedding provider
+  // (neither for its own vector nor for auto-relation), on learn or backfill.
+  egress.length = 0;
+  await core(`c.learn({ content: "Quokka private note about the payments client retries", category: "gotcha", tags: ["private"], skipExport: true });
+    c.learn({ content: "Quokka public note about the payments client retries", category: "gotcha", skipExport: true });
+    await new Promise((r) => setTimeout(r, 1500));
+    await (await import("${ROOT}/packages/openltm-core/src/embeddings.ts")).backfill(c.getDb()); return true;`);
+  check("a public memory is embedded (control)", egress.some((t) => t.includes("Quokka public")), egress);
+  check("a private memory's text never reaches the embedding provider", !egress.some((t) => t.includes("Quokka private")), egress);
 
   delayMs = 5000;
   // Timed inside the process: a long-lived MCP server answers at the timeout even

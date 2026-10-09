@@ -386,3 +386,28 @@ describe("mcp/server — resources respect the private tag", () => {
     expect(scoped).not.toContain(privScoped.id);
   });
 });
+
+describe("mcp/server — learn never sends a private memory to the categorise LLM", () => {
+  it("skips the LLM fallback for tags: [private] (control: it runs otherwise)", async () => {
+    const savedKey = process.env.ANTHROPIC_API_KEY;
+    const savedFetch = globalThis.fetch;
+    const sent: string[] = [];
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    globalThis.fetch = (async (input: unknown, init?: { body?: unknown }) => {
+      sent.push(`${String(input)} ${String(init?.body ?? "")}`);
+      return new Response(JSON.stringify({ content: [{ type: "text", text: "pattern" }] }), { status: 200 });
+    }) as typeof fetch;
+    try {
+      const client = await connect();
+      // No category keywords → the heuristic is unsure → the LLM fallback would run.
+      json(await call(client, "learn", { content: "Narwhal quarterly offsite moved to Lisbon", tags: ["private"] }));
+      expect(sent.filter((s) => s.includes("Narwhal"))).toEqual([]);
+      json(await call(client, "learn", { content: "Narwhal annual offsite moved to Porto" }));
+      expect(sent.some((s) => s.includes("api.anthropic.com") && s.includes("Narwhal annual"))).toBe(true);
+    } finally {
+      globalThis.fetch = savedFetch;
+      if (savedKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+      else process.env.ANTHROPIC_API_KEY = savedKey;
+    }
+  });
+});

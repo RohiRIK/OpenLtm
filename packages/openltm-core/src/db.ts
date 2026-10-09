@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import { normalizeKey } from "./dedup.js";
 import { differsMeaningfully, isNearDuplicate, jaccardSimilarity } from "./similarity.js";
-import { filterPrivateMemories, notPrivateSql } from "./privacy.js";
+import { filterPrivateMemories, hasPrivateTag, notPrivateSql } from "./privacy.js";
 import { normalizeAnchorPaths } from "./anchors.js";
 import { getDb, DB_PATH, configure as configureDb } from "./shared-db.js";
 import { enqueueEmbedding } from "./queue/index.js";
@@ -812,11 +812,15 @@ export function learn(input: LearnInput): LearnResult {
   // exit). When no queue is available, embed inline as before. Auto-relate runs
   // inline regardless: it embeds the query text fresh and compares against other
   // memories' stored vectors, so it does not depend on this memory's own row.
-  const enqueuedJobId = enqueueEmbedding(newId);
-  import("./embeddings.js").then(async ({ embedMemory, getSimilarMemories, classifyRelation }) => {
-    if (enqueuedJobId === null) await embedMemory(db, newId);
-    await autoDetectRelations(newId, content, getSimilarMemories, classifyRelation);
-  }).catch(err => process.stderr.write(`[learn] Background task failed for memory ${newId}: ${err}\n`));
+  // A private-tagged memory is never sent to the embedding/LLM provider, so it
+  // gets neither a vector nor auto-relations (both embed its content).
+  if (!hasPrivateTag(input.tags)) {
+    const enqueuedJobId = enqueueEmbedding(newId);
+    import("./embeddings.js").then(async ({ embedMemory, getSimilarMemories, classifyRelation }) => {
+      if (enqueuedJobId === null) await embedMemory(db, newId);
+      await autoDetectRelations(newId, content, getSimilarMemories, classifyRelation);
+    }).catch(err => process.stderr.write(`[learn] Background task failed for memory ${newId}: ${err}\n`));
+  }
 
   // Push a cross-process liveness event so any graph-app listener refreshes
   // without waiting on the file-watcher. No-op when Honker is unavailable.

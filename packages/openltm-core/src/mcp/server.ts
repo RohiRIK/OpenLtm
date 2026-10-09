@@ -217,7 +217,8 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
 
       if (!resolvedCategory) {
         try {
-          const threshold = await (options.categoriseThreshold?.() ?? Promise.resolve(0.6));
+          // Threshold 0 = heuristic only: a private memory is never sent to the LLM fallback.
+          const threshold = hasPrivateTag(tags) ? 0 : await (options.categoriseThreshold?.() ?? Promise.resolve(0.6));
           const result = await categorise(content, threshold);
           resolvedCategory = result.category;
           categoriseSource = result.source;
