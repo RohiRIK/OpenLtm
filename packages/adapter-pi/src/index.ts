@@ -8,10 +8,12 @@
  * Pattern adapted from context-mode's Pi adapter (MIT).
  */
 import { spawn, execSync } from "node:child_process";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { existsSync, readdirSync } from "node:fs";
 import { findCoreCli } from "./find-core.js";
+// Relative import so esbuild inlines the Node-safe resolver into dist (core itself is external).
+import { dataDirFor, legacyLastSegment, loadProjectRegistry, resolveProjectName } from "../../openltm-core/src/project.js";
 
 // ── Fork-bomb prevention ──────────────────────────────────────────────────────
 
@@ -204,6 +206,35 @@ function formatContextPayload(project: string, raw: string): string {
   }
 }
 
+/** DB the bridged MCP server will open — env first, else the core package's dev data dir. */
+function bridgeDbPath(): string | null {
+  if (process.env["LTM_DB_PATH"]) return process.env["LTM_DB_PATH"]!;
+  if (process.env["CLAUDE_PLUGIN_DATA"]) return join(process.env["CLAUDE_PLUGIN_DATA"]!, "openltm.db");
+  const core = findCoreCli(import.meta.url);
+  return core ? join(dirname(core.script), "..", "..", "..", "..", "data", "openltm.db") : null;
+}
+
+/**
+ * Shared resolver (registry → repo root → cwd basename), memoised per cwd. Pi used
+ * the raw cwd basename before unified identity; that name is kept while it is
+ * the only one with rows, so no memory is orphaned.
+ */
+const projectCache = new Map<string, string>();
+function projectOf(cwd: string): string {
+  let name = projectCache.get(cwd);
+  if (name === undefined) {
+    const dbPath = bridgeDbPath();
+    name = resolveProjectName(cwd, {
+      registry: dbPath ? loadProjectRegistry(join(dataDirFor(dbPath), "projects", "registry.json")) : null,
+      legacyName: legacyLastSegment(cwd),
+      legacyScope: "all",
+      dbPath,
+    });
+    projectCache.set(cwd, name);
+  }
+  return name;
+}
+
 export default function ltmExtension(pi: unknown): void {
   const p = pi as {
     registerTool: (def: {
@@ -252,7 +283,7 @@ export default function ltmExtension(pi: unknown): void {
     const ev = event as { cwd?: string; systemPrompt?: string } | null;
     try {
       const cwd = String(ev?.cwd ?? process.cwd());
-      const project = cwd.replace(/\/$/, "").split("/").pop() ?? "";
+      const project = projectOf(cwd);
       const toolName = toolNames.has("context") ? "context" : (toolNames.has("recall") ? "recall" : "");
       if (!toolName) return;
       const text = toolName === "context"
