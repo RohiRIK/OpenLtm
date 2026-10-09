@@ -72,7 +72,7 @@ export {
   runArchive, touchMemory,
   approveMemory, getPendingMemories, rejectMemory,
   mergeMemories, parseDedupSource,
-  supersede, stageContradictions, listStagedConflicts, detectContradictions,
+  supersede, stageContradictions, listStagedConflicts, detectContradictions, sanitizeStagingTerm,
   acceptStagedConflict, rejectStagedConflict, coexistStagedConflict,
   getEmbeddingProvider, semanticSearch, findSimilarMemories,
 } from "./janitor/index.js";
