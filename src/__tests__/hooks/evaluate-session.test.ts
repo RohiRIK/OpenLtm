@@ -56,6 +56,7 @@ async function runHook(payload: Record<string, unknown>) {
       CLAUDE_PLUGIN_DATA: pluginData,
       CLAUDE_PLUGIN_ROOT: pluginRoot,
       LTM_DB_PATH: join(pluginData, "openltm.db"),
+      TMPDIR: tmp,
     },
     cwd: PROJECT_ROOT,
   });
@@ -157,5 +158,13 @@ describe("EvaluateSession hook (SessionEnd)", () => {
     expect(missingRun.exitCode).toBe(0);
     const patternFiles = readdirSync(join(pluginData, "learned", "patterns"));
     expect(patternFiles.some(f => f.includes("shortses") || f.includes("missing-"))).toBe(false);
+  }, 30_000);
+
+  it("removes UserPromptSubmit's per-session dedupe state when the session ends", async () => {
+    const state = join(tmp, "ltm-prompt-recall-endsess-4444.json");
+    writeFileSync(state, JSON.stringify([1, 2, 3]));
+    const run = await runHook({ session_id: "endsess-4444", cwd: "/tmp/x" });
+    expect(run.exitCode).toBe(0);
+    expect(existsSync(state)).toBe(false);
   }, 30_000);
 });

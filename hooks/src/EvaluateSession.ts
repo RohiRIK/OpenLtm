@@ -10,7 +10,7 @@
  *
  * Writes nothing to stdout — SessionEnd output is not shown to anyone.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 import { resolveProject } from "../lib/resolveProject.js";
@@ -19,6 +19,7 @@ import { EVENTS } from "../lib/eventNames.js";
 import { readStdin, parseHookInput, safeRun } from "../lib/hookUtils.js";
 import { extractProposals } from "../lib/llmExtract.js";
 import { writeProposals, type MemoryProposal } from "../lib/proposalQueue.js";
+import { promptRecallStatePath } from "../lib/promptRecall.js";
 import { readConfigSync } from "../../src/config.js";
 import { emitEvent } from "@rohirik/openltm-core";
 
@@ -194,6 +195,11 @@ async function main(): Promise<void> {
   const parsed = parseHookInput(await readStdin());
   if (!parsed) return;
   const { input, cwd } = parsed;
+
+  // The session is over: drop UserPromptSubmit's per-session dedupe state.
+  if (typeof input.session_id === "string" && input.session_id) {
+    rmSync(promptRecallStatePath(input.session_id), { force: true });
+  }
 
   // Claude Code always passes transcript_path to hooks; nothing to evaluate without it.
   const transcriptPath = typeof input.transcript_path === "string" ? input.transcript_path : "";
