@@ -107,11 +107,15 @@ function trimLines(lines: string[], maxLines: number): string[] {
  * last path segment before unified identity; that name is kept while it is the only one
  * with rows in the database, so no existing memory is orphaned.
  */
-export function deriveProjectFromCwd(cwd: string): string {
+/**
+ * `legacyName` is the name this host used before 2.17 (default: the raw folder
+ * name); it is kept while it is the only name with data, so nothing is orphaned.
+ */
+export function deriveProjectFromCwd(cwd: string, legacyName?: string): string {
   const dataDir = getDataDir(DB_PATH);
   return resolveProjectName(cwd, {
     registry: loadProjectRegistry(getRegistryPath(dataDir)),
-    legacyName: legacyLastSegment(cwd),
+    legacyName: legacyName || legacyLastSegment(cwd),
     legacyScope: "all",
     hasProjectData: createProjectDataProbe(DB_PATH),
   });

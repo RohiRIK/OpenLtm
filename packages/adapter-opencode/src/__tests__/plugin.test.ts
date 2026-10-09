@@ -4,6 +4,9 @@ import { join } from "path";
 import { Database } from "bun:sqlite";
 
 const dbPath = `/tmp/test-opencode-ltm-${process.pid}-${Date.now()}.db`;
+// One DB for the injected handle and for core's DB_PATH (the project-name probe
+// opens DB_PATH), as in production. Set before core is first imported.
+process.env["LTM_DB_PATH"] = dbPath;
 const SCHEMA_PATH = join(import.meta.dir, "..", "..", "..", "openltm-core", "src", "schema.sql");
 
 beforeAll(async () => {
