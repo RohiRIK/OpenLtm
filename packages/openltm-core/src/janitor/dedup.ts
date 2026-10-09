@@ -83,15 +83,18 @@ export async function findDuplicates(
     autoMerged: 0,
   };
 
-  // Load all active memories with embeddings
+  // Load all active memories with embeddings. Vectors live in the
+  // memory_embeddings side-table since migration 010 (memories.embedding is gone).
   const memories = db
     .query<
       { id: number; content: string; category: string; embedding: Buffer },
       []
     >(
-      `SELECT id, content, category, embedding FROM memories
-       WHERE embedding IS NOT NULL AND status = 'active'
-       ORDER BY id ASC`,
+      `SELECT m.id, m.content, m.category, e.embedding
+       FROM memories m
+       JOIN memory_embeddings e ON e.memory_id = m.id
+       WHERE m.status = 'active'
+       ORDER BY m.id ASC`,
     )
     .all();
 

@@ -64,6 +64,15 @@ Stored vectors are stamped with `model` and `dim`. A switch does not mix spaces:
 }
 ```
 
+## Janitor
+
+| Env var | Default | Description |
+|---------|---------|-------------|
+| `LTM_JANITOR_INTERVAL_MINUTES` | `360` | Minimum minutes between `ltm janitor run --if-due` passes (SessionEnd hook, timers, daemon). Falls back to the `ltm.janitor.intervalMinutes` setting when that is > 0. |
+| `LTM_JANITOR_ON_SESSION_END` | (on) | `0` / `false` / `off` stops the `SessionEnd` hook from spawning the janitor |
+
+Standalone runs, hooks, and systemd/launchd units are covered in [Janitor](13-janitor.md).
+
 ## SQLite extension env vars
 
 Control the optional SQLite extension capability layer without touching config files:

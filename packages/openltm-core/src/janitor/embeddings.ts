@@ -137,9 +137,8 @@ export async function embedMissingMemories(
       if (!vector) continue;
       const blob = vectorToBlob(vector);
       await setEmbedding(db, batch[j]!.id, blob, result.model, result.dimensions);
+      totalEmbedded++; // count vectors written, not rows attempted
     }
-
-    totalEmbedded += batch.length;
   }
 
   return totalEmbedded;
