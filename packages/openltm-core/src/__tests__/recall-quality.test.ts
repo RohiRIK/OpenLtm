@@ -248,3 +248,30 @@ describe("hybrid recall — deterministic fake semantic retriever", () => {
     expect(results).toEqual([]);
   });
 });
+
+// Found in review: the FTS probe took the top 50 over the whole DB and filtered
+// afterwards, so a busy other project could crowd this project's hit out.
+describe("recall filters apply inside retrieval", () => {
+  it("other projects' stronger FTS matches cannot crowd out this project's memory", async () => {
+    for (let i = 0; i < 60; i++) {
+      core.learn({
+        content: `Flamingo flamingo flamingo pipeline note ${i} for the other team ${"x".repeat(i % 7)}`,
+        category: "pattern", importance: 3, project_scope: "crowd-other", skipExport: true,
+      });
+    }
+    const mine = core.learn({
+      content: "Our deploy uses the flamingo pipeline only on Fridays, with a manual approval step and a long checklist.",
+      category: "workflow", importance: 3, project_scope: "crowd-mine", skipExport: true,
+    });
+    const results = await core.recall({ query: "flamingo", project: "crowd-mine", limit: 5, semantic: false });
+    expect(results.map((m) => m.id)).toContain(mine.id);
+    expect(results.every((m) => m.project_scope === null || m.project_scope === "crowd-mine")).toBe(true);
+  });
+
+  it("passes the project to the semantic retriever", async () => {
+    let seen: string | undefined = "unset";
+    dbMod._setRecallSemanticSearchForTesting(async (_q, _n, project) => { seen = project; return []; });
+    await core.recall({ query: "flamingo pipeline", project: "crowd-mine", limit: 3 });
+    expect(seen).toBe("crowd-mine");
+  });
+});

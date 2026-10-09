@@ -198,17 +198,14 @@ function findNearDuplicate(
       .map((t) => `"${t.replace(/"/g, '""')}"`)
       .join(" OR ");
     if (ftsQuery) {
-      const ftsIds = db.query<{ rowid: number }, [string]>(
-        `SELECT rowid FROM memories_fts WHERE memories_fts MATCH ? ORDER BY rank LIMIT 10`,
-      ).all(ftsQuery);
-      if (ftsIds.length > 0) {
-        const placeholders = ftsIds.map(() => "?").join(",");
-        candidates = db.query<Memory, (string | number | null)[]>(
-          `SELECT * FROM memories
-            WHERE id IN (${placeholders}) AND status='active' AND dedup_key<>?
-              AND (project_scope IS ? OR project_scope = ?)`,
-        ).all(...ftsIds.map((r) => r.rowid), dedupKey, projectScope, projectScope);
-      }
+      // Filter inside the probe: the 10 best matches among the rows that can
+      // actually be duplicates (same scope, active), not across every project.
+      candidates = db.query<Memory, [string, string, string | null, string | null]>(
+        `SELECT m.* FROM memories_fts f JOIN memories m ON m.id = f.rowid
+          WHERE memories_fts MATCH ? AND m.status='active' AND m.dedup_key<>?
+            AND (m.project_scope IS ? OR m.project_scope = ?)
+          ORDER BY f.rank LIMIT 10`,
+      ).all(ftsQuery, dedupKey, projectScope, projectScope);
     }
   } catch {
     // FTS unavailable / bad query — fall through to decay shortlist
@@ -899,7 +896,7 @@ export function buildFtsQuery(query: string): string | null {
 }
 
 /** Embedding search used by hybrid recall: hits best-first, similarity in [0,1]. */
-export type RecallSemanticSearch = (query: string, topN: number) => Promise<Array<{ id: number; similarity: number }>>;
+export type RecallSemanticSearch = (query: string, topN: number, project?: string) => Promise<Array<{ id: number; similarity: number }>>;
 
 /** Minimum cosine similarity for a semantic hit to join the candidate set. */
 const SEMANTIC_MIN_SIMILARITY = 0.5;
@@ -923,11 +920,11 @@ async function resolveSemanticSearch(enabled: boolean | undefined): Promise<Reca
   const { explicitEmbedProvider } = await import("./providers/embeddingProvider.js");
   if ((explicitEmbedProvider() ?? cfg.embeddings?.provider) === "disabled") return null;
   const { getSimilarMemories } = await import("./embeddings.js");
-  return (query, topN) => getSimilarMemories(query, topN, SEMANTIC_MIN_SIMILARITY);
+  return (query, topN, project) => getSimilarMemories(query, topN, SEMANTIC_MIN_SIMILARITY, { project });
 }
 
 /** Run the semantic retriever. Never rejects: any failure or timeout yields []. */
-async function semanticHits(query: string, topN: number, enabled: boolean | undefined): Promise<Array<{ id: number; similarity: number }>> {
+async function semanticHits(query: string, topN: number, enabled: boolean | undefined, project?: string): Promise<Array<{ id: number; similarity: number }>> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const search = await resolveSemanticSearch(enabled);
@@ -936,7 +933,7 @@ async function semanticHits(query: string, topN: number, enabled: boolean | unde
       timer = setTimeout(() => resolve(null), SEMANTIC_TIMEOUT_MS);
       (timer as { unref?: () => void }).unref?.();
     });
-    const hits = await Promise.race([search(query, topN), timeout]);
+    const hits = await Promise.race([search(query, topN, project), timeout]);
     if (hits === null) {
       process.stderr.write(`[recall] Semantic search exceeded ${SEMANTIC_TIMEOUT_MS}ms — FTS only\n`);
       return [];
@@ -978,6 +975,45 @@ export async function recall(input: RecallInput = {}): Promise<MemoryWithRelatio
   const db = getDb();
   const limit = input.limit ?? 10;
 
+  // Row filters, applied both inside the FTS probe (so its top-50 is drawn from
+  // the rows this recall can return, not from every project and status) and to
+  // the final selection.
+  const filters: string[] = [];
+  const filterParams: (string | number | null)[] = [];
+  if (input.category) {
+    filters.push("category=?");
+    filterParams.push(input.category);
+  }
+  if (input.project) {
+    filters.push("(project_scope IS NULL OR project_scope=?)");
+    filterParams.push(input.project);
+  }
+  // Workspace / agent isolation: rows written for this workspace (agent) plus
+  // unscoped rows, mirroring how project scope treats globals.
+  if (input.workspace_id) {
+    filters.push("(workspace_id IS NULL OR workspace_id=?)");
+    filterParams.push(input.workspace_id);
+  }
+  if (input.agent_id) {
+    filters.push("(agent_id IS NULL OR agent_id=?)");
+    filterParams.push(input.agent_id);
+  }
+  filters.push("status = 'active'");
+  // Exclude private-tagged memories in SQL (not after ranking), so they never take
+  // a result slot from the limit and never get recall_count/last_recalled bumps.
+  if (input.includePrivate !== true) {
+    filters.push(`id NOT IN (SELECT mt.memory_id FROM memory_tags mt JOIN tags t ON t.id = mt.tag_id WHERE lower(t.name) = '${PRIVATE_TAG}')`);
+  }
+  if (input.since) {
+    filters.push("(created_at > ? OR last_recalled_at > ?)");
+    filterParams.push(input.since, input.since);
+  }
+  if (input.until) {
+    filters.push("(created_at < ? OR last_recalled_at < ?)");
+    filterParams.push(input.until, input.until);
+  }
+  const filterSql = filters.join(" AND ");
+
   let ids: Set<number> | null = null;
   let relevance: Map<number, number> | null = null;
   const ftsRanks = new Map<number, number>();      // id → BM25 relative to the best hit, (0,1]
@@ -985,13 +1021,15 @@ export async function recall(input: RecallInput = {}): Promise<MemoryWithRelatio
 
   if (input.query) {
     // Start the embedding round-trip first so it overlaps the (synchronous) FTS query.
-    const semanticPromise = semanticHits(input.query, Math.max(limit * 2, 20), input.semantic);
+    const semanticPromise = semanticHits(input.query, Math.max(limit * 2, 20), input.semantic, input.project);
 
     const ftsQuery = buildFtsQuery(input.query);
     const ftsResults = ftsQuery
-      ? db.query<{ rowid: number; rank: number }, [string]>(
-          `SELECT rowid, rank FROM memories_fts WHERE memories_fts MATCH ? ORDER BY rank LIMIT 50`
-        ).all(ftsQuery)
+      ? db.query<{ rowid: number; rank: number }, (string | number | null)[]>(
+          `SELECT rowid, rank FROM memories_fts
+            WHERE memories_fts MATCH ? AND rowid IN (SELECT id FROM memories WHERE ${filterSql})
+            ORDER BY rank LIMIT 50`
+        ).all(ftsQuery, ...filterParams)
       : [];
     // FTS5 rank is BM25 negated: more negative = better, best hit first.
     const bestRank = ftsResults[0]?.rank ?? 0;
@@ -1035,43 +1073,8 @@ export async function recall(input: RecallInput = {}): Promise<MemoryWithRelatio
     conditions.push(`id IN (${placeholders})`);
     params.push(...ids);
   }
-
-  if (input.category) {
-    conditions.push("category=?");
-    params.push(input.category);
-  }
-
-  if (input.project) {
-    conditions.push("(project_scope IS NULL OR project_scope=?)");
-    params.push(input.project);
-  }
-
-  // Workspace / agent isolation: rows written for this workspace (agent) plus
-  // unscoped rows, mirroring how project scope treats globals.
-  if (input.workspace_id) {
-    conditions.push("(workspace_id IS NULL OR workspace_id=?)");
-    params.push(input.workspace_id);
-  }
-  if (input.agent_id) {
-    conditions.push("(agent_id IS NULL OR agent_id=?)");
-    params.push(input.agent_id);
-  }
-
-  conditions.push("status = 'active'");
-  // Exclude private-tagged memories in SQL (not after ranking), so they never take
-  // a result slot from the limit and never get recall_count/last_recalled bumps.
-  if (input.includePrivate !== true) {
-    conditions.push(`id NOT IN (SELECT mt.memory_id FROM memory_tags mt JOIN tags t ON t.id = mt.tag_id WHERE lower(t.name) = '${PRIVATE_TAG}')`);
-  }
-
-  if (input.since) {
-    conditions.push("(created_at > ? OR last_recalled_at > ?)");
-    params.push(input.since, input.since);
-  }
-  if (input.until) {
-    conditions.push("(created_at < ? OR last_recalled_at < ?)");
-    params.push(input.until, input.until);
-  }
+  conditions.push(...filters);
+  params.push(...filterParams);
 
   const where = `WHERE ${conditions.join(" AND ")}`;
   // Explicit columns — excludes embedding blob (~260 KB/row) from hot recall path.
