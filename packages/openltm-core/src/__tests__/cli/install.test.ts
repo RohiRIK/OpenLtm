@@ -142,7 +142,7 @@ describe("runInstallCli — orchestration", () => {
     expect(existsSync(join(tmpDir, ".pi", "config.toml"))).toBe(false);
   });
 
-  it("Claude settings.json has correct MCP entry after install", async () => {
+  it("Claude MCP entry lands in ~/.claude.json (where Claude Code reads it)", async () => {
     const { runInstallCli } = await import("../../cli/install.js");
     await runInstallCli({
       targets: { claude: true, opencode: false, pi: false },
@@ -150,12 +150,9 @@ describe("runInstallCli — orchestration", () => {
       homedir: tmpDir,
       silent: true,
     });
-    const settings = JSON.parse(
-      readFileSync(join(tmpDir, ".claude", "settings.json"), "utf8"),
-    ) as Record<string, unknown>;
-    const ltm = (settings["mcpServers"] as Record<string, unknown>)["openltm"] as {
-      command: string;
-    };
-    expect(ltm.command).toBe("bunx");
+    const claudeJson = JSON.parse(readFileSync(join(tmpDir, ".claude.json"), "utf8")) as Record<string, unknown>;
+    const ltm = (claudeJson["mcpServers"] as Record<string, unknown>)["openltm"] as { command: string; args: string[] };
+    expect(ltm.command.endsWith("bunx")).toBe(true);
+    expect(ltm.args).toEqual(["@rohirik/openltm-core", "mcp-serve"]);
   });
 });

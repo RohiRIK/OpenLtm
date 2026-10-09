@@ -54,6 +54,8 @@ bunx @rohirik/openltm-core --dry-run --claude  # preview without writing anythin
 
 `--dry-run` prints exactly what would be installed and changes nothing on disk.
 
+For Claude Code, `--claude` registers the MCP server in `~/.claude.json` and adds two hooks to `~/.claude/settings.json`: SessionStart (injects prior knowledge) and SessionEnd (runs the janitor if due). Both point at `~/.claude/plugins/data/OpenLtm-openltm/openltm.db`, the same database the plugin uses. This is a lighter setup than the plugin (no prompt-time recall, commit stale-flagging or session evaluation). Versions before 2.17 wrote entries Claude Code ignored; re-running the installer replaces them.
+
 ---
 
 ## Option C — Dev / git clone

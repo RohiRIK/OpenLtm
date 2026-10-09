@@ -9,6 +9,7 @@
  */
 import { buildPrefillContext, deriveProjectFromCwd, PREFILL_DEFAULTS } from "../prefill.js";
 import { spawnJanitorDetached } from "./janitor.js";
+import { waitForInit } from "../shared-db.js";
 
 function parseHookCwd(raw: string): string {
   if (!raw.trim()) return "";
@@ -28,6 +29,9 @@ export async function buildHookOutput(name: string, rawInput: string): Promise<s
     case "SessionStart": {
       const cwd = parseHookCwd(rawInput);
       if (!cwd) return "";
+      // A first-time user has no DB yet: create and fully migrate it before
+      // querying (otherwise "no such column: workspace_id" on the first session).
+      await waitForInit();
       const project = deriveProjectFromCwd(cwd);
       if (!project) return "";
       return buildPrefillContext({ project, ...PREFILL_DEFAULTS });
