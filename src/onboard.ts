@@ -15,10 +15,18 @@
 import * as p from "@clack/prompts";
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from "fs";
 import { join, dirname } from "path";
+import { homedir } from "os";
 import { getDb, upsertGoal, learn } from "@rohirik/openltm-core";
 // Same resolver + registry the hooks use, so onboarding never names a project
 // differently from SessionStart (or clobbers a registered/continuity name).
-import { CLAUDE_DIR, getProjectsDir, registerPath, resolveProject } from "../hooks/lib/resolveProject.js";
+// All three resolve their paths per call, never at module load.
+import { getProjectsDir, registerPath, resolveProject } from "../hooks/lib/resolveProject.js";
+
+// Resolved lazily (not at module load) so tests can redirect HOME to a temp
+// dir. Bun caches os.homedir() at process start, so prefer $HOME when set.
+function claudeDir(): string {
+  return join(process.env.HOME || homedir(), ".claude");
+}
 
 export interface OnboardOptions {
   nonInteractive?: boolean;
@@ -60,7 +68,7 @@ export function runDiagnostics(): DiagnosticResult[] {
   }
 
   // Check hooks wired
-  const settingsPath = join(CLAUDE_DIR, "settings.json");
+  const settingsPath = join(claudeDir(), "settings.json");
   if (!existsSync(settingsPath)) {
     results.push({ label: "Hook wiring", status: "warn", detail: "settings.json not found — hooks may not fire" });
   } else {
@@ -77,7 +85,7 @@ export function runDiagnostics(): DiagnosticResult[] {
 }
 
 export function getOnboardedFlagPath(pluginDataDir?: string): string {
-  const base = pluginDataDir ?? process.env.CLAUDE_PLUGIN_DATA ?? join(CLAUDE_DIR, "plugins", "data", "OpenLtm-openltm");
+  const base = pluginDataDir ?? process.env.CLAUDE_PLUGIN_DATA ?? join(claudeDir(), "plugins", "data", "OpenLtm-openltm");
   return join(base, "onboarded.flag");
 }
 

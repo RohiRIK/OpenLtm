@@ -46,7 +46,7 @@ export function getLegacyClaudeDir(): string {
 
 /**
  * `~/.claude/projects` — Claude Code's transcript directory. OpenLTM kept its
- * registry and context files here before 2.17; it is now read-only for OpenLTM
+ * registry and context files here originally; it is now read-only for OpenLTM
  * (legacy migration source + transcripts).
  */
 export function getClaudeTranscriptsDir(): string {
@@ -69,12 +69,12 @@ function stripTrailingSep(p: string): string {
   return p.length > 1 ? p.replace(/[\\/]+$/, "") : p;
 }
 
-/** Raw last path segment — the name Pi, OpenCode and OpenClaw used before 2.17. */
+/** Raw last path segment — the name Pi, OpenCode and OpenClaw used before unified identity. */
 export function legacyLastSegment(cwd: string): string {
   return stripTrailingSep(cwd).split(/[\\/]/).pop() ?? "";
 }
 
-/** Full-path slug — the name Claude Code hooks used for unregistered cwds before 2.17. */
+/** Full-path slug — the name Claude Code hooks used for unregistered cwds before unified identity. */
 export function legacyClaudeSlug(cwd: string): string {
   return cwd.replace(new RegExp("\\" + sep, "g"), "-").replace(/\./g, "-");
 }

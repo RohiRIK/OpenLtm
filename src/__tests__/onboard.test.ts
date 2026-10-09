@@ -115,6 +115,21 @@ describe("runOnboard --non-interactive", () => {
     clearFlag();
   });
 
+  it("keeps an already-registered name and writes the OpenLTM registry, not ~/.claude/projects", async () => {
+    clearFlag();
+    const { registerPath, getRegistryPath, CLAUDE_TRANSCRIPTS_DIR } = await import("../../hooks/lib/resolveProject.js");
+    const cwd = join(TEST_DIR, "Registered_App");
+    registerPath(cwd, "custom-name");
+    const result = await runOnboard({ nonInteractive: true, cwd });
+    expect(result.projectName).toBe("custom-name");
+    expect(JSON.parse(readFileSync(getRegistryPath(), "utf-8"))[cwd]).toBe("custom-name");
+    const legacyRegistry = join(CLAUDE_TRANSCRIPTS_DIR, "registry.json");
+    if (existsSync(legacyRegistry)) {
+      expect(JSON.parse(readFileSync(legacyRegistry, "utf-8"))[cwd]).toBeUndefined();
+    }
+    clearFlag();
+  });
+
   it("is idempotent — returns success without re-running if already onboarded", async () => {
     writeOnboardedFlag(PLUGIN_DATA);
     const result = await runOnboard({ nonInteractive: true, cwd: TEST_DIR });

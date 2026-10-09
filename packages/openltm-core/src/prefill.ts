@@ -104,7 +104,7 @@ function trimLines(lines: string[], maxLines: number): string[] {
 /**
  * Project name for `cwd`, via the shared resolver (registry → repo root → cwd
  * basename). Hosts that call this (Pi, OpenCode, the bunx hook CLI) used the raw
- * last path segment before 2.17; that name is kept while it is the only one
+ * last path segment before unified identity; that name is kept while it is the only one
  * with rows in the database, so no existing memory is orphaned.
  */
 export function deriveProjectFromCwd(cwd: string): string {

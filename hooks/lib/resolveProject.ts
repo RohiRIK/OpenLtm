@@ -52,12 +52,13 @@ export function getDbPath(): string {
 
 /** OpenLTM's projects dir (`<dataDir>/projects`), resolved from the environment now. */
 export function getProjectsDir(): string {
-  return projectsDirFor(getDataDir(getDbPath()));
+  // getDbPath passed lazily: its legacy-DB copy must not run just to find a directory.
+  return projectsDirFor(getDataDir(getDbPath));
 }
 
 /** OpenLTM's registry (`<dataDir>/projects/registry.json`), resolved from the environment now. */
 export function getRegistryPath(): string {
-  return registryPathFor(getDataDir(getDbPath()));
+  return registryPathFor(getDataDir(getDbPath));
 }
 
 /** Import-time snapshots of the getters above (hooks are short-lived processes). */

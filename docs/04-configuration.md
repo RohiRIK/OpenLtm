@@ -1,6 +1,9 @@
 # Configuration
 
-Configure via `~/.claude/config.json`.
+Configure via the LTM `config.json` — on a marketplace install
+`$CLAUDE_PLUGIN_DATA/config.json`. An existing legacy `~/.claude/config.json` is
+still read (and written in place) when the new file does not exist. See
+[File locations](#file-locations).
 
 ## LTM options
 
@@ -89,6 +92,51 @@ Three ways to set it (priority order):
 # Shell override example
 export LTM_DB_PATH=/custom/path/openltm.db
 ```
+
+## File locations
+
+OpenLTM keeps its own files in a **data dir**, resolved as:
+
+1. `LTM_DATA_DIR` env var
+2. `CLAUDE_PLUGIN_DATA` (set by the plugin system, e.g. `~/.claude/plugins/data/OpenLtm-openltm`)
+3. the directory that holds the database
+
+| File | Location |
+|------|----------|
+| Project registry (`cwd → name`) | `<dataDir>/projects/registry.json` |
+| Per-project context markdown | `<dataDir>/projects/<name>/context-*.md` |
+| Config | `LTM_CONFIG_PATH` → `<dataDir>/config.json` if it exists → `~/.claude/config.json` if it exists → `<dataDir>/config.json` |
+
+| Env var | Description |
+|---------|-------------|
+| `LTM_DATA_DIR` | Override the data dir (registry, context markdown, default config location) |
+| `LTM_CONFIG_PATH` | Use exactly this config file (read and write) |
+
+`~/.claude/projects/` belongs to Claude Code (its session transcripts). OpenLTM
+no longer writes there. **Migration is automatic and non-destructive:** on first
+access, a legacy `~/.claude/projects/registry.json` is copied to the new registry
+(only if the new one does not exist yet), and a project's legacy
+`~/.claude/projects/<name>/context-*.md` files are copied when its new context
+dir has none. Legacy files are never modified or deleted, and registry entries
+still written to the legacy file are merged in at read time (the new file wins).
+
+## Project identity
+
+Every host — Claude Code hooks, Pi, OpenCode, OpenClaw, the bunx hook CLI —
+maps a working directory to a project name with the same resolver, so a repo
+shares one memory scope across agents:
+
+1. Exact match in the registry
+2. Longest registered parent path
+3. Git repository root name, normalized (`My_Repo` → `my-repo`; linked worktrees use the main repo's name)
+4. Working directory name, normalized
+
+**Continuity:** names used before this resolver existed are kept while they are
+the only ones with data. If the database has memories or context items under the
+old name (Claude Code: the full-path slug such as `-home-me-my-repo`; Pi /
+OpenCode / OpenClaw: the raw folder name such as `My_Repo`) and none under the
+new name, the old name stays. Claude Code also registers it so it stays stable.
+To adopt the new name, register the path explicitly with `/openltm:project`.
 
 ## Server options
 

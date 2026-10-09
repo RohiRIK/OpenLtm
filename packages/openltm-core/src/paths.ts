@@ -23,10 +23,13 @@ export function getDbPath(): string {
 /**
  * Where OpenLTM keeps its own files (registry, context markdown, config).
  * `dbPath` is only the last-resort anchor; hosts with their own DB resolution
- * (the Claude hooks) pass theirs so registry and DB stay side by side.
+ * (the Claude hooks) pass theirs so registry and DB stay side by side. Pass a
+ * function to defer it — it is only called when neither env var is set.
  */
-export function getDataDir(dbPath: string = getDbPath()): string {
-  return process.env["LTM_DATA_DIR"] || process.env["CLAUDE_PLUGIN_DATA"] || dirname(dbPath);
+export function getDataDir(dbPath: string | (() => string) = getDbPath): string {
+  const fromEnv = process.env["LTM_DATA_DIR"] || process.env["CLAUDE_PLUGIN_DATA"];
+  if (fromEnv) return fromEnv;
+  return dirname(typeof dbPath === "function" ? dbPath() : dbPath);
 }
 
 /** `<dataDir>/projects` — registry + per-project context markdown. */
@@ -39,7 +42,7 @@ export function getRegistryPath(dataDir: string = getDataDir()): string {
   return join(getProjectsDir(dataDir), "registry.json");
 }
 
-/** `~/.claude/config.json` — pre-2.17 config location, still read as a fallback. */
+/** `~/.claude/config.json` — legacy config location, still read as a fallback. */
 export function getLegacyConfigPath(): string {
   return join(getLegacyClaudeDir(), "config.json");
 }
