@@ -18,9 +18,17 @@ import { join, basename, dirname } from "path";
 import { homedir } from "os";
 import { getDb, upsertGoal, learn } from "@rohirik/openltm-core";
 
-const CLAUDE_DIR = join(homedir(), ".claude");
-const PROJECTS_DIR = join(CLAUDE_DIR, "projects");
-const REGISTRY_PATH = join(PROJECTS_DIR, "registry.json");
+// Resolved lazily (not at module load) so tests can redirect HOME to a temp
+// dir. Bun caches os.homedir() at process start, so prefer $HOME when set.
+function claudeDir(): string {
+  return join(process.env.HOME || homedir(), ".claude");
+}
+function projectsDir(): string {
+  return join(claudeDir(), "projects");
+}
+function registryPath(): string {
+  return join(projectsDir(), "registry.json");
+}
 
 export interface OnboardOptions {
   nonInteractive?: boolean;
@@ -54,6 +62,7 @@ export function runDiagnostics(): DiagnosticResult[] {
   }
 
   // Check registry dir
+  const PROJECTS_DIR = projectsDir();
   if (!existsSync(PROJECTS_DIR)) {
     results.push({ label: "Projects dir", status: "warn", detail: `${PROJECTS_DIR} not found — will create` });
   } else {
@@ -61,7 +70,7 @@ export function runDiagnostics(): DiagnosticResult[] {
   }
 
   // Check hooks wired
-  const settingsPath = join(CLAUDE_DIR, "settings.json");
+  const settingsPath = join(claudeDir(), "settings.json");
   if (!existsSync(settingsPath)) {
     results.push({ label: "Hook wiring", status: "warn", detail: "settings.json not found — hooks may not fire" });
   } else {
@@ -78,7 +87,7 @@ export function runDiagnostics(): DiagnosticResult[] {
 }
 
 export function getOnboardedFlagPath(pluginDataDir?: string): string {
-  const base = pluginDataDir ?? process.env.CLAUDE_PLUGIN_DATA ?? join(CLAUDE_DIR, "plugins", "data", "OpenLtm-openltm");
+  const base = pluginDataDir ?? process.env.CLAUDE_PLUGIN_DATA ?? join(claudeDir(), "plugins", "data", "OpenLtm-openltm");
   return join(base, "onboarded.flag");
 }
 
@@ -97,14 +106,15 @@ function deriveProjectName(cwd: string): string {
 }
 
 function loadRegistry(): Record<string, string> {
+  const REGISTRY_PATH = registryPath();
   if (!existsSync(REGISTRY_PATH)) return {};
   try { return JSON.parse(readFileSync(REGISTRY_PATH, "utf-8")) as Record<string, string>; }
   catch { return {}; }
 }
 
 function saveRegistry(registry: Record<string, string>): void {
-  mkdirSync(PROJECTS_DIR, { recursive: true });
-  writeFileSync(REGISTRY_PATH, JSON.stringify(registry, null, 2), "utf-8");
+  mkdirSync(projectsDir(), { recursive: true });
+  writeFileSync(registryPath(), JSON.stringify(registry, null, 2), "utf-8");
 }
 
 export async function runOnboard(opts: OnboardOptions = {}): Promise<{ success: boolean; projectName?: string }> {
@@ -170,7 +180,7 @@ export async function runOnboard(opts: OnboardOptions = {}): Promise<{ success: 
   const registry = loadRegistry();
   registry[cwd] = projectName;
   saveRegistry(registry);
-  mkdirSync(join(PROJECTS_DIR, projectName), { recursive: true });
+  mkdirSync(join(projectsDir(), projectName), { recursive: true });
 
   if (!nonInteractive) p.log.success(`Registered "${projectName}" → ${cwd}`);
 

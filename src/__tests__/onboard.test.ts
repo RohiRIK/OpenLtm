@@ -1,16 +1,28 @@
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
-import { existsSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "fs";
-import { join, dirname } from "path";
-import { tmpdir } from "os";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync } from "fs";
+import { join, basename } from "path";
+import { homedir, tmpdir } from "os";
 import { Database } from "bun:sqlite";
 
-const TEST_DIR = join(tmpdir(), `ltm-onboard-test-${process.pid}`);
+// Everything this suite writes lives under a fresh mkdtemp dir. HOME and
+// CLAUDE_CONFIG_DIR point inside it so onboard's registry.json / projects/<name>
+// writes never reach the real ~/.claude.
+const TEST_DIR = mkdtempSync(join(tmpdir(), "ltm-onboard-test-"));
+const FAKE_HOME = join(TEST_DIR, "home");
+const FAKE_CLAUDE_DIR = join(FAKE_HOME, ".claude");
+// Unique basename so the derived project name can be checked against the real ~/.claude.
+const PROJECT_CWD = join(TEST_DIR, basename(TEST_DIR));
 const PLUGIN_DATA = join(TEST_DIR, "plugin-data");
 const DB_PATH = join(TEST_DIR, "test-openltm.db");
 const SCHEMA_PATH = join(import.meta.dir, "..", "..", "src", "schema.sql");
 
-// Set env BEFORE any imports that read it
-process.env.CLAUDE_PLUGIN_DATA = PLUGIN_DATA;
+// Real ~/.claude: the test wrapper passes the pre-isolation home; fall back to
+// homedir() (cached by Bun at process start) for `HOME=$(mktemp -d) bun test`.
+const REAL_CLAUDE_DIR = join(process.env.LTM_TEST_REAL_HOME || homedir(), ".claude");
+const REAL_REGISTRY = join(REAL_CLAUDE_DIR, "projects", "registry.json");
+
+const ENV_KEYS = ["HOME", "CLAUDE_CONFIG_DIR", "CLAUDE_PLUGIN_DATA"] as const;
+const savedEnv: Partial<Record<(typeof ENV_KEYS)[number], string | undefined>> = {};
 
 // Deferred imports — resolved after DB injection
 let runOnboard: typeof import("../onboard.js").runOnboard;
@@ -19,8 +31,19 @@ let isAlreadyOnboarded: typeof import("../onboard.js").isAlreadyOnboarded;
 let writeOnboardedFlag: typeof import("../onboard.js").writeOnboardedFlag;
 let getOnboardedFlagPath: typeof import("../onboard.js").getOnboardedFlagPath;
 
+function readRealRegistry(): Record<string, string> {
+  try { return JSON.parse(readFileSync(REAL_REGISTRY, "utf-8")) as Record<string, string>; }
+  catch { return {}; }
+}
+
 beforeAll(async () => {
+  for (const k of ENV_KEYS) savedEnv[k] = process.env[k];
+  process.env.HOME = FAKE_HOME;
+  process.env.CLAUDE_CONFIG_DIR = FAKE_CLAUDE_DIR;
+  process.env.CLAUDE_PLUGIN_DATA = PLUGIN_DATA;
+
   mkdirSync(PLUGIN_DATA, { recursive: true });
+  mkdirSync(PROJECT_CWD, { recursive: true });
 
   const { runPendingMigrations, _setDbForTesting } = await import("@rohirik/openltm-core");
 
@@ -39,6 +62,10 @@ beforeAll(async () => {
 }, 30_000);
 
 afterAll(() => {
+  for (const k of ENV_KEYS) {
+    if (savedEnv[k] === undefined) delete process.env[k];
+    else process.env[k] = savedEnv[k];
+  }
   try { rmSync(TEST_DIR, { recursive: true, force: true }); } catch {}
 });
 
@@ -95,7 +122,7 @@ describe("isAlreadyOnboarded / writeOnboardedFlag", () => {
 describe("runOnboard --non-interactive", () => {
   it("succeeds on fresh project", async () => {
     clearFlag();
-    const result = await runOnboard({ nonInteractive: true, cwd: TEST_DIR });
+    const result = await runOnboard({ nonInteractive: true, cwd: PROJECT_CWD });
     expect(result.success).toBe(true);
     expect(result.projectName).toBeTruthy();
     clearFlag();
@@ -103,21 +130,21 @@ describe("runOnboard --non-interactive", () => {
 
   it("writes onboarded.flag", async () => {
     clearFlag();
-    await runOnboard({ nonInteractive: true, cwd: TEST_DIR });
+    await runOnboard({ nonInteractive: true, cwd: PROJECT_CWD });
     expect(isAlreadyOnboarded(PLUGIN_DATA)).toBe(true);
     clearFlag();
   });
 
   it("derives project name from cwd basename", async () => {
     clearFlag();
-    const result = await runOnboard({ nonInteractive: true, cwd: "/some/project/my-app" });
+    const result = await runOnboard({ nonInteractive: true, cwd: join(TEST_DIR, "my-app") });
     expect(result.projectName).toBe("my-app");
     clearFlag();
   });
 
   it("is idempotent — returns success without re-running if already onboarded", async () => {
     writeOnboardedFlag(PLUGIN_DATA);
-    const result = await runOnboard({ nonInteractive: true, cwd: TEST_DIR });
+    const result = await runOnboard({ nonInteractive: true, cwd: PROJECT_CWD });
     expect(result.success).toBe(true);
     expect(result.projectName).toBeUndefined(); // skipped — no wizard ran
     clearFlag();
@@ -125,7 +152,7 @@ describe("runOnboard --non-interactive", () => {
 
   it("--force re-runs even when flag exists", async () => {
     writeOnboardedFlag(PLUGIN_DATA);
-    const result = await runOnboard({ nonInteractive: true, force: true, cwd: TEST_DIR });
+    const result = await runOnboard({ nonInteractive: true, force: true, cwd: PROJECT_CWD });
     expect(result.success).toBe(true);
     expect(result.projectName).toBeTruthy();
     clearFlag();
@@ -137,8 +164,35 @@ describe("runOnboard CRITICAL abort", () => {
     clearFlag();
     const saved = process.env.CLAUDE_PLUGIN_DATA;
     delete process.env.CLAUDE_PLUGIN_DATA;
-    const result = await runOnboard({ nonInteractive: true, force: true, cwd: TEST_DIR });
+    const result = await runOnboard({ nonInteractive: true, force: true, cwd: PROJECT_CWD });
     expect(result.success).toBe(false);
     process.env.CLAUDE_PLUGIN_DATA = saved;
+  });
+});
+
+describe("HOME isolation", () => {
+  let isolatedProjectName = "";
+
+  it("writes registry + project dir under the temp HOME", async () => {
+    clearFlag();
+    const result = await runOnboard({ nonInteractive: true, force: true, cwd: PROJECT_CWD });
+    expect(result.success).toBe(true);
+    const fakeRegistry = JSON.parse(
+      readFileSync(join(FAKE_CLAUDE_DIR, "projects", "registry.json"), "utf-8"),
+    ) as Record<string, string>;
+    expect(fakeRegistry[PROJECT_CWD]).toBe(result.projectName!);
+    expect(existsSync(join(FAKE_CLAUDE_DIR, "projects", result.projectName!))).toBe(true);
+    isolatedProjectName = result.projectName!;
+    clearFlag();
+  });
+
+  it("never touches the real ~/.claude", () => {
+    expect(REAL_CLAUDE_DIR.startsWith(TEST_DIR)).toBe(false);
+    const realRegistry = readRealRegistry();
+    for (const key of Object.keys(realRegistry)) {
+      expect(key.startsWith(TEST_DIR)).toBe(false);
+    }
+    expect(isolatedProjectName).toMatch(/^ltm-onboard-test-/);
+    expect(existsSync(join(REAL_CLAUDE_DIR, "projects", isolatedProjectName))).toBe(false);
   });
 });
