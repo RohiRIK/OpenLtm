@@ -115,7 +115,9 @@ async function main(): Promise<void> {
   // Sub-command: mcp-serve — run the LTM MCP server on stdio
   if (argv[0] === "mcp-serve") {
     const { startMcpServer } = await import("../mcp/server.js");
-    await startMcpServer();
+    const { deriveProjectFromCwd } = await import("../prefill.js");
+    // Context tools default to the project of the directory the host started us in.
+    await startMcpServer({ defaultProject: () => deriveProjectFromCwd(process.cwd()) });
     return; // keep the process alive — transport owns the event loop
   }
 
