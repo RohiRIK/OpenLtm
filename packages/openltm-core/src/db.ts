@@ -126,10 +126,19 @@ export interface RecallInput {
   category?: MemoryCategory;
   project?: string;
   limit?: number;
+  /** Only memories in this workspace (or with no workspace) are returned. */
   workspace_id?: string;
+  /** Only memories written by this agent (or with no agent) are returned. */
   agent_id?: string;
   /** When true, each result includes a `provenance` array. Off by default to preserve latency. */
   includeProvenance?: boolean;
+  /**
+   * Hybrid ranking: run the embedding search alongside FTS and fuse both with
+   * Reciprocal Rank Fusion. Default true. Pass false on a hot path to force
+   * FTS-only (no provider round-trip). Also off when `ltm.semanticFallback`
+   * is false or the embeddings provider is "disabled".
+   */
+  semantic?: boolean;
 }
 
 
@@ -515,7 +524,54 @@ export const RANK_WEIGHTS = {
   recallFrequency: 0.25,
   stalePenalty: 0.8,
   duplicatePenalty: 0.5,
+  /**
+   * Query relevance (fused RRF score, see `fuseRecallRankings`). RRF scores are
+   * flat — rank 1 vs rank 2 of one retriever differ by ~1.6% — so the weight is
+   * large: near the top one rank ≈ 0.3 points, i.e. project scope ≈ 3 ranks,
+   * while a hit from both retrievers (+20) outranks a single-retriever hit.
+   */
+  relevance: 20,
 } as const;
+
+/** Reciprocal Rank Fusion constant (Cormack et al. 2009). */
+export const RRF_K = 60;
+
+/** One retriever's hits, best first. `score` is only used to give exact ties a shared rank. */
+export type RankedList = ReadonlyArray<{ id: number; score?: number }>;
+
+/**
+ * reciprocalRankFusion — fuse ranked lists: score(d) = Σ 1 / (k + rank(d)),
+ * with 1-based ranks. Entries with an equal `score` share a rank (competition
+ * ranking) so exact ties fuse identically; a repeated id within one list only
+ * counts its best rank. Pure function.
+ */
+export function reciprocalRankFusion(lists: readonly RankedList[], k: number = RRF_K): Map<number, number> {
+  const fused = new Map<number, number>();
+  for (const list of lists) {
+    const seen = new Set<number>();
+    let rank = 0;
+    let prevScore: number | undefined;
+    list.forEach((entry, i) => {
+      if (i === 0 || entry.score === undefined || entry.score !== prevScore) rank = i + 1;
+      prevScore = entry.score;
+      if (seen.has(entry.id)) return;
+      seen.add(entry.id);
+      fused.set(entry.id, (fused.get(entry.id) ?? 0) + 1 / (k + rank));
+    });
+  }
+  return fused;
+}
+
+/**
+ * fuseRecallRankings — RRF-fuse retriever lists into a relevance map scaled so
+ * 1.0 means "ranked first by one retriever" (2.0 = first by both). This is the
+ * `relevance` input to rankRecallResults.
+ */
+export function fuseRecallRankings(lists: readonly RankedList[], k: number = RRF_K): Map<number, number> {
+  const fused = reciprocalRankFusion(lists, k);
+  for (const [id, score] of fused) fused.set(id, score * (k + 1));
+  return fused;
+}
 
 /** Penalty applied to the k-th occurrence of a near-duplicate cluster. */
 const DUPLICATE_DECAY_FACTOR = 0.4;
@@ -529,6 +585,9 @@ const DUPLICATE_DECAY_FACTOR = 0.4;
  *   - stale (code-invalidated) memories are demoted but still returned
  *   - near-duplicate clusters are demoted progressively, never dropped
  *   - ties break on ascending id so identical inputs give identical output
+ *   - with `relevance` (a query recall), the fused query relevance leads and
+ *     the decay term is normalised to [0,1] (decay_score / 5) so priors nudge
+ *     near-ties instead of overriding the match
  */
 export function rankRecallResults(
   candidates: Memory[],
@@ -537,6 +596,8 @@ export function rankRecallResults(
     project?: string;
     defaultSort?: boolean;
     sortBy?: "relevance" | "created" | "last_recalled" | "recall_count";
+    /** id → fused query relevance (fuseRecallRankings). Absent ids score 0. */
+    relevance?: ReadonlyMap<number, number>;
   },
 ): Memory[] {
   const rows = [...candidates];
@@ -558,14 +619,18 @@ export function rankRecallResults(
       .slice(0, opts.limit);
   }
 
+  const relevanceMap = opts.relevance;
   const scored = rows.map((memory) => {
     const decay = memory.decay_score ?? computeDecayScore(memory);
     const importance = memory.importance / 5;
     const projectScope = opts.project && memory.project_scope === opts.project ? 1 : 0;
     const recallFrequency = Math.min(1, Math.log2((memory.recall_count ?? 0) + 1) / 4);
     const stale = memory.stale_flagged_at ? RANK_WEIGHTS.stalePenalty : 0;
+    const relevance = relevanceMap ? (relevanceMap.get(memory.id) ?? 0) * RANK_WEIGHTS.relevance : 0;
+    const decayTerm = relevanceMap ? Math.min(1, decay / 5) : decay;
     const score =
-      decay * RANK_WEIGHTS.decay +
+      relevance +
+      decayTerm * RANK_WEIGHTS.decay +
       importance * RANK_WEIGHTS.importance +
       projectScope * RANK_WEIGHTS.projectScope +
       recallFrequency * RANK_WEIGHTS.recallFrequency -
@@ -697,8 +762,8 @@ export function learn(input: LearnInput): LearnResult {
   const title = input.title?.trim().slice(0, 60) || deriveTitle(content);
 
   const result = db.run(
-    `INSERT INTO memories (content, title, category, importance, confidence, source, project_scope, dedup_key, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO memories (content, title, category, importance, confidence, source, project_scope, dedup_key, created_by, workspace_id, agent_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       content,
       title,
@@ -709,6 +774,8 @@ export function learn(input: LearnInput): LearnResult {
       input.project_scope ?? null,
       dedupKey,
       actor,
+      input.workspace_id ?? null,
+      input.agent_id ?? null,
     ]
   );
 
@@ -769,51 +836,175 @@ export function learn(input: LearnInput): LearnResult {
   };
 }
 
+// ── Recall query building + hybrid retrieval ─────────────────────────────────
+
+/**
+ * Words that carry no retrieval signal in a natural-language query ("how do we
+ * handle …"). OR-ing them into the FTS query fills the result set with
+ * incidental matches, so they are dropped before the MATCH is built.
+ * Directional/temporal words (up, down, before, after, …) are kept on purpose:
+ * they are meaningful in technical text ("down migration", "after deploy").
+ */
+const RECALL_STOPWORDS: ReadonlySet<string> = new Set([
+  "a", "about", "all", "also", "am", "an", "and", "any", "are", "as", "at",
+  "be", "because", "been", "being", "both", "but", "by",
+  "can", "could", "did", "do", "does", "doing", "each", "else", "etc",
+  "for", "from", "had", "has", "have", "having", "he", "her", "here", "hers", "him", "his",
+  "how", "hows", "how's", "i", "i'm", "if", "in", "into", "is", "it", "it's", "its", "itself",
+  "just", "let", "lets", "let's", "me", "my", "myself", "no", "nor", "not", "now",
+  "of", "on", "once", "or", "our", "ours", "ourselves", "please", "she", "should", "so", "some", "such",
+  "than", "that", "that's", "the", "their", "theirs", "them", "then", "there", "there's", "these", "they", "this", "those", "to", "too",
+  "us", "very", "was", "we", "we're", "were", "what", "whats", "what's", "when", "where", "which", "while",
+  "who", "whom", "why", "will", "with", "would", "you", "your", "yours", "yourself",
+]);
+
+const WORD_EDGE_RE = /^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu;
+const PLAIN_WORD_RE = /^[\p{L}\p{N}]+$/u;
+
+function quoteFts(term: string): string {
+  return `"${term.replace(/"/g, '""')}"`;
+}
+
+/**
+ * One FTS5 term for a kept query word. Plain words of 4+ chars become a prefix
+ * match with a light plural fold, so "migrations" also finds "migration" and
+ * "handle" finds "handles"/"handler". Anything else stays an exact phrase.
+ */
+function ftsTerm(word: string): string {
+  if (!PLAIN_WORD_RE.test(word) || word.length < 4) return quoteFts(word);
+  const stem = word.length > 4 && word.endsWith("s") && !word.endsWith("ss") ? word.slice(0, -1) : word;
+  return `${quoteFts(stem)}*`;
+}
+
+/**
+ * buildFtsQuery — turn a natural-language query into an FTS5 MATCH expression.
+ * Drops stopwords and tokens shorter than 2 chars, de-duplicates, quotes every
+ * term (no reserved-word errors) and ORs them. When nothing survives the
+ * filter (e.g. "how do we"), falls back to the original tokens. Returns null
+ * when the query holds no searchable token at all.
+ */
+export function buildFtsQuery(query: string): string | null {
+  const tokens = query.trim().split(/\s+/).filter(Boolean);
+  const kept: string[] = [];
+  for (const token of tokens) {
+    const word = token.toLowerCase().replace(WORD_EDGE_RE, "");
+    if (word.length < 2 || RECALL_STOPWORDS.has(word) || kept.includes(word)) continue;
+    kept.push(word);
+  }
+  if (kept.length > 0) return kept.map(ftsTerm).join(" OR ");
+  const fallback = tokens.filter((t) => /[\p{L}\p{N}]/u.test(t));
+  return fallback.length > 0 ? fallback.map(quoteFts).join(" OR ") : null;
+}
+
+/** Embedding search used by hybrid recall: hits best-first, similarity in [0,1]. */
+export type RecallSemanticSearch = (query: string, topN: number) => Promise<Array<{ id: number; similarity: number }>>;
+
+/** Minimum cosine similarity for a semantic hit to join the candidate set. */
+const SEMANTIC_MIN_SIMILARITY = 0.5;
+/** A slow provider must not stall recall: past this budget, recall is FTS-only. */
+const SEMANTIC_TIMEOUT_MS = 2_000;
+
+let semanticSearchOverride: RecallSemanticSearch | null = null;
+
+/** Test seam: replace the embedding search recall() uses (null restores the provider). */
+export function _setRecallSemanticSearchForTesting(fn: RecallSemanticSearch | null): void {
+  semanticSearchOverride = fn;
+}
+
+/** The embedding search to run, or null when hybrid recall is off for this call. */
+async function resolveSemanticSearch(enabled: boolean | undefined): Promise<RecallSemanticSearch | null> {
+  if (enabled === false) return null;
+  const { readConfigSync } = await import("./config.js");
+  const cfg = readConfigSync();
+  if (cfg.ltm?.semanticFallback === false) return null;
+  if (semanticSearchOverride) return semanticSearchOverride;
+  const { explicitEmbedProvider } = await import("./providers/embeddingProvider.js");
+  if ((explicitEmbedProvider() ?? cfg.embeddings?.provider) === "disabled") return null;
+  const { getSimilarMemories } = await import("./embeddings.js");
+  return (query, topN) => getSimilarMemories(query, topN, SEMANTIC_MIN_SIMILARITY);
+}
+
+/** Run the semantic retriever. Never rejects: any failure or timeout yields []. */
+async function semanticHits(query: string, topN: number, enabled: boolean | undefined): Promise<Array<{ id: number; similarity: number }>> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const search = await resolveSemanticSearch(enabled);
+    if (!search) return [];
+    const timeout = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), SEMANTIC_TIMEOUT_MS);
+      (timer as { unref?: () => void }).unref?.();
+    });
+    const hits = await Promise.race([search(query, topN), timeout]);
+    if (hits === null) {
+      process.stderr.write(`[recall] Semantic search exceeded ${SEMANTIC_TIMEOUT_MS}ms — FTS only\n`);
+      return [];
+    }
+    return [...hits].sort((a, b) => b.similarity - a.similarity);
+  } catch (err) {
+    process.stderr.write(`[recall] Semantic search failed — FTS only: ${err}\n`);
+    return [];
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+const RECALL_COLUMNS = `id, content, category, importance, confidence, source, project_scope, dedup_key,
+              created_at, last_confirmed_at, last_used_at, confirm_count, status,
+              first_recalled_at, last_recalled_at, recall_count, superseded_by, superseded_at,
+              workspace_id, agent_id, decay_score, stale_flagged_at, stale_reason`;
+
+/** SQL ORDER BY for a recall without a query (no relevance signal to rank on). */
+function recallSqlOrder(sortBy: RecallInput["sort_by"]): string {
+  switch (sortBy) {
+    case "created": return "ORDER BY created_at DESC, id ASC";
+    case "last_recalled": return "ORDER BY last_recalled_at DESC, id ASC";
+    case "recall_count": return "ORDER BY recall_count DESC, id ASC";
+    default: return "ORDER BY decay_score DESC";
+  }
+}
+
+/**
+ * recall — ranked long-term memories.
+ *
+ * With a query, retrieval is hybrid: FTS5 (stopwords dropped, BM25 order) and,
+ * unless disabled, an embedding search run alongside it. Both lists are fused
+ * with Reciprocal Rank Fusion (k=60); the fused relevance then leads the
+ * Recall v2 score (importance, decay, project scope, staleness, near-dupes).
+ * If the embedding search is off, fails or times out, recall is FTS-only.
+ */
 export async function recall(input: RecallInput = {}): Promise<MemoryWithRelations[]> {
   const db = getDb();
   const limit = input.limit ?? 10;
 
   let ids: Set<number> | null = null;
-  const ftsRanks = new Map<number, number>();      // id → normalized [0,1]
+  let relevance: Map<number, number> | null = null;
+  const ftsRanks = new Map<number, number>();      // id → BM25 relative to the best hit, (0,1]
   const semanticScores = new Map<number, number>(); // id → cosine similarity [0,1]
 
   if (input.query) {
-    // Sanitize for FTS5: quote each token (prevents reserved-word errors) and join with OR
-    const ftsQuery = input.query
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean)
-      .map(t => `"${t.replace(/"/g, '""')}"`)
-      .join(" OR ");
-    const ftsResults = db.query<{ rowid: number; rank: number }, [string]>(
-      `SELECT rowid, rank FROM memories_fts WHERE memories_fts MATCH ? ORDER BY rank LIMIT 50`
-    ).all(ftsQuery);
-    ids = new Set<number>();
+    // Start the embedding round-trip first so it overlaps the (synchronous) FTS query.
+    const semanticPromise = semanticHits(input.query, Math.max(limit * 2, 20), input.semantic);
+
+    const ftsQuery = buildFtsQuery(input.query);
+    const ftsResults = ftsQuery
+      ? db.query<{ rowid: number; rank: number }, [string]>(
+          `SELECT rowid, rank FROM memories_fts WHERE memories_fts MATCH ? ORDER BY rank LIMIT 50`
+        ).all(ftsQuery)
+      : [];
+    // FTS5 rank is BM25 negated: more negative = better, best hit first.
+    const bestRank = ftsResults[0]?.rank ?? 0;
     for (const r of ftsResults) {
-      ids.add(r.rowid);
-      // FTS5 BM25 rank is a negative number (closer to 0 = better).
-      // Math.exp maps it to (0, 1] where 1 is a perfect match.
-      ftsRanks.set(r.rowid, Math.exp(r.rank));
+      ftsRanks.set(r.rowid, bestRank < 0 ? r.rank / bestRank : 1);
     }
 
-    // Semantic fallback: if FTS5 returned fewer results than requested, augment with vector search
-    if (ids.size < limit) {
-      const { readConfigSync } = await import("./config.js");
-      const cfg = readConfigSync();
-      const semanticEnabled = cfg.ltm?.semanticFallback !== false; // default true
-      if (semanticEnabled) {
-        try {
-          const { getSimilarMemories } = await import("./embeddings.js");
-          const semantic = await getSimilarMemories(input.query, limit * 2, 0.5);
-          for (const m of semantic) {
-            ids.add(m.id);
-            semanticScores.set(m.id, m.similarity);
-          }
-        } catch (err) {
-          process.stderr.write(`[recall] Semantic fallback failed: ${err}\n`);
-        }
-      }
-    }
+    const semantic = await semanticPromise;
+    for (const m of semantic) semanticScores.set(m.id, m.similarity);
+
+    relevance = fuseRecallRankings([
+      ftsResults.map((r) => ({ id: r.rowid, score: r.rank })),
+      semantic.map((m) => ({ id: m.id, score: m.similarity })),
+    ]);
+    ids = new Set(relevance.keys());
   }
 
   if (input.tags && input.tags.length > 0) {
@@ -853,6 +1044,8 @@ export async function recall(input: RecallInput = {}): Promise<MemoryWithRelatio
     params.push(input.project);
   }
 
+  // Workspace / agent isolation: rows written for this workspace (agent) plus
+  // unscoped rows, mirroring how project scope treats globals.
   if (input.workspace_id) {
     conditions.push("(workspace_id IS NULL OR workspace_id=?)");
     params.push(input.workspace_id);
@@ -876,28 +1069,28 @@ export async function recall(input: RecallInput = {}): Promise<MemoryWithRelatio
   const where = `WHERE ${conditions.join(" AND ")}`;
   // Explicit columns — excludes embedding blob (~260 KB/row) from hot recall path.
   // Use getById(id, { withEmbedding: true }) when the blob is needed.
-  // default sort (no query): ORDER BY decay_score DESC pushed to SQL → O(log N)
-  const defaultSqlSort = (!input.sort_by || input.sort_by === "relevance") && ids === null;
-  const orderBy = defaultSqlSort ? "ORDER BY decay_score DESC" : "";
-  // Recall v2 ranking inputs need project scope + staleness, so both are
-  // selected up front even on the default sort path.
-  const rankSql = defaultSqlSort
-    ? `SELECT id, content, category, importance, confidence, source, project_scope, dedup_key,
-              created_at, last_confirmed_at, last_used_at, confirm_count, status,
-              first_recalled_at, last_recalled_at, recall_count, superseded_by, superseded_at,
-              workspace_id, agent_id, decay_score, stale_flagged_at, stale_reason
-         FROM memories ${where} ORDER BY decay_score DESC LIMIT ${limit * 3}`
-    : `SELECT id, content, category, importance, confidence, source, project_scope, dedup_key,
-              created_at, last_confirmed_at, last_used_at, confirm_count, status,
-              first_recalled_at, last_recalled_at, recall_count, superseded_by, superseded_at,
-              workspace_id, agent_id, decay_score, stale_flagged_at, stale_reason
-         FROM memories ${where} ${orderBy} LIMIT ${limit * 3}`;
-  const candidateRows = db.query<Memory, typeof params>(rankSql).all(...params);
+  let candidateRows: Memory[];
+  if (relevance) {
+    // Query recall: every fused hit that passes the filters (≤ 50 FTS + the
+    // semantic list), cut to the limit*3 most relevant before the O(n²)
+    // near-duplicate pass in rankRecallResults.
+    const fused = relevance;
+    candidateRows = db.query<Memory, typeof params>(`SELECT ${RECALL_COLUMNS} FROM memories ${where}`).all(...params)
+      .sort((a, b) => (fused.get(b.id) ?? 0) - (fused.get(a.id) ?? 0) || a.id - b.id)
+      .slice(0, limit * 3);
+  } else {
+    // No query: SQL picks the limit*3 strongest rows for the requested sort
+    // (decay_score DESC by default, an O(log N) index scan).
+    candidateRows = db.query<Memory, typeof params>(
+      `SELECT ${RECALL_COLUMNS} FROM memories ${where} ${recallSqlOrder(input.sort_by)} LIMIT ${limit * 3}`
+    ).all(...params);
+  }
   const sorted = rankRecallResults(candidateRows, {
     limit,
     project: input.project,
-    defaultSort: defaultSqlSort,
+    defaultSort: !relevance && (!input.sort_by || input.sort_by === "relevance"),
     sortBy: input.sort_by,
+    relevance: relevance ?? undefined,
   });
   if (sorted.length > 0) {
     const placeholders = sorted.map(() => "?").join(",");

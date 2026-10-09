@@ -49,9 +49,10 @@ export { buildPrefillContext, deriveProjectFromCwd, selectPrefillMemories } from
 export type { PrefillOptions, PrefillSelection, PrefillCategory, PrefillQuotaReport } from "./prefill.js";
 export { PREFILL_DEFAULTS } from "./prefill.js";
 
-// Recall ranking
+// Recall ranking (hybrid FTS + semantic, fused with Reciprocal Rank Fusion)
 export { rankRecallResults, isOperationalNoise } from "./db.js";
-export { RANK_WEIGHTS } from "./db.js";
+export { RANK_WEIGHTS, RRF_K, reciprocalRankFusion, fuseRecallRankings, buildFtsQuery, _setRecallSemanticSearchForTesting } from "./db.js";
+export type { RankedList, RecallSemanticSearch } from "./db.js";
 
 // Text similarity (prefill dedupe + learn hygiene)
 export { isNearDuplicate, jaccardSimilarity, tokenize, tokenizeAll } from "./similarity.js";
