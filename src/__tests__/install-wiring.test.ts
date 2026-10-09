@@ -43,16 +43,24 @@ describe("install-wiring hooks", () => {
       hooks: {
         SessionStart: [{ matcher: "", hooks: [{ type: "command", command: legacy }] }],
         SessionEnd: [{ matcher: "", hooks: [{ type: "command", command: OTHER_SESSION_END }] }],
+        // pre-2.17 dev installs ran EvaluateSession on Stop (every turn)
+        Stop: [{ matcher: "", hooks: [{ type: "command", command: `CLAUDE_PLUGIN_ROOT=${root} bun run ${root}/hooks/src/EvaluateSession.ts` }] }],
       },
     }));
     const r = run();
     expect(r.code).toBe(0);
     const quoted = `CLAUDE_PLUGIN_ROOT='${root}' bun run '${root}/hooks/src/SessionStart.ts'`;
     expect(commands("SessionStart")).toEqual([quoted]); // upgraded, not duplicated
-    expect(commands("SessionEnd")).toEqual([OTHER_SESSION_END, `CLAUDE_PLUGIN_ROOT='${root}' bun run '${root}/hooks/src/SessionEnd.ts'`]);
+    const ltm = (file: string) => `CLAUDE_PLUGIN_ROOT='${root}' bun run '${root}/hooks/src/${file}'`;
+    expect(commands("SessionEnd")).toEqual([OTHER_SESSION_END, ltm("EvaluateSession.ts"), ltm("SessionEnd.ts")]);
+    expect(commands("Stop")).toEqual([ltm("UpdateContext.ts")]); // stale Stop→EvaluateSession removed
+    expect(commands("UserPromptSubmit")).toEqual([ltm("UserPromptSubmit.ts")]);
+    expect(commands("PostToolUse")).toEqual([ltm("PostToolUse.ts")]);
+    expect(JSON.parse(readFileSync(settingsPath, "utf-8")).hooks.PostToolUse[0].matcher).toBe("Bash");
     // idempotent
     expect(run().code).toBe(0);
-    expect(commands("SessionEnd").length).toBe(2);
+    expect(commands("SessionEnd").length).toBe(3);
+    expect(commands("Stop").length).toBe(1);
     expect(readFileSync(join(home, ".claude", "hooks", "git", "post-commit"), "utf-8")).toContain(`bun '${root}/hooks/GitCommit.bundle.mjs'`);
   });
 

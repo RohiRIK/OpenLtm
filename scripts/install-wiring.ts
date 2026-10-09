@@ -83,7 +83,7 @@ if (claude) {
 }
 
 // ── Hooks wiring ─────────────────────────────────────────────────────────────
-type HookEntry = { matcher: string; hooks: { type: string; command: string }[] };
+type HookEntry = { matcher: string; hooks: { type: string; command: string; timeout?: number }[] };
 
 if (!existsSync(settingsJson)) {
   mkdirSync(CLAUDE_DIR, { recursive: true });
@@ -137,9 +137,11 @@ const LTM_HOOK_PATTERNS = [
   "hooks/src/EvaluateSession.ts",
   "hooks/src/PreCompact.ts",
 ];
-// SessionEnd.ts is a generic file name other tools may use, so it is only ever
-// removed on an exact match with a command this script writes.
-const LTM_EXACT_COMMANDS = new Set([hookCommand("SessionEnd.ts"), legacyHookCommand("SessionEnd.ts")]);
+// SessionEnd.ts, UserPromptSubmit.ts and PostToolUse.ts are generic file names other
+// tools may use, so they are only ever removed on an exact match with a command
+// this script writes.
+const GENERIC_HOOK_FILES = ["SessionEnd.ts", "UserPromptSubmit.ts", "PostToolUse.ts"];
+const LTM_EXACT_COMMANDS = new Set(GENERIC_HOOK_FILES.flatMap((f) => [hookCommand(f), legacyHookCommand(f)]));
 const isLtmHookCommand = (cmd: string): boolean =>
   LTM_EXACT_COMMANDS.has(cmd) || LTM_HOOK_PATTERNS.some((p) => cmd.includes(p));
 
@@ -185,15 +187,25 @@ if (isMarketplaceInstall) {
     console.log(`  ✔ Removed ${staleRemoved} stale hook file(s) from ~/.claude/hooks/`);
 } else {
   // Dev/git-clone install: no plugin system, wire hooks into settings.json directly
-  const LTM_HOOKS: [string, string][] = [
-    ["SessionStart", "SessionStart.ts"],
-    ["Stop",         "UpdateContext.ts"],
-    ["Stop",         "EvaluateSession.ts"],
-    ["PreCompact",   "PreCompact.ts"],
-    ["SessionEnd",   "SessionEnd.ts"],
+  // Mirrors hooks/hooks.json: [event, file, matcher, timeout seconds].
+  const LTM_HOOKS: [string, string, string, number | undefined][] = [
+    ["SessionStart",     "SessionStart.ts",     "",     15],
+    ["UserPromptSubmit", "UserPromptSubmit.ts", "",     5],
+    ["PostToolUse",      "PostToolUse.ts",      "Bash", 10],
+    ["Stop",             "UpdateContext.ts",    "",     10],
+    ["SessionEnd",       "EvaluateSession.ts",  "",     60],
+    ["SessionEnd",       "SessionEnd.ts",       "",     undefined],
+    ["PreCompact",       "PreCompact.ts",       "",     30],
   ];
 
-  for (const [event, file] of LTM_HOOKS) {
+  // 2.17 moved EvaluateSession from Stop (fires every turn) to SessionEnd —
+  // drop the Stop entry older dev installs wrote.
+  if (hooks["Stop"]) {
+    hooks["Stop"] = hooks["Stop"].filter((e) => !e.hooks.some((h) => h.command.includes("hooks/src/EvaluateSession.ts")));
+    if (hooks["Stop"].length === 0) delete hooks["Stop"];
+  }
+
+  for (const [event, file, matcher, timeout] of LTM_HOOKS) {
     const command = hookCommand(file);
     const legacy = legacyHookCommand(file);
     hooks[event] ??= [];
@@ -205,7 +217,7 @@ if (isMarketplaceInstall) {
       }
     }
     if (!present) {
-      hooks[event]!.push({ matcher: "", hooks: [{ type: "command", command }] });
+      hooks[event]!.push({ matcher, hooks: [{ type: "command", command, ...(timeout ? { timeout } : {}) }] });
     }
   }
 
