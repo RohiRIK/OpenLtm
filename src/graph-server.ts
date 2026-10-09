@@ -1660,9 +1660,11 @@ if (janitorScheduler.running) {
 
 for (const sig of ["SIGINT", "SIGTERM"] as const) {
   process.on(sig, () => {
-    void embeddingWorker.stop();
-    void janitorScheduler.stop();
-    void ltmListener.stop();
+    // Registering a handler replaces Bun's default exit, so stop the workers and
+    // then exit — otherwise SIGTERM leaves the server running (kill -9 was the only way).
+    void Promise.allSettled([embeddingWorker.stop(), janitorScheduler.stop(), ltmListener.stop()])
+      .finally(() => process.exit(0));
+    setTimeout(() => process.exit(0), 3000).unref();
   });
 }
 
