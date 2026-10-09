@@ -73,6 +73,14 @@ describe("rejectProposal", () => {
     expect(rejectProposal("nope", 0)).toBe(false);
   });
 
+  it("refuses a path-like session id and leaves files outside the proposals dir alone", () => {
+    const outside = join(proposalsDir(), "..", "victim.json");
+    writeFileSync(outside, JSON.stringify({ generatedAt: Date.now(), proposals: [{ content: "x", category: "pattern", importance: 3, source: "x" }] }));
+    expect(rejectProposal("../victim", 0)).toBe(false);
+    expect(acceptProposal("../victim", 0)).toBe(false);
+    expect(existsSync(outside)).toBe(true);
+  });
+
   it("removes proposal from file, keeps others", () => {
     writeFixture("s1", [
       { content: "keep", category: "pattern", importance: 3, source: "x" },

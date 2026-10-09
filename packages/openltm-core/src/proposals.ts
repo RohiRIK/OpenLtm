@@ -75,9 +75,17 @@ export function listPendingProposals(): PendingProposal[] {
   return results.sort((a, b) => b.importance - a.importance || b.generatedAt - a.generatedAt);
 }
 
+/** Session ids are file stems in the proposals dir — reject anything path-like. */
+const SESSION_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+function proposalFilePath(sessionId: string): string | null {
+  if (!SESSION_ID_RE.test(sessionId) || sessionId.includes("..")) return null;
+  return join(getProposalsDir(), `${sessionId}.json`);
+}
+
 export function acceptProposal(sessionId: string, index: number): boolean {
-  const dir = getProposalsDir();
-  const filePath = join(dir, `${sessionId}.json`);
+  const filePath = proposalFilePath(sessionId);
+  if (!filePath) return false;
   const data = readProposalFile(filePath);
   if (!data) return false;
 
@@ -103,8 +111,8 @@ export function acceptProposal(sessionId: string, index: number): boolean {
 }
 
 export function rejectProposal(sessionId: string, index: number): boolean {
-  const dir = getProposalsDir();
-  const filePath = join(dir, `${sessionId}.json`);
+  const filePath = proposalFilePath(sessionId);
+  if (!filePath) return false;
   const data = readProposalFile(filePath);
   if (!data) return false;
 
