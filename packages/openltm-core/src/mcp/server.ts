@@ -8,13 +8,18 @@
  *
  * IMPORTANT: Never use console.log() — STDIO transport uses stdout for protocol.
  */
+import { readFileSync } from "fs";
 import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { learn, recall, relate, forget, revalidate, getContextMerge, type Memory } from "../db.js";
 import { getDb, waitForInit } from "../shared-db.js";
 import { queryAudit } from "../dao/provenanceAudit.js";
-import { getItems } from "../context.js";
+import { getItems, type ContextType } from "../context.js";
+import { upsertGoal, addDecision, addGotcha, appendProgress } from "../dao/contextItems.js";
+import { writeQueue } from "../lib/writeQueue.js";
+import { listPendingProposals, acceptProposal, rejectProposal } from "../proposals.js";
 import { traverseGraph, buildReasoningContext } from "../graph.js";
 import { categorise } from "../recall/categorise.js";
 
@@ -25,10 +30,23 @@ export interface McpServerOptions {
   isEnabled?: () => Promise<boolean>;
   /** Host hook: confidence threshold for auto-categorisation (default 0.6). */
   categoriseThreshold?: () => Promise<number>;
+  /**
+   * Host hook: the project to use when a context tool is called without
+   * `project` (e.g. the registry name for the server's cwd). Without it, those
+   * calls return an error asking the model to pass `project`.
+   */
+  defaultProject?: () => string | Promise<string>;
 }
 
-// Embedding excluded at the SQL query level — strip() is now a no-op passthrough kept for call-site compatibility.
-function strip(obj: unknown): unknown { return obj; }
+/** Server version = the published @rohirik/openltm-core version (src/mcp/ → package root). */
+export const SERVER_VERSION: string = (() => {
+  try {
+    const pkg = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf-8")) as { version?: unknown };
+    return typeof pkg.version === "string" ? pkg.version : "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+})();
 
 /** Compact formatter — strips verbose fields and truncates content to keep MCP responses small. */
 function compact(memories: unknown[]): unknown[] {
@@ -49,53 +67,102 @@ function compact(memories: unknown[]): unknown[] {
   });
 }
 
+function jsonResult(value: unknown): CallToolResult {
+  return { content: [{ type: "text", text: JSON.stringify(value) }] };
+}
+
+function errorResult(message: string): CallToolResult {
+  return { content: [{ type: "text", text: message }], isError: true };
+}
+
+const NO_PROJECT_MESSAGE =
+  "No project given and the server could not infer one from its working directory. " +
+  "Pass `project` — the LTM project name (see the SessionStart context banner or ~/.claude/projects/registry.json).";
+
+/** Proposal session ids are file stems in the proposals dir — never allow a path. */
+const SESSION_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+/** context_add writers — the same DAO calls the hooks use (UpdateContext, onboarding). */
+const CONTEXT_WRITERS: Record<ContextType, (project: string, content: string) => unknown> = {
+  goal: upsertGoal,
+  decision: addDecision,
+  gotcha: addGotcha,
+  progress: (project, content) => appendProgress(project, content),
+};
+
 // ─── Server factory ──────────────────────────────────────────────────────────
 
 /** Build the LTM MCP server with all tools, resources, and prompts registered. */
 export function buildMcpServer(options: McpServerOptions = {}): McpServer {
   const server = new McpServer(
-    { name: "openltm", version: "1.0.0" },
+    { name: "openltm", version: SERVER_VERSION },
     {},
   );
 
-  // ─── Tools ─────────────────────────────────────────────────────────────────
+  /** Explicit `project`, else the host's default project, else null. */
+  async function resolveProjectArg(project: string | undefined): Promise<string | null> {
+    const explicit = project?.trim();
+    if (explicit) return explicit;
+    if (!options.defaultProject) return null;
+    try {
+      return (await options.defaultProject())?.trim() || null;
+    } catch (err) {
+      process.stderr.write(`[ltm-mcp] defaultProject failed: ${err}\n`);
+      return null;
+    }
+  }
 
-  server.tool(
+  const projectParam = z.string().optional()
+    .describe("Project name from the LTM registry. Omit to use the current project (the server's working directory).");
+
+  // ─── Tools ─────────────────────────────────────────────────────────────────
+  // Annotations: readOnlyHint=true for pure reads; destructiveHint=false marks
+  // additive writes (the MCP default for a write is destructive); openWorldHint
+  // is false everywhere — every tool works on the local memory store only.
+
+  server.registerTool(
     "recall",
-    "Surface prior decisions, gotchas, and patterns before a non-trivial task, or when starting work in an unfamiliar area. Ranks long-term memories by query, category, project scope, or tags. Skip for trivial one-liners.",
     {
-      query: z.string().optional().describe("Full-text search query"),
-      project: z.string().optional().describe("Filter by project scope"),
-      limit: z.number().int().min(1).max(50).optional().describe("Max results (default 10)"),
-      category: z.enum(["preference", "architecture", "gotcha", "pattern", "workflow", "constraint"]).optional(),
-      verbose: z.boolean().optional().describe("Return full memory objects (default false)"),
-      since: z.string().optional().describe("Filter: memories after this ISO date"),
-      until: z.string().optional().describe("Filter: memories before this ISO date"),
-      sort_by: z.enum(["relevance", "created", "last_recalled", "recall_count"]).optional().describe("Sort results by"),
-      workspace_id: z.string().optional().describe("Filter by workspace"),
-      agent_id: z.string().optional().describe("Filter by agent"),
-      includeProvenance: z.boolean().optional().default(false).describe("Attach provenance chain to each result (off by default)"),
+      title: "Recall memories",
+      description: "Surface prior decisions, gotchas, and patterns before a non-trivial task, or when starting work in an unfamiliar area. Ranks long-term memories by query, category, project scope, or tags. Skip for trivial one-liners.",
+      inputSchema: {
+        query: z.string().optional().describe("Natural-language or keyword query (hybrid full-text + semantic search)"),
+        project: z.string().optional().describe("Filter by project scope"),
+        limit: z.number().int().min(1).max(50).optional().describe("Max results (default 10)"),
+        category: z.enum(["preference", "architecture", "gotcha", "pattern", "workflow", "constraint"]).optional(),
+        verbose: z.boolean().optional().describe("Return full memory objects (default false)"),
+        since: z.string().optional().describe("Filter: memories after this ISO date"),
+        until: z.string().optional().describe("Filter: memories before this ISO date"),
+        sort_by: z.enum(["relevance", "created", "last_recalled", "recall_count"]).optional().describe("Sort results by"),
+        workspace_id: z.string().optional().describe("Filter by workspace (memories in this workspace plus unscoped ones)"),
+        agent_id: z.string().optional().describe("Filter by agent (memories from this agent plus unattributed ones)"),
+        includeProvenance: z.boolean().optional().default(false).describe("Attach provenance chain to each result (off by default)"),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    async ({ query, project, limit, category, verbose, since, until, sort_by, includeProvenance }) => {
-      const results = await recall({ query, project, limit, category, since, until, sort_by, includeProvenance });
-      const payload = verbose ? strip(results) : compact(strip(results) as unknown[]);
-      return { content: [{ type: "text", text: JSON.stringify(payload) }] };
+    async ({ query, project, limit, category, verbose, since, until, sort_by, workspace_id, agent_id, includeProvenance }) => {
+      const results = await recall({ query, project, limit, category, since, until, sort_by, workspace_id, agent_id, includeProvenance });
+      return jsonResult(verbose ? results : compact(results));
     },
   );
 
-  server.tool(
+  server.registerTool(
     "learn",
-    "Store or reinforce a memory after discovering a non-obvious pattern, gotcha, or architectural decision worth keeping across sessions. Skip facts already derivable from the code or git history. Always pass a concise title (the title param explains how).",
     {
-      content: z.string().describe("The insight, pattern, or decision to store"),
-      title: z.string().max(60).optional().describe("Short noun-phrase label (≤60 chars) — e.g. 'Repository pattern for all DAO layers'. Always provide it; you generate it inline, no extra LLM call needed."),
-      category: z.enum(["preference", "architecture", "gotcha", "pattern", "workflow", "constraint"]).optional().describe("Category (auto-detected when omitted)"),
-      importance: z.number().int().min(1).max(5).optional().describe("Importance 1-5 (default 3, 5=never decays)"),
-      tags: z.array(z.string()).optional().describe("Tags for categorization"),
-      files: z.array(z.string()).optional().describe("Repo-relative file paths this memory references — anchors so a commit touching them flags the memory stale"),
-      project: z.string().optional().describe("Scope to a specific project"),
-      workspace_id: z.string().optional().describe("Workspace for this memory"),
-      agent_id: z.string().optional().describe("Agent ID for this memory"),
+      title: "Learn a memory",
+      description: "Store or reinforce a memory after discovering a non-obvious pattern, gotcha, or architectural decision worth keeping across sessions. Skip facts already derivable from the code or git history. Always pass a concise title (the title param explains how).",
+      inputSchema: {
+        content: z.string().describe("The insight, pattern, or decision to store"),
+        title: z.string().max(60).optional().describe("Short noun-phrase label (≤60 chars) — e.g. 'Repository pattern for all DAO layers'. Always provide it; you generate it inline, no extra LLM call needed."),
+        category: z.enum(["preference", "architecture", "gotcha", "pattern", "workflow", "constraint"]).optional().describe("Category (auto-detected when omitted)"),
+        importance: z.number().int().min(1).max(5).optional().describe("Importance 1-5 (default 3, 5=never decays)"),
+        tags: z.array(z.string()).optional().describe("Tags for categorization"),
+        files: z.array(z.string()).optional().describe("Repo-relative file paths this memory references — anchors so a commit touching them flags the memory stale"),
+        project: z.string().optional().describe("Scope to a specific project"),
+        workspace_id: z.string().optional().describe("Workspace for this memory"),
+        agent_id: z.string().optional().describe("Agent ID for this memory"),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
     async ({ content, title, category, importance, tags, files, project, workspace_id, agent_id }) => {
       let resolvedCategory = category;
@@ -132,59 +199,75 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
         });
       } catch { /* notifications not supported by this client — ignore */ }
 
-      return { content: [{ type: "text", text: JSON.stringify({ ...result, category: resolvedCategory, categoriseSource }) }] };
+      return jsonResult({ ...result, category: resolvedCategory, categoriseSource });
     },
   );
 
-  server.tool(
+  server.registerTool(
     "relate",
-    "Link two memories with a typed relationship when they connect — e.g. a decision caused a gotcha, or a pattern applies to an architecture.",
     {
-      source_id: z.number().int(),
-      target_id: z.number().int(),
-      relationship_type: z.enum(["supports", "contradicts", "refines", "depends_on", "related_to", "supersedes"]),
+      title: "Relate memories",
+      description: "Link two memories with a typed relationship when they connect — e.g. a decision caused a gotcha, or a pattern applies to an architecture.",
+      inputSchema: {
+        source_id: z.number().int(),
+        target_id: z.number().int(),
+        relationship_type: z.enum(["supports", "contradicts", "refines", "depends_on", "related_to", "supersedes"]),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     async ({ source_id, target_id, relationship_type }) => {
       relate({ source_id, target_id, relationship_type });
-      return { content: [{ type: "text", text: JSON.stringify({ ok: true }) }] };
+      return jsonResult({ ok: true });
     },
   );
 
-  server.tool(
+  server.registerTool(
     "forget",
-    "Delete a memory by ID when it is wrong, outdated, or the user requests removal. Cascades to its relations.",
     {
-      id: z.number().int(),
-      reason: z.string().optional().describe("Why this memory is being removed"),
+      title: "Forget a memory",
+      description: "Delete a memory by ID when it is wrong, outdated, or the user requests removal. Cascades to its relations.",
+      inputSchema: {
+        id: z.number().int(),
+        reason: z.string().optional().describe("Why this memory is being removed"),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     },
     async ({ id, reason }) => {
       forget({ id, reason, actor: "mcp:ltm_forget" });
-      return { content: [{ type: "text", text: JSON.stringify({ ok: true, id, reason }) }] };
+      return jsonResult({ ok: true, id, reason });
     },
   );
 
-  server.tool(
+  server.registerTool(
     "revalidate",
-    "Clear a memory's stale flag after reviewing it — the code changed but this memory is still correct. Use forget instead when the memory is actually wrong.",
     {
-      id: z.number().int().describe("Memory ID to revalidate"),
+      title: "Revalidate a stale memory",
+      description: "Clear a memory's stale flag after reviewing it — the code changed but this memory is still correct. Use forget instead when the memory is actually wrong.",
+      inputSchema: {
+        id: z.number().int().describe("Memory ID to revalidate"),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     async ({ id }) => {
       const result = revalidate(id);
-      return { content: [{ type: "text", text: JSON.stringify({ id, ...result }) }] };
+      return jsonResult({ id, ...result });
     },
   );
 
-  server.tool(
+  server.registerTool(
     "admin_audit",
-    "Query the memory audit log. Returns a list of audit events (insert, update, forget, redact, etc.) with before/after snapshots. Use for tracing who wrote or deleted a memory.",
     {
-      memory_id: z.number().int().optional().describe("Filter to a specific memory ID"),
-      op: z.enum(["insert","update","forget","deprecate","supersede","redact","restore","archive"]).optional().describe("Filter by operation type"),
-      session_id: z.string().optional().describe("Filter by session that triggered the op"),
-      since: z.string().optional().describe("ISO date — only events after this time"),
-      limit: z.number().int().min(1).max(200).optional().default(50).describe("Max rows (default 50)"),
-      verbose: z.boolean().optional().default(false).describe("Include full before/after JSON snapshots"),
+      title: "Memory audit log",
+      description: "Query the memory audit log. Returns a list of audit events (insert, update, forget, redact, etc.) with before/after snapshots. Use for tracing who wrote or deleted a memory.",
+      inputSchema: {
+        memory_id: z.number().int().optional().describe("Filter to a specific memory ID"),
+        op: z.enum(["insert","update","forget","deprecate","supersede","redact","restore","archive"]).optional().describe("Filter by operation type"),
+        session_id: z.string().optional().describe("Filter by session that triggered the op"),
+        since: z.string().optional().describe("ISO date — only events after this time"),
+        limit: z.number().int().min(1).max(200).optional().default(50).describe("Max rows (default 50)"),
+        verbose: z.boolean().optional().default(false).describe("Include full before/after JSON snapshots"),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async ({ memory_id, op, session_id, since, limit, verbose }) => {
       const db = getDb();
@@ -195,28 +278,37 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
         before_preview: r.before_json ? r.before_json.slice(0, 120) : null,
         after_preview: r.after_json ? r.after_json.slice(0, 120) : null,
       }));
-      return { content: [{ type: "text", text: JSON.stringify(payload) }] };
+      return jsonResult(payload);
     },
   );
 
-  server.tool(
+  server.registerTool(
     "context",
-    "Restore project goals, decisions, and gotchas at session start or when switching projects. Returns merged context (globals + project-scoped memories).",
     {
-      project: z.string().describe("Project name from registry"),
+      title: "Project context",
+      description: "Restore project goals, decisions, and gotchas at session start or when switching projects. Returns merged context (globals + project-scoped memories).",
+      inputSchema: {
+        project: projectParam,
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async ({ project }) => {
-      const result = getContextMerge(project);
-      return { content: [{ type: "text", text: JSON.stringify(strip(result)) }] };
+      const resolved = await resolveProjectArg(project);
+      if (!resolved) return errorResult(NO_PROJECT_MESSAGE);
+      return jsonResult({ project: resolved, ...getContextMerge(resolved) });
     },
   );
 
-  server.tool(
+  server.registerTool(
     "graph",
-    "Traverse the memory graph from seed nodes when exploring connections between memories or tracing decision chains. Builds a reasoning context from the traversal.",
     {
-      memory_ids: z.array(z.number().int()).min(1).describe("Starting memory IDs for traversal"),
-      depth: z.number().int().min(1).max(4).optional().describe("Traversal depth (default 2)"),
+      title: "Traverse memory graph",
+      description: "Traverse the memory graph from seed nodes when exploring connections between memories or tracing decision chains. Builds a reasoning context from the traversal.",
+      inputSchema: {
+        memory_ids: z.array(z.number().int()).min(1).describe("Starting memory IDs for traversal"),
+        depth: z.number().int().min(1).max(4).optional().describe("Traversal depth (default 2)"),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async ({ memory_ids, depth = 2 }) => {
       const results = await Promise.allSettled(
@@ -247,16 +339,88 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
     },
   );
 
-  server.tool(
+  server.registerTool(
     "context_items",
-    "List specific context types — goals, decisions, progress, or gotchas — for a project. Returns structured context items.",
     {
-      project: z.string().describe("Project name from registry"),
-      type: z.enum(["goal", "decision", "progress", "gotcha"]).optional(),
+      title: "List project context items",
+      description: "List specific context types — goals, decisions, progress, or gotchas — for a project. Returns structured context items.",
+      inputSchema: {
+        project: projectParam,
+        type: z.enum(["goal", "decision", "progress", "gotcha"]).optional(),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async ({ project, type }) => {
-      const items = getItems(project, type);
-      return { content: [{ type: "text", text: JSON.stringify(items) }] };
+      const resolved = await resolveProjectArg(project);
+      if (!resolved) return errorResult(NO_PROJECT_MESSAGE);
+      return jsonResult(getItems(resolved, type));
+    },
+  );
+
+  server.registerTool(
+    "context_add",
+    {
+      title: "Add project context",
+      description: "Record a project goal, decision, gotcha, or progress note so it is restored with the project context in later sessions. A goal replaces the current goal; decisions and gotchas are kept permanently; progress keeps the most recent entries.",
+      inputSchema: {
+        type: z.enum(["goal", "decision", "gotcha", "progress"]).describe("Kind of context item"),
+        content: z.string().min(1).describe("The goal, decision, gotcha, or progress note — one concise line"),
+        project: projectParam,
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ type, content, project }) => {
+      const text = content.trim();
+      if (!text) return errorResult("`content` must not be empty.");
+      const resolved = await resolveProjectArg(project);
+      if (!resolved) return errorResult(NO_PROJECT_MESSAGE);
+      await CONTEXT_WRITERS[type](resolved, text);
+      // The DAO writers enqueue on the shared write queue — drain it so the
+      // item is committed (and visible to context_items) before replying.
+      await writeQueue.enqueue(() => undefined);
+      return jsonResult({ ok: true, project: resolved, type });
+    },
+  );
+
+  server.registerTool(
+    "proposals",
+    {
+      title: "Review memory proposals",
+      description: "Review memories proposed by end-of-session evaluation before they are stored. action=list shows pending proposals, each identified by session_id + index; accept stores one as a memory, reject discards it. Indexes shift after each accept/reject — list again before the next one.",
+      inputSchema: {
+        action: z.enum(["list", "accept", "reject"]).describe("list pending proposals, or accept / reject one"),
+        session_id: z.string().optional().describe("Proposal session_id from action=list (required for accept/reject)"),
+        index: z.number().int().min(0).optional().describe("Proposal index from action=list (required for accept/reject)"),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ action, session_id, index }) => {
+      if (action === "list") {
+        const pending = listPendingProposals();
+        return jsonResult({
+          count: pending.length,
+          proposals: pending.map((p) => ({
+            session_id: p.sessionId,
+            index: p.index,
+            content: p.content,
+            category: p.category,
+            importance: p.importance,
+            source: p.source,
+            generated_at: Number.isFinite(p.generatedAt) ? new Date(p.generatedAt).toISOString() : null,
+          })),
+        });
+      }
+      if (!session_id || index === undefined) {
+        return errorResult(`action=${action} requires session_id and index — take both from proposals(action="list").`);
+      }
+      if (!SESSION_ID_RE.test(session_id) || session_id.includes("..")) {
+        return errorResult(`Invalid session_id "${session_id}" — use the exact session_id from proposals(action="list").`);
+      }
+      const ok = action === "accept" ? acceptProposal(session_id, index) : rejectProposal(session_id, index);
+      if (!ok) {
+        return errorResult(`No pending proposal at session_id=${session_id} index=${index}. Run proposals(action="list") for current ids — indexes shift after each accept/reject.`);
+      }
+      return jsonResult({ ok: true, action, session_id, index });
     },
   );
 
@@ -271,7 +435,7 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
       const rows = db.query<Memory, []>(
         `SELECT * FROM memories WHERE importance = 5 AND project_scope IS NULL AND status = 'active' ORDER BY created_at DESC`,
       ).all();
-      return { contents: [{ uri: "memory://globals", text: JSON.stringify(strip(rows)), mimeType: "application/json" }] };
+      return { contents: [{ uri: "memory://globals", text: JSON.stringify(rows), mimeType: "application/json" }] };
     },
   );
 
@@ -284,7 +448,7 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
       const rows = db.query<Memory, []>(
         `SELECT * FROM memories WHERE status = 'active' ORDER BY created_at DESC LIMIT 20`,
       ).all();
-      return { contents: [{ uri: "memory://recent", text: JSON.stringify(strip(rows)), mimeType: "application/json" }] };
+      return { contents: [{ uri: "memory://recent", text: JSON.stringify(rows), mimeType: "application/json" }] };
     },
   );
 
@@ -299,7 +463,7 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
          JOIN memory_tags mt ON t.id = mt.tag_id
          GROUP BY t.id ORDER BY count DESC`,
       ).all();
-      return { contents: [{ uri: "memory://tags", text: JSON.stringify(strip(rows)), mimeType: "application/json" }] };
+      return { contents: [{ uri: "memory://tags", text: JSON.stringify(rows), mimeType: "application/json" }] };
     },
   );
 
@@ -317,7 +481,7 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
       return {
         contents: [{
           uri: uri.href,
-          text: JSON.stringify(strip(rows), null, 2),
+          text: JSON.stringify(rows, null, 2),
           mimeType: "application/json",
         }],
       };
