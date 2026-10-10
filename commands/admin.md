@@ -1,7 +1,7 @@
 ---
-description: "USE WHEN running schema migrations, scanning memories for secrets, or managing the LTM graph visualization server. Groups migrate | scan | server."
-argument-hint: "<migrate|scan|server> [args]"
-allowed-tools: ["Bash", "Skill"]
+description: "USE WHEN running schema migrations, scanning memories for secrets, or querying the memory audit log. Groups migrate | scan | audit. (The graph server moved to /openltm:server.)"
+argument-hint: "<migrate|scan|audit> [args]"
+allowed-tools: ["Bash", "mcp__plugin_openltm_memory__admin_audit"]
 ---
 
 Parse the first word of the arguments as `<subcommand>`. Pass remaining words as `<args>`.
@@ -13,7 +13,6 @@ Usage: /openltm:admin <subcommand>
 
   migrate [status|up|down|reset|--legacy]   — schema migrations + legacy DB detection
   scan    [--project X] [--dry-run]         — scan memories for secrets and redact
-  server  [start|stop|status]               — LTM graph visualization server (port 7332)
   audit   [--memory-id N] [--op <op>] [--session <id>] [--since <iso>] [--limit N]
                                             — query the memory write audit log
 ```
@@ -115,14 +114,8 @@ For before/after snapshots, add `--verbose` (maps to `verbose: true` in the MCP 
 
 ---
 
-## server
+## server (moved)
 
-Route to the **LtmServer** skill:
+The graph visualizer is now its own command. If the subcommand is `server`, do not start anything here — tell the user:
 
-| Arg | Workflow |
-|-----|----------|
-| `start` or no args | `skills/LtmServer/Workflows/Start.md` |
-| `stop` | `skills/LtmServer/Workflows/Stop.md` |
-| `status` | inline PID check from `skills/LtmServer/SKILL.md` |
-
-UI runs on port **7332** (Next.js frontend). API runs on port **7331** (Bun backend). PID at `~/.claude/tmp/ltm-server.pid`.
+> The graph server moved to `/openltm:server <start|stop|status>`.

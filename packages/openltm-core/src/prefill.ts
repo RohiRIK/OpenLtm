@@ -13,6 +13,10 @@
 import { getContextMerge, computeDecayScore, type Memory } from "./db.js";
 import { readConfigSync } from "./config.js";
 import { isNearDuplicate } from "./similarity.js";
+import { DB_PATH } from "./shared-db.js";
+import { getDataDir, getRegistryPath } from "./paths.js";
+import { legacyLastSegment, loadProjectRegistry, resolveProjectName } from "./project.js";
+import { createProjectDataProbe } from "./projectProbe.js";
 
 export interface PrefillOptions {
   project: string;
@@ -97,8 +101,20 @@ function trimLines(lines: string[], maxLines: number): string[] {
   return trimmed;
 }
 
-export function deriveProjectFromCwd(cwd: string): string {
-  return cwd.replace(/\/$/, "").split("/").pop() ?? "";
+/**
+ * Project name for `cwd`, via the shared resolver (registry → repo root → cwd
+ * basename). `legacyName` is the name this host used before unified identity
+ * (default: the raw folder name, as Pi, OpenCode and the bunx hook CLI did); it
+ * is kept while it is the only name with rows, so no existing memory is orphaned.
+ */
+export function deriveProjectFromCwd(cwd: string, legacyName?: string): string {
+  const dataDir = getDataDir(DB_PATH);
+  return resolveProjectName(cwd, {
+    registry: loadProjectRegistry(getRegistryPath(dataDir)),
+    legacyName: legacyName || legacyLastSegment(cwd),
+    legacyScope: "all",
+    hasProjectData: createProjectDataProbe(DB_PATH),
+  });
 }
 
 /** Rank key: higher is better. Project scope wins ties against globals. */

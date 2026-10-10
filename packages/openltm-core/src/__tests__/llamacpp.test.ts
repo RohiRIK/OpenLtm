@@ -93,11 +93,16 @@ describe("listMemoryIdsNeedingEmbedding", () => {
       CREATE TABLE memory_embeddings (
         memory_id INTEGER PRIMARY KEY, embedding BLOB, model TEXT, dim INTEGER, created_at TEXT
       );
+      CREATE TABLE tags (id INTEGER PRIMARY KEY, name TEXT UNIQUE);
+      CREATE TABLE memory_tags (memory_id INTEGER, tag_id INTEGER);
       INSERT INTO memories (id, status, importance, created_at, content) VALUES
         (1, 'active', 5, '2026-01-01', 'a'),
         (2, 'active', 4, '2026-01-02', 'b'),
         (3, 'active', 3, '2026-01-03', 'c'),
-        (4, 'archived', 9, '2026-01-04', 'd');
+        (4, 'archived', 9, '2026-01-04', 'd'),
+        (5, 'active', 5, '2026-01-05', 'private, never embedded');
+      INSERT INTO tags (id, name) VALUES (1, 'private');
+      INSERT INTO memory_tags (memory_id, tag_id) VALUES (5, 1);
       INSERT INTO memory_embeddings (memory_id, embedding, model, dim) VALUES
         (2, X'00', 'text-embedding-004', 768),
         (3, X'00', 'bge-m3', 1024);
@@ -107,6 +112,7 @@ describe("listMemoryIdsNeedingEmbedding", () => {
     expect(ids).toContain(2);
     expect(ids).not.toContain(3);
     expect(ids).not.toContain(4);
+    expect(ids).not.toContain(5);
   });
 });
 
@@ -115,5 +121,37 @@ describe("provider defaults (local-first)", () => {
     expect(SETTING_DEFAULTS[SETTING_KEYS.EMBED_PROVIDER]).toBe("llamacpp");
     expect(SETTING_DEFAULTS[SETTING_KEYS.LLM_PROVIDER]).toBe("ollama");
     expect(SETTING_DEFAULTS[SETTING_KEYS.LLM_PROVIDER]).not.toBe("gemini");
+  });
+});
+
+describe("janitor llamacpp adapter — vector alignment", () => {
+  const prevFetch = globalThis.fetch;
+  // The adapter reads its URL setting from the shared DB; own one, so the test
+  // doesn't depend on (or trip over) a handle another test file closed.
+  beforeEach(async () => {
+    const { _setDbForTesting } = await import("../shared-db.js");
+    const db = new Database(":memory:");
+    db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+    _setDbForTesting(db);
+  });
+  afterEach(() => {
+    globalThis.fetch = prevFetch;
+    resetLlamaCppProbeForTesting();
+  });
+
+  it("stops at the first miss so vectors[i] always belongs to texts[i]", async () => {
+    resetLlamaCppProbeForTesting();
+    let call = 0;
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/health")) return new Response("{}", { status: 200 });
+      call++;
+      if (call === 2) return new Response("boom", { status: 500 });
+      return new Response(JSON.stringify({ data: [{ embedding: [call, call] }] }), { status: 200 });
+    }) as typeof fetch;
+    const { llamacppEmbedding } = await import("../janitor/providers/llamacpp.js");
+    const r = await llamacppEmbedding.embed({ texts: ["a", "b", "c"] });
+    expect(r.vectors.length).toBe(1);
+    expect(Array.from(r.vectors[0]!)).toEqual([1, 1]);
   });
 });

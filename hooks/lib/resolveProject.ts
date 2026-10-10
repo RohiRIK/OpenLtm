@@ -1,56 +1,84 @@
 /**
  * resolveProject.ts
- * Shared utility for resolving a cwd to { name, projectDir, isNew }.
+ * Claude Code hooks: resolve a cwd to { name, projectDir, isNew }.
  *
- * Resolution order:
- *  1. Exact match in registry.json
- *  2. Longest prefix match in registry.json
- *  3. Fallback: slug derived from cwd
+ * Name — the shared core resolver (`resolveProjectNameDetailed`):
+ *  1. Exact match in the registry
+ *  2. Longest prefix match in the registry
+ *  3. Git repository root basename, normalized
+ *  4. cwd basename, normalized
+ * Continuity: before 3/4 is used, an unregistered cwd whose old name — the
+ * full-path slug, e.g. "-home-user-repo" — has rows in the DB (or OpenLTM context
+ * files in the legacy dir for that slug) while the new name has none keeps the
+ * slug, and the slug is registered so the name stays stable from then on.
  *
- * Registry: ~/.claude/projects/registry.json
- * Format: { "/abs/path": "friendly-name" }
+ * Storage — OpenLTM-owned, never inside Claude Code's transcript dir:
+ *   <dataDir>/projects/registry.json   { "/abs/path": "friendly-name" }
+ *   <dataDir>/projects/<name>/         context-*.md
+ *   dataDir = LTM_DATA_DIR → CLAUDE_PLUGIN_DATA → dirname(getDbPath())
+ * The legacy registry and context files in Claude Code's projects dir
+ * (CLAUDE_TRANSCRIPTS_DIR) are copied on first access and never modified or
+ * deleted — Claude Code owns that directory.
  */
 
-import { existsSync, readFileSync, writeFileSync, renameSync, openSync, fsyncSync, closeSync, mkdirSync, copyFileSync, unlinkSync, statSync } from "fs";
-import { join, sep } from "path";
-import { homedir } from "os";
+import { existsSync, writeFileSync, renameSync, openSync, fsyncSync, closeSync, mkdirSync, copyFileSync, unlinkSync, statSync } from "fs";
+import { join } from "path";
+import {
+  getDataDir, getProjectsDir as projectsDirFor, getRegistryPath as registryPathFor,
+  getLegacyClaudeDir, getClaudeTranscriptsDir,
+  resolveProjectNameDetailed, legacyClaudeSlug, loadProjectRegistry, migrateLegacyRegistry,
+  migrateLegacyContextFiles, hasContextFiles, isSafeProjectDirName, createProjectDataProbe,
+  type ProjectNameSource,
+} from "@rohirik/openltm-core";
 
-export const CLAUDE_DIR = join(homedir(), ".claude");
-export const PROJECTS_DIR = join(CLAUDE_DIR, "projects");
-export const REGISTRY_PATH = join(PROJECTS_DIR, "registry.json");
+/** Claude Code's own directory (tmp, logs, plugins, settings). */
+export const CLAUDE_DIR = getLegacyClaudeDir();
+/** Claude Code's session transcripts (`<CLAUDE_DIR>/projects`). Read-only for OpenLTM. */
+export const CLAUDE_TRANSCRIPTS_DIR = getClaudeTranscriptsDir();
 
 export function getDbPath(): string {
   if (process.env.LTM_DB_PATH) return process.env.LTM_DB_PATH;
   if (process.env.CLAUDE_PLUGIN_DATA) {
     const targetDb = join(process.env.CLAUDE_PLUGIN_DATA, "openltm.db");
-    const legacyDb = join(CLAUDE_DIR, "memory", "openltm.db");
+    const legacyDb = join(getLegacyClaudeDir(), "memory", "openltm.db");
     if (!existsSync(targetDb) && existsSync(legacyDb)) {
       mkdirSync(process.env.CLAUDE_PLUGIN_DATA, { recursive: true });
       copyFileSync(legacyDb, targetDb);
     }
     return targetDb;
   }
-  return join(CLAUDE_DIR, "memory", "openltm.db");
+  return join(getLegacyClaudeDir(), "memory", "openltm.db");
 }
+
+/** OpenLTM's projects dir (`<dataDir>/projects`), resolved from the environment now. */
+export function getProjectsDir(): string {
+  // getDbPath passed lazily: its legacy-DB copy must not run just to find a directory.
+  return projectsDirFor(getDataDir(getDbPath));
+}
+
+/** OpenLTM's registry (`<dataDir>/projects/registry.json`), resolved from the environment now. */
+export function getRegistryPath(): string {
+  return registryPathFor(getDataDir(getDbPath));
+}
+
+/** Import-time snapshots of the getters above (hooks are short-lived processes). */
+export const PROJECTS_DIR = getProjectsDir();
+export const REGISTRY_PATH = getRegistryPath();
 
 export interface ProjectResolution {
   name: string;
   projectDir: string;
   isNew: boolean;
   registeredPath: string | null;
+  /** Which resolution step produced `name`. */
+  source?: ProjectNameSource;
 }
 
-function deriveSlug(cwd: string): string {
-  return cwd.replace(new RegExp("\\" + sep, "g"), "-").replace(/\./g, "-");
-}
-
+/** Registry with the one-time legacy copy applied, plus legacy entries not yet copied. */
 function loadRegistry(): Record<string, string> {
-  if (!existsSync(REGISTRY_PATH)) return {};
-  try {
-    return JSON.parse(readFileSync(REGISTRY_PATH, "utf-8"));
-  } catch {
-    return {};
-  }
+  const registryPath = getRegistryPath();
+  migrateLegacyRegistry(registryPath);
+  return loadProjectRegistry(registryPath);
 }
 
 const LOCK_STALE_MS = 5000;
@@ -101,8 +129,8 @@ export function writeRegistryAtomic(registryPath: string, data: unknown): void {
 }
 
 export function saveRegistry(registry: Record<string, string>): void {
-  if (!existsSync(PROJECTS_DIR)) mkdirSync(PROJECTS_DIR, { recursive: true });
-  writeRegistryAtomic(REGISTRY_PATH, registry);
+  mkdirSync(getProjectsDir(), { recursive: true });
+  writeRegistryAtomic(getRegistryPath(), registry);
 }
 
 export function registerPath(cwd: string, name: string): void {
@@ -111,31 +139,33 @@ export function registerPath(cwd: string, name: string): void {
   saveRegistry(registry);
 }
 
-function makeResult(name: string, registeredPath: string | null, isNew: boolean): ProjectResolution {
-  return { name, projectDir: join(PROJECTS_DIR, name), isNew, registeredPath };
-}
-
 export function resolveProject(cwd: string): ProjectResolution {
+  const projectsDir = getProjectsDir();
   const registry = loadRegistry();
+  const dbProbe = createProjectDataProbe(getDbPath());
+  const hasContext = (name: string): boolean =>
+    isSafeProjectDirName(name) &&
+    (hasContextFiles(join(projectsDir, name)) || hasContextFiles(join(getClaudeTranscriptsDir(), name)));
 
-  // 1. Exact match
-  if (registry[cwd]) {
-    return makeResult(registry[cwd], cwd, false);
+  const resolved = resolveProjectNameDetailed(cwd, {
+    registry,
+    legacyName: legacyClaudeSlug(cwd),
+    hasProjectData: (name) => (hasContext(name) ? true : dbProbe(name)),
+  });
+  const { name, source } = resolved;
+  let registeredPath = resolved.registeredPath;
+
+  // Continuity confirmed: pin the old slug so later sessions resolve it via the registry.
+  if (source === "legacy" && resolved.legacyVerified) {
+    try {
+      registerPath(cwd, name);
+      registeredPath = cwd;
+    } catch { /* registry busy — this resolution is still correct */ }
   }
 
-  // 2. Longest prefix match
-  const sortedPaths = Object.keys(registry).sort((a, b) => b.length - a.length);
-  for (const path of sortedPaths) {
-    if (cwd.startsWith(path + "/") || cwd.startsWith(path + sep)) {
-      return makeResult(registry[path]!, path, false);
-    }
-  }
-
-  // 3. Slug fallback
-  const slug = deriveSlug(cwd);
-  const slugDir = join(PROJECTS_DIR, slug);
-  const contextFiles = ["context-goals.md", "context-decisions.md", "context-progress.md", "context-gotchas.md", "context-summary.md"];
-  const hasContent = contextFiles.some(f => existsSync(join(slugDir, f)));
-
-  return { name: slug, projectDir: slugDir, isNew: !hasContent, registeredPath: null };
+  migrateLegacyContextFiles(name, projectsDir);
+  const projectDir = join(projectsDir, name);
+  // New = nothing anywhere: no registry entry, no context files, no DB rows.
+  const isNew = (source === "repo-root" || source === "cwd") && !hasContextFiles(projectDir) && dbProbe(name) === false;
+  return { name, projectDir, isNew, registeredPath, source };
 }

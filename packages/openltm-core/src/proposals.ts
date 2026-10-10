@@ -2,7 +2,7 @@
  * proposals.ts — Review interface for memory proposals written by EvaluateSession.
  *
  * Proposals live as JSON files in ${CLAUDE_PLUGIN_DATA}/proposals/<session-id>.json.
- * Each file: { proposals: MemoryProposal[], generatedAt: number }
+ * Each file: { proposals: MemoryProposal[], generatedAt: number, project?: string }
  */
 import { existsSync, readdirSync, readFileSync, writeFileSync, unlinkSync } from "fs";
 import { join } from "path";
@@ -20,6 +20,8 @@ interface MemoryProposal {
 interface ProposalFile {
   proposals: MemoryProposal[];
   generatedAt: number;
+  /** Project of the session that produced them; accepted memories are scoped to it. */
+  project?: string;
 }
 
 export interface PendingProposal {
@@ -30,6 +32,7 @@ export interface PendingProposal {
   importance: number;
   source: string;
   generatedAt: number;
+  project: string | null;
 }
 
 function getProposalsDir(): string {
@@ -69,15 +72,24 @@ export function listPendingProposals(): PendingProposal[] {
         importance: p.importance,
         source: p.source,
         generatedAt: data.generatedAt,
+        project: typeof data.project === "string" && data.project ? data.project : null,
       });
     }
   }
   return results.sort((a, b) => b.importance - a.importance || b.generatedAt - a.generatedAt);
 }
 
+/** Session ids are file stems in the proposals dir — reject anything path-like. */
+const SESSION_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+function proposalFilePath(sessionId: string): string | null {
+  if (!SESSION_ID_RE.test(sessionId) || sessionId.includes("..")) return null;
+  return join(getProposalsDir(), `${sessionId}.json`);
+}
+
 export function acceptProposal(sessionId: string, index: number): boolean {
-  const dir = getProposalsDir();
-  const filePath = join(dir, `${sessionId}.json`);
+  const filePath = proposalFilePath(sessionId);
+  if (!filePath) return false;
   const data = readProposalFile(filePath);
   if (!data) return false;
 
@@ -89,6 +101,7 @@ export function acceptProposal(sessionId: string, index: number): boolean {
     category: proposal.category as MemoryCategory,
     importance: proposal.importance,
     source: proposal.source,
+    project_scope: typeof data.project === "string" && data.project ? data.project : undefined,
     skipExport: true,
   });
 
@@ -103,8 +116,8 @@ export function acceptProposal(sessionId: string, index: number): boolean {
 }
 
 export function rejectProposal(sessionId: string, index: number): boolean {
-  const dir = getProposalsDir();
-  const filePath = join(dir, `${sessionId}.json`);
+  const filePath = proposalFilePath(sessionId);
+  if (!filePath) return false;
   const data = readProposalFile(filePath);
   if (!data) return false;
 

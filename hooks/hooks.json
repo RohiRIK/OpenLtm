@@ -1,5 +1,5 @@
 {
-  "description": "LTM hooks — context injection, session learning, progress capture, compaction snapshot",
+  "description": "LTM hooks — context injection, session learning, progress capture, compaction snapshot, janitor on session end",
   "hooks": {
     "SessionStart": [
       {
@@ -7,7 +7,32 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/bin/run-hook.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/src/SessionStart.ts\""
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/bin/run-hook.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/src/SessionStart.ts\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/bin/run-hook.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/src/UserPromptSubmit.ts\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/bin/run-hook.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/src/PostToolUse.ts\"",
+            "timeout": 10
           }
         ]
       }
@@ -18,7 +43,20 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/bin/run-hook.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/src/UpdateContext.ts\""
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/bin/run-hook.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/src/UpdateContext.ts\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/bin/run-hook.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/src/EvaluateSession.ts\"",
+            "timeout": 60
           }
         ]
       },
@@ -27,7 +65,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/bin/run-hook.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/src/EvaluateSession.ts\""
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/bin/run-hook.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/src/SessionEnd.ts\""
           }
         ]
       }
@@ -38,7 +76,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/bin/run-hook.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/src/PreCompact.ts\""
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/bin/run-hook.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/src/PreCompact.ts\"",
+            "timeout": 30
           }
         ]
       }

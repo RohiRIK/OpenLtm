@@ -8,7 +8,7 @@
 
 **Long-Term Memory for AI coding agents** — Claude Code, OpenCode, Pi, OpenClaw, and Hermes
 
-[![Version](https://img.shields.io/badge/version-2.16.2-blue?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.17.0-blue?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Runtime](https://img.shields.io/badge/runtime-Bun-f472b6?style=flat-square&logo=bun)](https://bun.sh)
 [![Database](https://img.shields.io/badge/database-SQLite-003B57?style=flat-square&logo=sqlite)](https://sqlite.org)
@@ -70,6 +70,17 @@ Full detail, including which write paths scrub secrets and which don't: [Securit
 
 ---
 
+## Design ethos
+
+- **Local-first.** Data stays on the machine. No cloud account is required.
+- **One SQLite file.** No mandatory graph database, worker daemon, or Docker stack.
+- **Curated, durable memories.** Decisions, preferences, and conventions — not a full session transcript archive.
+- **Memories age.** Decay, supersede, and janitor cleanup prefer quality over accumulation.
+- **Multi-host.** Claude Code, OpenCode, Pi, Hermes, OpenClaw, and others plug in through hooks and adapters over the same database.
+- **Optional upgrades.** The graph-server explorer and Honker extensions are available when you want them; they are not requirements.
+
+---
+
 ## What you get
 
 | Capability | What it actually does | Where it lives |
@@ -81,7 +92,7 @@ Full detail, including which write paths scrub secrets and which don't: [Securit
 | Graph | Traverses relations between memories and builds a reasoning chain | `openltm-core/src/graph.ts:69` |
 | Visualize | A browser explorer over the live database, with janitor controls | `src/graph-server.ts` · `graph-app/` |
 | Extensions | sqlite-vec and Honker loaded from disk, with a working fallback when absent | `openltm-core/src/extensions.ts:160` |
-| Deduplicate | Merges memories the janitor judges to be the same thing | `openltm-core/src/janitor/dedup.ts` |
+| Deduplicate | Queues near-duplicate pairs as pending suggestions; nothing merges until you approve | `openltm-core/src/janitor/dedup.ts` |
 
 ---
 
@@ -124,12 +135,20 @@ How each channel is published, and what to do when one breaks: [`docs/11-publish
 
 ### Marketplace (recommended for Claude Code)
 
+One step (Claude Code 2.1.275 or later):
+
+```bash
+claude plugin install openltm --marketplace RohiRIK/OpenLtm
+```
+
+Or in a session: `/plugin install openltm --marketplace RohiRIK/OpenLtm`. On older versions, add the marketplace first:
+
 ```bash
 claude plugin marketplace add https://github.com/RohiRIK/OpenLtm
 claude plugin install openltm
 ```
 
-Restart Claude Code. Five hooks auto-wire, six commands load, seven skills activate, and your `openltm.db` migrates or creates itself.
+Restart Claude Code. Seven hooks auto-wire, seven commands load, four skills and two agents activate, and your `openltm.db` migrates or creates itself.
 
 ### bunx (no clone)
 
@@ -192,6 +211,18 @@ bunx @rohirik/openltm-core memory forget --id 42 --reason "outdated"
 bunx @rohirik/openltm-core memory context --project homelab
 ```
 
+### Curate without graph-server
+
+The janitor (embed backfill → decay → archive → promote → dedup *suggestions*, never auto-merge) runs straight against the SQLite file. No graph-server and no Honker are needed:
+
+```bash
+bunx @rohirik/openltm-core janitor run              # one pass; exit 3 = no DB, 4 = another run holds the lock
+bunx @rohirik/openltm-core janitor status
+bunx @rohirik/openltm-core janitor schedule --write # systemd user timer (Linux) / launchd agent (macOS)
+```
+
+The Claude Code plugin also runs it on `SessionEnd`, at most once per 6h. Other hook hosts can call `ltm hook --name SessionEnd`. Details, install and undo steps: [`docs/13-janitor.md`](docs/13-janitor.md).
+
 Any MCP-capable host can run the full server directly:
 
 ```bash
@@ -222,6 +253,7 @@ Three things worth knowing before this holds anything you care about.
 | Tune decay, injection, embedding behavior | [Configuration](docs/04-configuration.md) |
 | See how it works under the hood | [How It Works](docs/02-how-it-works.md) · [Architecture](docs/03-architecture.md) |
 | Understand the schema and data model | [DB Spec](docs/internal/DB-SPEC.md) |
+| Curate the DB without graph-server | [Janitor](docs/13-janitor.md) |
 | See all hooks, skills, and MCP tools | [Hooks](docs/06-hooks.md) · [Skills](docs/07-skills.md) · [MCP Tools](docs/08-mcp-tools.md) |
 | Publish a release | [Publishing](docs/11-publishing.md) |
 | Fix a problem | [Troubleshooting](docs/09-troubleshooting.md) |
@@ -238,6 +270,8 @@ Three things worth knowing before this holds anything you care about.
 | `LTM_DB_PATH` | Where the SQLite file lives. Overrides the default location. |
 | `LTM_EMBED_PROVIDER` | Embedding provider. Unset probes local llama.cpp (`llamacpp`); falls back to FTS if the server is down. `gemini` / `openai` / `ollama` / `disabled` opt in or out. |
 | `LTM_LLM_PROVIDER` | Provider for janitor summaries. Unset → `ollama` (local). `gemini` / `openai` / `anthropic` / `cohere` / `openrouter` are opt-in. |
+| `LTM_JANITOR_INTERVAL_MINUTES` | Minimum minutes between `janitor run --if-due` passes (hook, timers, daemon). Default 360. |
+| `LTM_JANITOR_ON_SESSION_END` | `0` disables the janitor-on-`SessionEnd` hook. |
 | `LTM_DISABLE_VEC` | Turn off the sqlite-vec loader; falls back to JS-cosine. |
 | `LTM_DISABLE_HONKER` | Turn off the Honker loader. |
 | `LTM_SQLITE_LIB` | Explicit path to a SQLite library. Loads native code. |

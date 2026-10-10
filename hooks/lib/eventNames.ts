@@ -8,6 +8,8 @@ export const EVENTS = {
   LEARN_WRITE:        "learn.write",
   WIZARD_COMPLETE:    "wizard.complete",
   GIT_COMMIT:         "git.commit",
+  PROMPT_RECALL:      "recall.prompt",
+  STALE_FLAGGED:      "memory.stale_flagged",
 } as const;
 
 export type EventName = typeof EVENTS[keyof typeof EVENTS];

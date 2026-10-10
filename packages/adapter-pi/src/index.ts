@@ -8,10 +8,12 @@
  * Pattern adapted from context-mode's Pi adapter (MIT).
  */
 import { spawn, execSync } from "node:child_process";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { existsSync, readdirSync } from "node:fs";
 import { findCoreCli } from "./find-core.js";
+// Relative import so esbuild inlines the Node-safe resolver into dist (core itself is external).
+import { dataDirFor, legacyLastSegment, loadProjectRegistry, resolveProjectName } from "../../openltm-core/src/project.js";
 
 // ── Fork-bomb prevention ──────────────────────────────────────────────────────
 
@@ -42,25 +44,51 @@ function findBun(): string | null {
   return null;
 }
 
-function findMcpServer(): { script: string; args: string[] } | null {
-  // 1. Plugin cache — newest version first (Claude Code users)
-  const cacheBase = join(homedir(), ".claude", "plugins", "cache", "ltm", "ltm");
-  if (existsSync(cacheBase)) {
+/** Compare dotted versions numerically ("2.17.0" > "2.9.3"). */
+function compareVersions(a: string, b: string): number {
+  const pa = a.split(/[.-]/).map((x) => parseInt(x, 10) || 0);
+  const pb = b.split(/[.-]/).map((x) => parseInt(x, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (d !== 0) return d;
+  }
+  return 0;
+}
+
+interface McpServerLocation {
+  script: string;
+  args: string[];
+  /** DB the server must open — passed to it as LTM_DB_PATH so naming and storage agree. */
+  dbPath: string | null;
+}
+
+function findMcpServer(): McpServerLocation | null {
+  const explicitDb = process.env["LTM_DB_PATH"] || null;
+  // 1. Claude Code plugin cache — newest version first. Share Claude Code's
+  //    database (its plugin data dir) so both agents see the same memories.
+  const claudeDir = join(homedir(), ".claude", "plugins");
+  for (const [marketplace, plugin, dataDirName] of [["OpenLtm", "openltm", "OpenLtm-openltm"], ["ltm", "ltm", "ltm-ltm"]] as const) {
+    const cacheBase = join(claudeDir, "cache", marketplace, plugin);
+    if (!existsSync(cacheBase)) continue;
     try {
-      const versions = readdirSync(cacheBase)
-        .filter((v) => /^\d/.test(v))
-        .sort()
-        .reverse();
+      const versions = readdirSync(cacheBase).filter((v) => /^\d/.test(v)).sort(compareVersions).reverse();
       for (const v of versions) {
         const script = join(cacheBase, v, "src", "mcp-server.ts");
-        if (existsSync(script)) return { script, args: [] };
+        if (existsSync(script)) {
+          return { script, args: [], dbPath: explicitDb ?? join(claudeDir, "data", dataDirName, "openltm.db") };
+        }
       }
     } catch {
       // continue to next strategy
     }
   }
   // 2. openltm-core package — run the packaged CLI entrypoint with mcp-serve
-  return findCoreCli(import.meta.url);
+  const core = findCoreCli(import.meta.url);
+  if (!core) return null;
+  const dbPath = explicitDb
+    ?? (process.env["CLAUDE_PLUGIN_DATA"] ? join(process.env["CLAUDE_PLUGIN_DATA"]!, "openltm.db") : null)
+    ?? join(dirname(core.script), "..", "..", "..", "..", "data", "openltm.db");
+  return { ...core, dbPath };
 }
 
 // ── Minimal MCP stdio client ──────────────────────────────────────────────────
@@ -82,12 +110,13 @@ class LtmMcpClient {
     private readonly runtime: string,
     private readonly script: string,
     private readonly args: string[] = [],
+    private readonly extraEnv: Record<string, string> = {},
   ) {}
 
   start(): void {
     if (this.child) return;
     const depth = parseInt(process.env[BRIDGE_DEPTH_ENV] ?? "0", 10);
-    const env = { ...process.env, [BRIDGE_DEPTH_ENV]: String(depth + 1) };
+    const env = { ...process.env, ...this.extraEnv, [BRIDGE_DEPTH_ENV]: String(depth + 1) };
 
     this.child = spawn(this.runtime, [this.script, ...this.args], { stdio: ["pipe", "pipe", "pipe"], env });
 
@@ -204,6 +233,26 @@ function formatContextPayload(project: string, raw: string): string {
   }
 }
 
+/**
+ * Shared resolver (registry → repo root → cwd basename), memoised per cwd. Pi used
+ * the raw cwd basename before unified identity; that name is kept while it is
+ * the only one with rows, so no memory is orphaned.
+ */
+const projectCache = new Map<string, string>();
+function projectOf(cwd: string, dbPath: string | null): string {
+  let name = projectCache.get(cwd);
+  if (name === undefined) {
+    name = resolveProjectName(cwd, {
+      registry: dbPath ? loadProjectRegistry(join(dataDirFor(dbPath), "projects", "registry.json")) : null,
+      legacyName: legacyLastSegment(cwd),
+      legacyScope: "all",
+      dbPath,
+    });
+    projectCache.set(cwd, name);
+  }
+  return name;
+}
+
 export default function ltmExtension(pi: unknown): void {
   const p = pi as {
     registerTool: (def: {
@@ -221,7 +270,7 @@ export default function ltmExtension(pi: unknown): void {
   const server = findMcpServer();
   if (!bun || !server) return; // degrade gracefully — no bun or server found
 
-  const client = new LtmMcpClient(bun, server.script, server.args);
+  const client = new LtmMcpClient(bun, server.script, server.args, server.dbPath ? { LTM_DB_PATH: server.dbPath } : {});
   client.start();
 
   // Bootstrap runs async — tools are registered once handshake completes.
@@ -252,7 +301,7 @@ export default function ltmExtension(pi: unknown): void {
     const ev = event as { cwd?: string; systemPrompt?: string } | null;
     try {
       const cwd = String(ev?.cwd ?? process.cwd());
-      const project = cwd.replace(/\/$/, "").split("/").pop() ?? "";
+      const project = projectOf(cwd, server.dbPath);
       const toolName = toolNames.has("context") ? "context" : (toolNames.has("recall") ? "recall" : "");
       if (!toolName) return;
       const text = toolName === "context"
@@ -264,6 +313,25 @@ export default function ltmExtension(pi: unknown): void {
       if (!block.trim()) return;
       const existing = String(ev?.systemPrompt ?? "");
       return { systemPrompt: existing ? `${existing}\n\n${block}` : block };
+    } catch {
+      // non-fatal
+    }
+  });
+
+  // Record the compaction summary as a progress item for the project. Raw
+  // summaries are too noisy to store as memories.
+  p.on("session_compact", async (event: unknown) => {
+    await ready;
+    const ev = event as { cwd?: string; summary?: string } | null;
+    try {
+      const summary = String(ev?.summary ?? "").replace(/\s+/g, " ").trim();
+      if (summary.length <= 50 || !toolNames.has("context_add")) return;
+      const today = new Date().toISOString().split("T")[0];
+      await client.callTool("context_add", {
+        type: "progress",
+        content: `✓ [${today}] Compacted: ${summary.slice(0, 300)}`,
+        project: projectOf(String(ev?.cwd ?? process.cwd()), server.dbPath),
+      });
     } catch {
       // non-fatal
     }

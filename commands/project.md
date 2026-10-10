@@ -24,38 +24,21 @@ Usage: /openltm:project <subcommand>
 
 ## init
 
-**1 — Verify project is registered:**
-```bash
-cat ~/.claude/projects/registry.json
-```
-Match `cwd`. If missing, run `/openltm:project register` first.
+The project defaults to the current one (resolved from the working directory). To give it a friendly name first, run `/openltm:project register`.
 
-**2 — Check for existing goal:**
-```bash
-bun --eval "
-import { Database } from 'bun:sqlite';
-const db = new Database(process.env.LTM_DB_PATH);
-const row = db.query(\"SELECT content FROM context_items WHERE project_name=? AND type='goal' LIMIT 1\").get('<project>');
-console.log(row ? row.content : '');
-"
-```
+**1 — Check for an existing goal:**
+
+Call `mcp__plugin_openltm_memory__context_items` with `{ type: "goal" }`.
 If a goal exists, show it and ask: "Replace it?"
 
-**3 — Ask for the goal:**
+**2 — Ask for the goal:**
 > "What is the current goal for **\<project\>**? (1–3 bullets, max 100 chars each)"
 
-**4 — Write:**
-```bash
-bun --eval "
-import { Database } from 'bun:sqlite';
-const db = new Database(process.env.LTM_DB_PATH);
-db.run(\"DELETE FROM context_items WHERE project_name=? AND type='goal'\", ['<project>']);
-db.run('INSERT INTO context_items (project_name, type, content, created_at) VALUES (?, ?, ?, datetime(\"now\"))', ['<project>', 'goal', '<goal>']);
-console.log('done');
-"
-```
+**3 — Write:**
 
-**5 — Confirm:**
+Call `mcp__plugin_openltm_memory__context_add` with `{ type: "goal", content: "<goal>" }`. A new goal replaces the previous one.
+
+**4 — Confirm:**
 ```
 Project **<project>** seeded.
 Goal: <goal>
@@ -72,7 +55,7 @@ Do NOT create context-goals.md or similar files. DB is the source of truth.
 This command orchestrates context retrieval in the right order.
 
 **1 — Get project context:**
-Call `mcp__plugin_openltm_memory__context(project="<project>")`.
+Call `mcp__plugin_openltm_memory__context()` — `project` defaults to the current project; pass it only to look at a different one.
 
 Returns: `globals` (importance ≥ 4) + `scoped` (importance ≥ 3).
 
@@ -119,15 +102,15 @@ Maps the current directory (or any path) to a friendly name in the context regis
 
 **Step 2 — Validate name:** lowercase, alphanumeric + hyphens only, 3–40 chars.
 
-**Step 3 — Read registry:** `cat ~/.claude/projects/registry.json` (treat missing as `{}`).
+**Step 3 — Read registry:** `cat "${LTM_DATA_DIR:-${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/OpenLtm-openltm}}/projects/registry.json"` (treat missing as `{}`). Legacy installs may also have `~/.claude/projects/registry.json`; its entries are still read, but always write the new file.
 
 **Step 4 — Check for conflicts:** warn if name used by different path, or path registered under different name.
 
 **Step 5 — Write registry:** add/update `{ "<path>": "<name>" }`.
 
-**Step 6 — Create context folder:** `~/.claude/projects/<name>/` if missing.
+**Step 6 — Create context folder:** `<data dir>/projects/<name>/` if missing (same data dir as Step 3).
 
-**Step 7 — Offer migration:** if `~/.claude/projects/<slug>/` has context files, offer to copy them.
+**Step 7 — Offer migration:** if legacy `~/.claude/projects/<slug>/` or `~/.claude/projects/<name>/` has context files, offer to copy them into the new folder. Never delete or edit the legacy files — that directory belongs to Claude Code.
 
 **Step 8 — Confirm:**
 > Registered `<path>` as **<name>**.

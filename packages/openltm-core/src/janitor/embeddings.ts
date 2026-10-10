@@ -5,6 +5,8 @@
  */
 import { getDb, getSetting } from "../shared-db.js";
 import { setEmbedding, getEmbedding, listMemoryIdsMissingEmbedding, listMemoryIdsNeedingEmbedding } from "../dao/embeddings.js";
+import { scrubForEgress } from "../secretsScrubber.js";
+import { hasPrivateTag } from "../privacy.js";
 import { llamaCppModel, LLAMACPP_DEFAULT_DIM } from "../providers/llamacpp.js";
 import { cohereEmbedding } from "./providers/cohere.js";
 import { geminiEmbedding } from "./providers/gemini.js";
@@ -20,11 +22,20 @@ import {
   type ProviderType,
 } from "./providers/types.js";
 
+/** The configured embedding provider name: LTM_EMBED_PROVIDER > setting > default. */
+function configuredEmbedProvider(): string {
+  const env = process.env.LTM_EMBED_PROVIDER?.trim().toLowerCase();
+  return env || getSetting(SETTING_KEYS.EMBED_PROVIDER) || getDefault(SETTING_KEYS.EMBED_PROVIDER);
+}
+
+/** True when embeddings are switched off ("disabled") — callers skip, they do not fail. */
+export function embeddingsDisabled(): boolean {
+  return configuredEmbedProvider() === "disabled";
+}
+
 /** Resolve the active embedding provider from settings. */
 export function getEmbeddingProvider(): EmbeddingProvider {
-  const env = process.env.LTM_EMBED_PROVIDER?.trim().toLowerCase();
-  const provider = (env || getSetting(SETTING_KEYS.EMBED_PROVIDER) ||
-    getDefault(SETTING_KEYS.EMBED_PROVIDER)) as ProviderType;
+  const provider = configuredEmbedProvider() as ProviderType;
 
   switch (provider) {
     case "llamacpp":
@@ -91,6 +102,7 @@ export function cosineSimilarity(a: EmbeddingVector, b: EmbeddingVector): number
 export async function embedMissingMemories(
   batchSize = 50,
 ): Promise<number> {
+  if (embeddingsDisabled()) return 0;
   const db = getDb();
   const provider = getEmbeddingProvider();
 
@@ -111,11 +123,22 @@ export async function embedMissingMemories(
 
   if (rows.length === 0) return 0;
 
+  // Omit private-tagged memories from auto-embed (egress to provider)
+  const publicRows = rows.filter((r) => {
+    const tags = db.query<{ name: string }, [number]>(
+      `SELECT t.name FROM tags t
+       JOIN memory_tags mt ON mt.tag_id = t.id
+       WHERE mt.memory_id = ?`,
+    ).all(r.id).map((x) => x.name);
+    return !hasPrivateTag(tags);
+  });
+  if (publicRows.length === 0) return 0;
+
   let totalEmbedded = 0;
 
-  for (let i = 0; i < rows.length; i += batchSize) {
-    const batch = rows.slice(i, i + batchSize);
-    const texts = batch.map((r) => r.content);
+  for (let i = 0; i < publicRows.length; i += batchSize) {
+    const batch = publicRows.slice(i, i + batchSize);
+    const texts = batch.map((r) => scrubForEgress(r.content));
 
     const result = await provider.embed({ texts });
 
@@ -124,9 +147,8 @@ export async function embedMissingMemories(
       if (!vector) continue;
       const blob = vectorToBlob(vector);
       await setEmbedding(db, batch[j]!.id, blob, result.model, result.dimensions);
+      totalEmbedded++; // count vectors written, not rows attempted
     }
-
-    totalEmbedded += batch.length;
   }
 
   return totalEmbedded;
@@ -144,11 +166,12 @@ export async function semanticSearch(
   topK = 10,
   minSimilarity = 0.5,
 ): Promise<Array<{ id: number; content: string; category: string; importance: number; project_scope: string | null; similarity: number }>> {
+  if (embeddingsDisabled()) return [];
   const db = getDb();
   const provider = getEmbeddingProvider();
 
   // Generate embedding for the query
-  const result = await provider.embed({ texts: [query] });
+  const result = await provider.embed({ texts: [scrubForEgress(query)] });
   const queryVector = result.vectors[0];
   if (!queryVector) return [];
 

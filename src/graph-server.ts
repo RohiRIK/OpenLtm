@@ -22,10 +22,15 @@ import {
   runPendingMigrations,
   startEmbeddingWorker, startJanitorScheduler,
   startLtmListener,
-  getCapabilities,
+  getCapabilities, acquireJanitorLock, scrubOrRefuse,
 } from "@rohirik/openltm-core";
 import { detectCommunities, generateClusterLabel, assignClusterColors } from "./cluster.js";
 import { getDbPath, getSchemaPath } from "./paths.js";
+import {
+  checkRequest, dropMaskedSecretsDeep, isMaskedValue, maskSecretsDeep, maskSettings,
+  nonLoopbackWarning, resolveRevealTarget, resolveServerHost, sanitizeSettingsUpdate,
+} from "./serverGuard.js";
+import { getConfigPath } from "@rohirik/openltm-core";
 import type { Cluster } from "./graph-app/lib/types.js";
 
 const CLAUDE_DIR = join(homedir(), ".claude");
@@ -143,18 +148,22 @@ async function fetchProviderModels(
 }
 
 const DB_PATH = getDbPath();
-const CONFIG_PATH = join(CLAUDE_DIR, "config.json");
 
+// LTM config: resolved per call (LTM_CONFIG_PATH → <dataDir>/config.json → legacy
+// ~/.claude/config.json), so writes land in whichever file is already in use.
 function readClaudeConfig(): Record<string, unknown> {
-  if (!existsSync(CONFIG_PATH)) return {};
-  try { return JSON.parse(readFileSync(CONFIG_PATH, "utf-8")) as Record<string, unknown>; }
+  const configPath = getConfigPath();
+  if (!existsSync(configPath)) return {};
+  try { return JSON.parse(readFileSync(configPath, "utf-8")) as Record<string, unknown>; }
   catch { return {}; }
 }
 
 function writeClaudeConfig(patch: Record<string, unknown>): void {
   const current = readClaudeConfig();
   const merged = deepMerge(current, patch);
-  writeFileSync(CONFIG_PATH, JSON.stringify(merged, null, 2) + "\n");
+  const configPath = getConfigPath();
+  mkdirSync(dirname(configPath), { recursive: true });
+  writeFileSync(configPath, JSON.stringify(merged, null, 2) + "\n");
 }
 
 function deepMerge(base: Record<string, unknown>, patch: Record<string, unknown>): Record<string, unknown> {
@@ -172,6 +181,8 @@ function deepMerge(base: Record<string, unknown>, patch: Record<string, unknown>
 const SCHEMA_PATH = getSchemaPath();
 const PID_PATH = join(CLAUDE_DIR, "tmp", "ltm-server.pid");
 const PORT = 7331;
+// Loopback by default — the API has no auth. LTM_SERVER_HOST overrides (with a warning).
+const { hostname: HOST, loopback: HOST_IS_LOOPBACK } = resolveServerHost();
 
 // Cache schema at startup — it never changes at runtime
 const SCHEMA = readFileSync(SCHEMA_PATH, "utf-8");
@@ -812,8 +823,11 @@ if (ltmListener.running) {
   }
 }
 
+if (!HOST_IS_LOOPBACK) console.error(nonLoopbackWarning(HOST, PORT));
+
 Bun.serve({
   port: PORT,
+  hostname: HOST,
 
   websocket: {
     open(ws) { clients.add(ws); ws.send(JSON.stringify({ type: "connected" })); },
@@ -822,6 +836,10 @@ Bun.serve({
   },
 
   async fetch(req, server) {
+    // Host / Origin / Content-Type policy — runs before routing and WebSocket upgrades.
+    const denied = checkRequest(req);
+    if (denied) return denied;
+
     if (req.headers.get("upgrade") === "websocket") {
       const ok = server.upgrade(req);
       if (!ok) return new Response("WebSocket upgrade failed", { status: 400 });
@@ -864,12 +882,12 @@ Bun.serve({
       return Response.json({ ok: true });
     }
     if (p === "/api/reveal" && req.method === "POST") {
-      let target = DB_PATH;
-      const body = await req.json().catch(() => ({})) as { path?: string };
-      if (body?.path && typeof body.path === "string") target = body.path;
-      if (!existsSync(target)) {
-        return Response.json({ ok: false, error: "Path not found", path: target }, { status: 404 });
+      const body = await req.json().catch(() => ({})) as { path?: unknown };
+      const resolved = resolveRevealTarget(body?.path, DB_PATH);
+      if (!resolved.ok) {
+        return Response.json({ ok: false, error: resolved.error }, { status: resolved.status });
       }
+      const target = resolved.path;
       const platform = process.platform;
       let cmd: string[];
       let args: string[];
@@ -952,7 +970,8 @@ Bun.serve({
     }
 
     const memMatch = p.match(/^\/api\/memory\/(\d+)$/);
-    if (memMatch?.[1]) {
+    // GET only: PUT (edit) and DELETE on the same path are handled further down.
+    if (memMatch?.[1] && req.method === "GET") {
       const m = getMemoryById(parseInt(memMatch[1], 10));
       return m ? Response.json(m) : new Response("Not found", { status: 404 });
     }
@@ -968,16 +987,16 @@ Bun.serve({
       const stored = getAllSettings();
       // Merge with defaults so the UI always sees every key
       const merged: Record<string, string> = { ...SETTING_DEFAULTS, ...stored };
-      return Response.json(merged);
+      // API keys are never sent back in clear — the UI gets "••••" + last 4.
+      return Response.json(maskSettings(merged));
     }
 
     if (p === "/api/settings" && req.method === "PUT") {
       try {
-        const body = (await req.json()) as Record<string, string>;
-        for (const [key, value] of Object.entries(body)) {
-          if (typeof key === "string" && typeof value === "string") {
-            await setSetting(key, value);
-          }
+        // Drops masked placeholders so an unchanged form never overwrites a stored key.
+        const updates = sanitizeSettingsUpdate(await req.json());
+        for (const [key, value] of Object.entries(updates)) {
+          await setSetting(key, value);
         }
         broadcast({ type: "settings-updated" });
         return Response.json({ ok: true });
@@ -1013,6 +1032,7 @@ Bun.serve({
     if (p === "/api/settings/verify" && req.method === "POST") {
       try {
         const body = await req.json().catch(() => ({})) as { provider?: string; key?: string };
+        if (typeof body.key !== "string") delete body.key;
         // If caller provides key + provider, persist it first (avoids client-side extra PUT round-trip)
         if (body.provider && body.key) {
           const keySettingMap: Record<string, string> = {
@@ -1023,7 +1043,13 @@ Bun.serve({
             openrouter: SETTING_KEYS.OPENROUTER_API_KEY,
           };
           const settingKey = keySettingMap[body.provider];
-          if (settingKey) await setSetting(settingKey, body.key);
+          if (isMaskedValue(body.key)) {
+            // The UI re-verifies stored keys using the masked value it was given:
+            // keep the stored key and use it for the model listing below.
+            body.key = settingKey ? (getSetting(settingKey) ?? "") : "";
+          } else if (settingKey) {
+            await setSetting(settingKey, body.key);
+          }
         }
         const provider = body.provider
           ? (PROVIDER_VERIFY_MAP[body.provider] ?? null)
@@ -1055,10 +1081,15 @@ Bun.serve({
       if (status.running) {
         return Response.json({ ok: false, error: "Janitor already running" }, { status: 409 });
       }
+      // Same cross-process lock as `ltm janitor run` and the SessionEnd trigger.
+      const lock = acquireJanitorLock(DB_PATH);
+      if (!lock.acquired) {
+        return Response.json({ ok: false, error: `Janitor already running in another process (pid ${lock.holder?.pid ?? "?"})` }, { status: 409 });
+      }
       // Fire-and-forget — LLM dedup can take >10s, respond immediately
       runJanitor().then(result => {
         broadcast({ type: "janitor-complete", result });
-      }).catch(() => {});
+      }).catch(() => {}).finally(() => lock.release());
       return Response.json({ ok: true, started: true });
     }
 
@@ -1122,8 +1153,9 @@ Bun.serve({
       if (body.tags !== undefined && (!Array.isArray(body.tags) || body.tags.some(t => typeof t !== "string")))
         return Response.json({ error: "tags must be a string array" }, { status: 400 });
       if (body.content !== undefined) {
+        // Same fail-closed scrub as every other durable write.
         db.run("UPDATE memories SET content=?, last_confirmed_at=? WHERE id=?",
-          [body.content.trim(), new Date().toISOString(), id]);
+          [scrubOrRefuse(body.content.trim()).scrubbed, new Date().toISOString(), id]);
       }
       if (body.importance !== undefined) {
         db.run("UPDATE memories SET importance=? WHERE id=?", [body.importance, id]);
@@ -1466,13 +1498,13 @@ Bun.serve({
     // ============================================================
 
     if (p === "/api/config" && req.method === "GET") {
-      return Response.json(readClaudeConfig());
+      return Response.json(maskSecretsDeep(readClaudeConfig()));
     }
 
     if (p === "/api/config" && req.method === "PUT") {
       try {
         const patch = (await req.json()) as Record<string, unknown>;
-        writeClaudeConfig(patch);
+        writeClaudeConfig(dropMaskedSecretsDeep(patch));
         return Response.json({ ok: true });
       } catch (e) {
         return Response.json({ ok: false, error: String(e) }, { status: 400 });
@@ -1635,11 +1667,13 @@ if (janitorScheduler.running) {
 
 for (const sig of ["SIGINT", "SIGTERM"] as const) {
   process.on(sig, () => {
-    void embeddingWorker.stop();
-    void janitorScheduler.stop();
-    void ltmListener.stop();
+    // Registering a handler replaces Bun's default exit, so stop the workers and
+    // then exit — otherwise SIGTERM leaves the server running (kill -9 was the only way).
+    void Promise.allSettled([embeddingWorker.stop(), janitorScheduler.stop(), ltmListener.stop()])
+      .finally(() => process.exit(0));
+    setTimeout(() => process.exit(0), 3000).unref();
   });
 }
 
-console.log(`🧠 LTM Graph running on http://localhost:${PORT}`);
+console.log(`🧠 LTM Graph running on http://${HOST_IS_LOOPBACK ? "localhost" : HOST}:${PORT}`);
 console.log(`   PID: ${process.pid} — saved to ${PID_PATH}`);

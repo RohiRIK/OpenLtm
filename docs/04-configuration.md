@@ -1,6 +1,9 @@
 # Configuration
 
-Configure via `~/.claude/config.json`.
+Configure via the LTM `config.json` — on a marketplace install
+`$CLAUDE_PLUGIN_DATA/config.json`. An existing legacy `~/.claude/config.json` is
+still read (and written in place) when the new file does not exist. See
+[File locations](#file-locations).
 
 ## LTM options
 
@@ -22,13 +25,16 @@ Configure via `~/.claude/config.json`.
 |-----|---------|-------------|
 | `dbPath` | auto-resolved | Override db location (prefer `LTM_DB_PATH` env var) |
 | `decayEnabled` | `true` | Enable memory relevance decay over time |
-| `injectTopN` | `15` | Max memories to inject at SessionStart |
+| `injectTopN` | `15` | Max memories in the SessionStart **compact index** (id + title/snippet). Full body via MCP `get`. Also default `maxMemories` for adapter prefill. |
 | `autoRelate` | `true` | Automatically link related memories |
 | `graphReasoning` | `false` | Enable graph-based reasoning during recall |
 | `evaluateSessionLlm` | `false` | Use LLM to evaluate sessions (costs tokens) |
-| `semanticFallback` | `true` | Fall back to embedding search when FTS returns no results |
+| `semanticFallback` | `true` | Run embedding search alongside full-text search and fuse the rankings (RRF). `false` = full-text only |
+| `autoRecall` | `true` | SessionStart recall directive and per-prompt recall. `false` turns both off |
+| `promptRecall` | `true` | `UserPromptSubmit` adds memories relevant to each prompt (full-text only, ~50ms) |
+| `promptRecallLimit` | `5` | Max memories added per prompt (1–20) |
 | `crossProcessSync` | `false` | Enable cross-agent memory notify via Honker pub-sub (opt-in; requires Honker extension loaded) |
-| `gitInvalidateEnabled` | `true` | When git-learn runs, also flag memories stale if a commit touches their anchored files (code-anchored invalidation). Set `false` to keep git-learn without invalidation. |
+| `gitInvalidateEnabled` | `true` | Flag memories stale when a commit touches their anchored files — from the `PostToolUse` hook when Claude commits, and from git-learn. Set `false` to turn off code-anchored invalidation. |
 
 
 ## Embeddings
@@ -64,6 +70,15 @@ Stored vectors are stamped with `model` and `dim`. A switch does not mix spaces:
 }
 ```
 
+## Janitor
+
+| Env var | Default | Description |
+|---------|---------|-------------|
+| `LTM_JANITOR_INTERVAL_MINUTES` | `360` | Minimum minutes between `ltm janitor run --if-due` passes (SessionEnd hook, timers, daemon). Falls back to the `ltm.janitor.intervalMinutes` setting when that is > 0. |
+| `LTM_JANITOR_ON_SESSION_END` | (on) | `0` / `false` / `off` stops the `SessionEnd` hook from spawning the janitor |
+
+Standalone runs, hooks, and systemd/launchd units are covered in [Janitor](13-janitor.md).
+
 ## SQLite extension env vars
 
 Control the optional SQLite extension capability layer without touching config files:
@@ -82,13 +97,60 @@ All four env vars are read at process start. The extension layer degrades gracef
 Three ways to set it (priority order):
 
 1. **`LTM_DB_PATH` env var** — set in your shell profile for a permanent override
-2. **`CLAUDE_PLUGIN_DATA`** — set automatically by the plugin system on marketplace installs
-3. **Default fallback** — `$CLAUDE_PLUGIN_DATA/openltm.db`
+2. **`CLAUDE_PLUGIN_DATA`** — set automatically by the plugin system on marketplace installs; the DB is `$CLAUDE_PLUGIN_DATA/openltm.db`
+3. **Default fallback** — `data/openltm.db` in a dev checkout
+
+The hooks and the MCP server resolve it the same way, so an `LTM_DB_PATH` you export applies to both (before 2.17 the plugin's MCP server ignored it and used `$CLAUDE_PLUGIN_DATA/openltm.db`).
 
 ```bash
 # Shell override example
 export LTM_DB_PATH=/custom/path/openltm.db
 ```
+
+## File locations
+
+OpenLTM keeps its own files in a **data dir**, resolved as:
+
+1. `LTM_DATA_DIR` env var
+2. `CLAUDE_PLUGIN_DATA` (set by the plugin system, e.g. `~/.claude/plugins/data/OpenLtm-openltm`)
+3. the directory that holds the database
+
+| File | Location |
+|------|----------|
+| Project registry (`cwd → name`) | `<dataDir>/projects/registry.json` |
+| Per-project context markdown | `<dataDir>/projects/<name>/context-*.md` |
+| Config | `LTM_CONFIG_PATH` → `<dataDir>/config.json` if it exists → `~/.claude/config.json` if it exists → `<dataDir>/config.json` |
+
+| Env var | Description |
+|---------|-------------|
+| `LTM_DATA_DIR` | Override the data dir (registry, context markdown, default config location) |
+| `LTM_CONFIG_PATH` | Use exactly this config file (read and write) |
+
+`~/.claude/projects/` belongs to Claude Code (its session transcripts). OpenLTM
+no longer writes there. **Migration is automatic and non-destructive:** on first
+access, a legacy `~/.claude/projects/registry.json` is copied to the new registry
+(only if the new one does not exist yet), and a project's legacy
+`~/.claude/projects/<name>/context-*.md` files are copied when its new context
+dir has none. Legacy files are never modified or deleted, and registry entries
+still written to the legacy file are merged in at read time (the new file wins).
+
+## Project identity
+
+Every host — Claude Code hooks, Pi, OpenCode, OpenClaw, the bunx hook CLI —
+maps a working directory to a project name with the same resolver, so a repo
+shares one memory scope across agents:
+
+1. Exact match in the registry
+2. Longest registered parent path
+3. Git repository root name, normalized (`My_Repo` → `my-repo`; linked worktrees use the main repo's name)
+4. Working directory name, normalized
+
+**Continuity:** names used before this resolver existed are kept while they are
+the only ones with data. If the database has memories or context items under the
+old name (Claude Code: the full-path slug such as `-home-me-my-repo`; Pi /
+OpenCode / OpenClaw: the raw folder name such as `My_Repo`) and none under the
+new name, the old name stays. Claude Code also registers it so it stays stable.
+To adopt the new name, register the path explicitly with `/openltm:project`.
 
 ## Server options
 
@@ -134,7 +196,7 @@ This project uses stricter memory injection.
 
 **Fields:**
 - `enabled` — Enable/disable LTM for this project (default: true)
-- `injectTopN` — Override max memories to inject
+- `injectTopN` — Override max memories injected at SessionStart / prefill
 - `autoRecall` — Override auto-recall at session start
 
 **Note:** Changes require restarting Claude Code.

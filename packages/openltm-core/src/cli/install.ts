@@ -80,6 +80,8 @@ export interface CliRunOpts {
   homedir?: string;
   /** When true, suppress @clack output (used in tests). */
   silent?: boolean;
+  /** Pi CLI to run instead of the one on PATH (tests, scripted installs). */
+  piCmd?: string;
 }
 
 export interface CliRunResult {
@@ -126,7 +128,7 @@ export async function runInstallCli(opts: CliRunOpts): Promise<CliRunResult> {
     if (!targets[target.id]) continue;
     const s = silent ? null : clack.spinner();
     if (s) s.start(`Installing into ${target.label}…`);
-    const r = await target.install({ homedir, dryRun });
+    const r = await target.install({ homedir, dryRun, piCmd: opts.piCmd });
     results.push(r);
     if (s) {
       if (r.status === "installed") {

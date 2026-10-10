@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --port 7332",
+    "dev": "next dev --hostname 127.0.0.1 --port 7332",
     "build": "next build",
-    "start": "next start --port 7332"
+    "start": "next start --hostname 127.0.0.1 --port 7332"
   },
   "dependencies": {
     "@radix-ui/react-accordion": "^1.2.12",

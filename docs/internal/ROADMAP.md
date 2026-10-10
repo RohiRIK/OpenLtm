@@ -12,11 +12,29 @@
 
 ## 1. Executive Summary
 
-**Where we are (v1.4.20):** A working LTM plugin with SQLite + FTS5 + 4 hooks + 7 MCP tools + grouped commands. Functional. Honest weaknesses: silent hook failures, hand-rolled migrations, O(N) recall, no provenance, no audit, no observability. UX is invisible-by-default but onboarding is "abandoned by 50%".
+**Where we are (v2.16.x):** Phases 0–4 have shipped, and the plugin has outgrown "a Claude Code plugin":
+
+- **Foundation (Phase 0):** a versioned migration runner with a fail-closed DDL gate, propose-only session evaluation, and the `/openltm:onboard` wizard.
+- **Observability (Phase 1):** structured JSONL hook events feeding `/openltm:health`, and DAO-backed slim recall rows (embeddings split out of the hot path).
+- **Trust (Phase 2):** a provenance chain and an append-only `memory_audit` log, queryable through `/openltm:admin audit` and the `admin_audit` MCP tool.
+- **Recall (Phase 3):** pluggable embedding providers (local llama.cpp by default since 2.16; Gemini, OpenAI, and Ollama opt-in), sqlite-vec KNN, auto-categorisation, and a recall explainer.
+- **Janitor (Phase 4):** materialised `decay_score`, a leader-elected janitor, and an archive table for evicted memories.
+
+Beyond the original plan: code-anchored memories with stale flagging and `revalidate` (2.10), recall v2 ranking and one shared session prefill (2.13), and **one engine for five hosts**. `@rohirik/openltm-core` runs the MCP server (`mcp-serve`) and a headless CLI, and adapters ship for Claude Code, OpenCode, Pi, OpenClaw (ClawHub), and Hermes. All npm and ClawHub releases publish tokenless through OIDC.
+
+**Honest gaps going into 2.17:**
+- The graph server listens beyond loopback and returns provider secrets unmasked.
+- The Stop hook does session-end work on every turn.
+- Memories reach the model only at session start, never per prompt.
+- Stale flagging needs the opt-in git hook.
+- The MCP surface cannot write project context or review proposals.
+- Recall falls back from FTS to semantic search instead of fusing the two.
+- Seven overlapping skills compete for triggers.
+- Project identity differs per adapter, and plugin state lives under `~/.claude/projects`.
 
 **Where we want to be:** A magnificent LTM that is invisible when it should be, surgical when invoked, trustable for teams and enterprise, and pluggable for embeddings, sync, bundles, and cross-plugin contracts.
 
-**The plan:** 8 phases (v1.5.x → v2.2.x). Phases 0–4 are non-breaking foundation. Phase 5 (v2.0.0) is the semver-major cross-plugin contract. Phases 6–7 layer on team/enterprise/power-user features.
+**The plan:** Phases 0–4 (non-breaking foundation) are done. The [2.17 hardening release](#217--hardening--recall-everywhere-in-progress) closes the gaps above. Phase 5 is half done: the shared core and its adapters exist, but the versioned capability-discovery contract does not. Phases 6–7 (sync, bundles, time travel) remain planned.
 
 ---
 
@@ -60,6 +78,8 @@ Each phase aligns with `ARCHITECTURE.md §9`. Versions are guidance; ship cadenc
 
 ### Phase 0 — Foundation Hardening (v1.5.x, non-breaking)
 
+> **Status: shipped.** Versioned migrations (fail-closed runner since 2.12), propose-only EvaluateSession, `/openltm:onboard` wizard, `BEGIN IMMEDIATE` + WAL write discipline.
+
 **Goal:** Stop the bleeding. Fix the things that silently lose data or fail without telling anyone.
 
 | Source | Item |
@@ -79,6 +99,8 @@ Each phase aligns with `ARCHITECTURE.md §9`. Versions are guidance; ship cadenc
 
 ### Phase 1 — DAO + Observability (v1.6.x, non-breaking)
 
+> **Status: shipped.** `ltm.jsonl` structured events, `/openltm:health` activity + janitor sections, DAO layer with slim recall rows.
+
 **Goal:** Make the system inspectable. Decouple hooks from raw SQL.
 
 | Source | Item |
@@ -95,6 +117,8 @@ Each phase aligns with `ARCHITECTURE.md §9`. Versions are guidance; ship cadenc
 
 ### Phase 2 — Provenance + Audit (v1.7.x, non-breaking)
 
+> **Status: shipped.** `memory_provenance` + `memory_audit`, `/openltm:admin audit`, `admin_audit` MCP tool, `includeProvenance` on recall.
+
 **Goal:** Every memory is traceable. Every write is auditable.
 
 | Source | Item |
@@ -110,6 +134,8 @@ Each phase aligns with `ARCHITECTURE.md §9`. Versions are guidance; ship cadenc
 ---
 
 ### Phase 3 — Embedding Provider Abstraction (v1.8.x, non-breaking)
+
+> **Status: shipped.** Provider interface (llama.cpp default since 2.16; Gemini / OpenAI / Ollama opt-in), `memory_embeddings` split, sqlite-vec KNN (2.9), auto-categoriser, recall explainer.
 
 **Goal:** FTS5 stays. Embeddings become pluggable, not bundled.
 
@@ -128,6 +154,8 @@ Each phase aligns with `ARCHITECTURE.md §9`. Versions are guidance; ship cadenc
 
 ### Phase 4 — Janitor (v1.9.x, non-breaking)
 
+> **Status: shipped.** Materialised `decay_score`, `memory_archive`, leader-elected janitor cron (2.9), WAL checkpoint + `ANALYZE` per pass.
+
 **Goal:** The plugin curates itself. Decay, compression, cleanup happen as background work.
 
 | Source | Item |
@@ -142,7 +170,33 @@ Each phase aligns with `ARCHITECTURE.md §9`. Versions are guidance; ship cadenc
 
 ---
 
+### 2.17 — Hardening & recall everywhere (in progress)
+
+**Goal:** Close the gaps the 2.16 audit found. Make memory safe to expose, present on every prompt, and cheap to curate, with one project identity across hosts.
+
+| Area | Item |
+|---|---|
+| Security | Graph server binds loopback only, rejects cross-origin requests, and masks provider secrets in settings and config responses. |
+| Hook lifecycle | Session-end work moves from `Stop` to `SessionEnd`. `Stop` only records per-session `progress`. |
+| Recall everywhere | `UserPromptSubmit` recalls a few prompt-relevant memories and injects them (small, capped, de-duplicated against the SessionStart block). |
+| Freshness | `PostToolUse` on a Bash `git commit` flags memories anchored to the committed files as stale. No opt-in git hook required. |
+| MCP surface | New `context_add` and `proposals` (list / accept / reject) tools, tool annotations (read-only / destructive hints), and `project` defaulting to the current project on `context`, `context_items`, and `context_add`. |
+| Ranking | Hybrid recall fuses FTS5 and vector results with reciprocal-rank fusion (RRF) instead of a semantic fallback. |
+| Skills | Seven overlapping skills consolidated into `Ltm` (contract plus reference files), `MemoryReview` (new curation pass), `GitLearn`, and `Spec`. The graph server skill becomes `/openltm:server`, and the planner agent becomes `ltm-planner` with read-only memory tools. |
+| Project identity | One project-identity resolver shared by every adapter. OpenLTM state (registry, snapshots, session logs) moves out of `~/.claude/projects` into the plugin data directory. |
+
+**Exit criteria:**
+- `curl` from another host cannot reach `:7331`.
+- No secret appears in any graph-server response.
+- A prompt about a known topic gets its memories injected without a manual `recall`.
+- A commit touching an anchored file flags its memory stale, and `MemoryReview` can clear it.
+- The same repository resolves to the same project name in Claude Code, OpenCode, and Pi.
+
+---
+
 ### Phase 5 — Cross-Plugin Contract (v2.0.0, semver-major)
+
+> **Status: partial.** The shared engine (`@rohirik/openltm-core` with `mcp-serve` and a headless CLI) and the OpenCode, Pi, OpenClaw, and Hermes adapters have shipped. The versioned contract with capability discovery, and the `MIGRATION.md` for it, are still open.
 
 **Goal:** LTM becomes a contract. Other plugins read/write memories through a versioned interface.
 
@@ -159,6 +213,8 @@ Each phase aligns with `ARCHITECTURE.md §9`. Versions are guidance; ship cadenc
 ---
 
 ### Phase 6 — Sync + Bundles (v2.1.x, non-breaking on contract)
+
+> **Status: planned.** The graph-app v2 redesign (2.4–2.7) has landed. Conflict detection exists only as opt-in `autoRelate`, which can link a new memory as `contradicts`; the conflict tables and conflict modal are still open. Sync and bundles have not started.
 
 **Goal:** Multi-device. Team-shareable.
 
@@ -181,6 +237,8 @@ Each phase aligns with `ARCHITECTURE.md §9`. Versions are guidance; ship cadenc
 ---
 
 ### Phase 7 — Time-Travel + Diffing (v2.2.x, non-breaking)
+
+> **Status: planned.** `memory_archive` (Phase 4) is the first building block for replay.
 
 **Goal:** Memory becomes history. You can replay it, diff it, audit it.
 

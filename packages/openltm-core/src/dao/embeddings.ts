@@ -6,6 +6,7 @@ import type { Database } from "bun:sqlite";
 import { writeQueue } from "../lib/writeQueue.js";
 import { getCapabilities } from "../extensions.js";
 import { ensureVecTable, upsertVec, deleteVec } from "../vec/index.js";
+import { notPrivateSql } from "../privacy.js";
 
 interface EmbeddingRow {
   memory_id: number;
@@ -79,6 +80,7 @@ export function listMemoryIdsNeedingEmbedding(
      LEFT JOIN memory_embeddings e ON e.memory_id = m.id
      WHERE m.status = 'active'
        AND (e.memory_id IS NULL OR e.model != ? OR e.dim != ?)
+       AND ${notPrivateSql("m.id")}
      ORDER BY m.importance DESC, m.created_at DESC
      LIMIT ?`
   ).all(model, dim, limit);

@@ -5,18 +5,21 @@ const API = "http://localhost:7331";
 // ── App shell ────────────────────────────────────────────────────────────────
 
 test.describe("OpenLTM app shell", () => {
-  test("1. projects landing renders heading + stat cards", async ({ page }) => {
+  test("1. / redirects to the projects landing, which lists every project", async ({ page, request }) => {
+    const projects = (await (await request.get(`${API}/api/health/projects`)).json()) as Array<{ project: string }>;
     await page.goto("/");
+    await expect(page).toHaveURL(/\/projects$/);
     await expect(page.getByRole("heading", { name: "Projects", level: 1 })).toBeVisible();
-    // Stat cards populate after data load
-    await expect(page.getByText("Total memories")).toBeVisible({ timeout: 15000 });
-    await expect(page.getByText("Active projects")).toBeVisible();
+    // The project list populates after data load
+    await expect(page.getByRole("heading", { name: "All projects", level: 2 })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(`${projects.length} total`)).toBeVisible();
   });
 
-  test("2. sidebar exposes all primary nav items", async ({ page }) => {
+  test("2. top nav exposes all primary nav items", async ({ page }) => {
     await page.goto("/");
-    for (const label of ["Projects", "Graph", "Search", "Health", "Inbox", "Config", "Settings"]) {
-      await expect(page.getByRole("link", { name: label })).toBeVisible();
+    const nav = page.getByRole("banner").getByRole("navigation");
+    for (const label of ["Projects", "Graph", "Inbox", "Settings"]) {
+      await expect(nav.getByRole("link", { name: label })).toBeVisible();
     }
   });
 
@@ -33,7 +36,8 @@ test.describe("navigation", () => {
   test("4. graph route renders force-graph canvas", async ({ page }) => {
     await page.goto("/");
     await page.getByRole("link", { name: "Graph" }).click();
-    await expect(page).toHaveURL(/\/graph$/);
+    // `next dev` compiles /graph on first visit — the same budget as the canvas below.
+    await expect(page).toHaveURL(/\/graph$/, { timeout: 15000 });
     await expect(page.locator("canvas")).toBeVisible({ timeout: 15000 });
   });
 
@@ -49,14 +53,19 @@ test.describe("navigation", () => {
     await expect(page.getByRole("button", { name: "Filters", exact: true })).toBeVisible();
   });
 
-  test("5. search route loads", async ({ page }) => {
-    await page.goto("/search");
-    await expect(page.getByRole("heading", { name: "Search", level: 1 })).toBeVisible();
+  test("5. project page loads for a real project", async ({ page, request }) => {
+    const projects = (await (await request.get(`${API}/api/health/projects`)).json()) as Array<{ project: string }>;
+    test.skip(projects.length === 0, "no projects in this DB");
+    const name = projects[0]!.project;
+    await page.goto(`/projects/${encodeURIComponent(name)}`);
+    await expect(page.getByRole("heading", { name: name.split("/").pop()!, level: 1 })).toBeVisible({ timeout: 15000 });
   });
 
-  test("6. health route loads", async ({ page }) => {
-    await page.goto("/health");
-    await expect(page.getByRole("heading", { name: "Memory Health", level: 1 })).toBeVisible();
+  test("6. project memories route loads", async ({ page, request }) => {
+    const projects = (await (await request.get(`${API}/api/health/projects`)).json()) as Array<{ project: string }>;
+    test.skip(projects.length === 0, "no projects in this DB");
+    await page.goto(`/projects/${encodeURIComponent(projects[0]!.project)}/memories`);
+    await expect(page.getByRole("heading", { name: "Memories", level: 1 })).toBeVisible({ timeout: 15000 });
   });
 
   test("7. inbox route loads", async ({ page }) => {
@@ -64,9 +73,12 @@ test.describe("navigation", () => {
     await expect(page.getByRole("heading", { name: "Inbox", level: 1 })).toBeVisible();
   });
 
-  test("8. config route loads", async ({ page }) => {
-    await page.goto("/config");
-    await expect(page.getByRole("heading", { name: "Config", level: 1 })).toBeVisible();
+  test("8. every settings section loads", async ({ page }) => {
+    for (const section of ["behavior", "health", "advanced", "about"]) {
+      await page.goto(`/settings/${section}`);
+      await expect(page.getByRole("heading", { name: "Settings", level: 1 })).toBeVisible();
+      await expect(page.getByRole("navigation", { name: "Settings sections" })).toBeVisible();
+    }
   });
 
   test("9. settings route loads", async ({ page }) => {
@@ -80,18 +92,31 @@ test.describe("navigation", () => {
 test.describe("command palette", () => {
   test("10. ⌘K opens palette and navigates", async ({ page }) => {
     await page.goto("/");
-    await page.keyboard.press("Meta+k");
-    const input = page.getByPlaceholder("Jump to a screen or search…");
+    await expect(page.getByRole("heading", { name: "Projects", level: 1 })).toBeVisible();
+    await page.keyboard.press("ControlOrMeta+k");
+    const input = page.getByPlaceholder("Search or type a command...");
     await expect(input).toBeVisible({ timeout: 3000 });
-    await input.fill("Graph");
-    await page.getByRole("option", { name: "Graph" }).click();
-    await expect(page).toHaveURL(/\/graph$/);
+    await page.getByRole("option", { name: "Global Graph" }).click();
+    // `next dev` compiles /graph on first visit (see test 4).
+    await expect(page).toHaveURL(/\/graph$/, { timeout: 15000 });
+  });
+
+  test("10b. palette keyword search finds a stored memory", async ({ page, request }) => {
+    const hits = (await (await request.get(`${API}/api/search/all?q=bun`)).json()) as Array<{ content: string }>;
+    test.skip(hits.length === 0, "no memory mentions bun in this DB");
+    await page.goto("/");
+    await expect(page.getByRole("heading", { name: "Projects", level: 1 })).toBeVisible();
+    await page.keyboard.press("ControlOrMeta+k");
+    await page.getByPlaceholder("Search or type a command...").fill("bun");
+    await page.getByRole("button", { name: "Keyword" }).click();
+    await expect(page.getByRole("option").filter({ hasText: hits[0]!.content.slice(0, 40) }).first()).toBeVisible({ timeout: 5000 });
   });
 
   test("11. Escape dismisses palette", async ({ page }) => {
     await page.goto("/");
-    await page.keyboard.press("Meta+k");
-    const input = page.getByPlaceholder("Jump to a screen or search…");
+    await expect(page.getByRole("heading", { name: "Projects", level: 1 })).toBeVisible();
+    await page.keyboard.press("ControlOrMeta+k");
+    const input = page.getByPlaceholder("Search or type a command...");
     await expect(input).toBeVisible({ timeout: 3000 });
     await page.keyboard.press("Escape");
     await expect(input).not.toBeVisible({ timeout: 2000 });
@@ -142,8 +167,9 @@ test.describe("API", () => {
     expect(Array.isArray(json)).toBe(true);
   });
 
-  test("16. WebSocket connects to API server", async ({ page }) => {
-    const connected = await page.evaluate(
+  // The UI's live-update socket: allowed from the UI's own (loopback) origin…
+  const wsOpens = (page: import("@playwright/test").Page) =>
+    page.evaluate(
       () =>
         new Promise<boolean>((resolve) => {
           const ws = new WebSocket("ws://localhost:7331");
@@ -162,6 +188,15 @@ test.describe("API", () => {
           };
         }),
     );
-    expect(connected).toBe(true);
+
+  test("16. WebSocket connects to API server from the UI origin", async ({ page }) => {
+    await page.goto("/");
+    expect(await wsOpens(page)).toBe(true);
+  });
+
+  // …and refused from an opaque ("null") origin, which the Origin guard rejects.
+  test("16b. WebSocket from a null origin is refused", async ({ page }) => {
+    await page.goto("about:blank");
+    expect(await wsOpens(page)).toBe(false);
   });
 });

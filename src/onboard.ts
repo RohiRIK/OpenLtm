@@ -14,13 +14,19 @@
  */
 import * as p from "@clack/prompts";
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from "fs";
-import { join, basename, dirname } from "path";
+import { join, dirname } from "path";
 import { homedir } from "os";
 import { getDb, upsertGoal, learn } from "@rohirik/openltm-core";
+// Same resolver + registry the hooks use, so onboarding never names a project
+// differently from SessionStart (or clobbers a registered/continuity name).
+// All three resolve their paths per call, never at module load.
+import { getProjectsDir, registerPath, resolveProject } from "../hooks/lib/resolveProject.js";
 
-const CLAUDE_DIR = join(homedir(), ".claude");
-const PROJECTS_DIR = join(CLAUDE_DIR, "projects");
-const REGISTRY_PATH = join(PROJECTS_DIR, "registry.json");
+// Resolved lazily (not at module load) so tests can redirect HOME to a temp
+// dir. Bun caches os.homedir() at process start, so prefer $HOME when set.
+function claudeDir(): string {
+  return join(process.env.HOME || homedir(), ".claude");
+}
 
 export interface OnboardOptions {
   nonInteractive?: boolean;
@@ -54,14 +60,15 @@ export function runDiagnostics(): DiagnosticResult[] {
   }
 
   // Check registry dir
-  if (!existsSync(PROJECTS_DIR)) {
-    results.push({ label: "Projects dir", status: "warn", detail: `${PROJECTS_DIR} not found — will create` });
+  const projectsDir = getProjectsDir();
+  if (!existsSync(projectsDir)) {
+    results.push({ label: "Projects dir", status: "warn", detail: `${projectsDir} not found — will create` });
   } else {
     results.push({ label: "Projects dir", status: "ok" });
   }
 
   // Check hooks wired
-  const settingsPath = join(CLAUDE_DIR, "settings.json");
+  const settingsPath = join(claudeDir(), "settings.json");
   if (!existsSync(settingsPath)) {
     results.push({ label: "Hook wiring", status: "warn", detail: "settings.json not found — hooks may not fire" });
   } else {
@@ -78,7 +85,7 @@ export function runDiagnostics(): DiagnosticResult[] {
 }
 
 export function getOnboardedFlagPath(pluginDataDir?: string): string {
-  const base = pluginDataDir ?? process.env.CLAUDE_PLUGIN_DATA ?? join(CLAUDE_DIR, "plugins", "data", "OpenLtm-openltm");
+  const base = pluginDataDir ?? process.env.CLAUDE_PLUGIN_DATA ?? join(claudeDir(), "plugins", "data", "OpenLtm-openltm");
   return join(base, "onboarded.flag");
 }
 
@@ -92,19 +99,9 @@ export function writeOnboardedFlag(pluginDataDir?: string): void {
   writeFileSync(flagPath, new Date().toISOString(), "utf-8");
 }
 
+/** Registered name, else the shared resolver's name (repo root / cwd basename). */
 function deriveProjectName(cwd: string): string {
-  return basename(cwd).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "my-project";
-}
-
-function loadRegistry(): Record<string, string> {
-  if (!existsSync(REGISTRY_PATH)) return {};
-  try { return JSON.parse(readFileSync(REGISTRY_PATH, "utf-8")) as Record<string, string>; }
-  catch { return {}; }
-}
-
-function saveRegistry(registry: Record<string, string>): void {
-  mkdirSync(PROJECTS_DIR, { recursive: true });
-  writeFileSync(REGISTRY_PATH, JSON.stringify(registry, null, 2), "utf-8");
+  return resolveProject(cwd).name || "my-project";
 }
 
 export async function runOnboard(opts: OnboardOptions = {}): Promise<{ success: boolean; projectName?: string }> {
@@ -153,9 +150,7 @@ export async function runOnboard(opts: OnboardOptions = {}): Promise<{ success: 
     projectName = deriveProjectName(cwd);
   } else {
     p.log.step("Step 2/5 — Register project");
-    const registry = loadRegistry();
-    const existing = registry[cwd];
-    const defaultName = existing ?? deriveProjectName(cwd);
+    const defaultName = deriveProjectName(cwd);
 
     const input = await p.text({
       message: "Project name (used as key for memories and context):",
@@ -167,10 +162,8 @@ export async function runOnboard(opts: OnboardOptions = {}): Promise<{ success: 
     projectName = (input as string).trim();
   }
 
-  const registry = loadRegistry();
-  registry[cwd] = projectName;
-  saveRegistry(registry);
-  mkdirSync(join(PROJECTS_DIR, projectName), { recursive: true });
+  registerPath(cwd, projectName);
+  mkdirSync(join(getProjectsDir(), projectName), { recursive: true });
 
   if (!nonInteractive) p.log.success(`Registered "${projectName}" → ${cwd}`);
 

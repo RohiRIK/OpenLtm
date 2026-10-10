@@ -7,6 +7,8 @@
 import type { Database } from "bun:sqlite";
 import type { EmbeddingProvider } from "./providers/embeddingProvider.js";
 import { setEmbedding, listMemoryIdsNeedingEmbedding } from "./dao/embeddings.js";
+import { scrubForEgress } from "./secretsScrubber.js";
+import { notPrivateSql } from "./privacy.js";
 
 // --- Provider config (retained for LLM/auto-relate path) ---
 
@@ -201,7 +203,7 @@ export async function embedText(text: string): Promise<Float32Array | null> {
   try {
     const provider = await getEmbeddingProvider();
     if (!await provider.available()) return null;
-    return provider.generate(text);
+    return provider.generate(scrubForEgress(text));
   } catch (e) {
     process.stderr.write(`[embeddings] embedText error: ${e}\n`);
     return null;
@@ -212,15 +214,16 @@ export async function embedText(text: string): Promise<Float32Array | null> {
  * Embed a memory by ID and write the embedding to the memory_embeddings table.
  */
 export async function embedMemory(db: Database, id: number): Promise<void> {
+  // Private-tagged memories never leave the machine: no vector, no provider call.
   const row = db.query<{ content: string }, [number]>(
-    `SELECT content FROM memories WHERE id=?`
+    `SELECT content FROM memories WHERE id=? AND ${notPrivateSql()}`
   ).get(id);
   if (!row) return;
 
   const provider = await getEmbeddingProvider();
   if (!await provider.available()) return;
 
-  const vec = await provider.generate(row.content);
+  const vec = await provider.generate(scrubForEgress(row.content));
   if (!vec) return;
 
   await setEmbedding(db, id, vecToBlob(vec), provider.model, provider.dim);
@@ -248,7 +251,7 @@ export async function backfill(db: Database): Promise<void> {
         `SELECT content FROM memories WHERE id=?`
       ).get(id);
       if (!row) return;
-      const vec = await provider.generate(row.content);
+      const vec = await provider.generate(scrubForEgress(row.content));
       if (vec) {
         await setEmbedding(db, id, vecToBlob(vec), provider.model, provider.dim);
         done++;
@@ -271,7 +274,12 @@ export type SimilarMemory = { id: number; content: string; similarity: number };
 /**
  * Find the top-N most similar memories to the given text using stored embeddings.
  */
-export async function getSimilarMemories(text: string, topN = 5, threshold = 0.5): Promise<SimilarMemory[]> {
+/**
+ * Memories whose embedding is closest to `text`. With `opts.project`, only that
+ * project's memories and globals are candidates, so other projects cannot fill
+ * the top N.
+ */
+export async function getSimilarMemories(text: string, topN = 5, threshold = 0.5, opts: { project?: string } = {}): Promise<SimilarMemory[]> {
   const vec = await embedText(text);
   if (!vec) return [];
   const provider = await getEmbeddingProvider();
@@ -280,6 +288,9 @@ export async function getSimilarMemories(text: string, topN = 5, threshold = 0.5
   const db = getDb();
   const model = provider.model;
   const dim = vec.length;
+
+  const scopeSql = opts.project ? " AND (m.project_scope IS NULL OR m.project_scope = ?)" : "";
+  const scopeParams = opts.project ? [opts.project] : [];
 
   // Fast path: sqlite-vec vec0 KNN. Over-fetch so post-filtering on status and
   // threshold still yields topN. Falls through to brute force when the index is
@@ -295,8 +306,8 @@ export async function getSimilarMemories(text: string, topN = 5, threshold = 0.5
       const rows = db.query<{ id: number; content: string }, Array<number | string>>(
         `SELECT m.id, m.content FROM memories m
          JOIN memory_embeddings e ON e.memory_id = m.id
-         WHERE m.status='active' AND m.id IN (${placeholders}) AND e.model = ? AND e.dim = ?`
-      ).all(...ids, model, dim);
+         WHERE m.status='active' AND m.id IN (${placeholders}) AND e.model = ? AND e.dim = ?${scopeSql}`
+      ).all(...ids, model, dim, ...scopeParams);
       if (rows.length > 0) {
         return rows
           .map(row => ({ id: row.id, content: row.content, similarity: byId.get(row.id) ?? 0 }))
@@ -308,11 +319,11 @@ export async function getSimilarMemories(text: string, topN = 5, threshold = 0.5
   }
 
   // Brute-force JS cosine fallback.
-  const rows = db.query<{ id: number; content: string; embedding: Buffer }, [string, number]>(
+  const rows = db.query<{ id: number; content: string; embedding: Buffer }, Array<number | string>>(
     `SELECT m.id, m.content, e.embedding
      FROM memories m JOIN memory_embeddings e ON e.memory_id = m.id
-     WHERE m.status = 'active' AND e.model = ? AND e.dim = ?`
-  ).all(model, dim);
+     WHERE m.status = 'active' AND e.model = ? AND e.dim = ?${scopeSql}`
+  ).all(model, dim, ...scopeParams);
 
   return rows
     .map(row => ({ id: row.id, content: row.content, similarity: cosineSimilarity(vec, blobToVec(row.embedding)) }))

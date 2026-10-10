@@ -1,6 +1,6 @@
 # ARCHITECTURE — OpenLTM Plugin
 
-* **Version:** 1.4 (against plugin v2.16.2)
+* **Version:** 1.4 (against plugin v2.17.0)
 * **Owner:** Rohi Rikman
 * **Status:** Baseline architecture spec; companion to `docs/internal/PRD.md`
 * **Last updated:** 2026-06-08
@@ -87,14 +87,14 @@ C4Container
   System_Ext(claude, "Claude Code Harness")
 
   System_Boundary(ltm, "LTM Plugin") {
-    Container(mcp, "MCP Server", "Bun + TypeScript, STDIO transport", "Long-lived; serves recall, learn, forget, relate, context, context_items, graph")
-    Container(hooks, "Hook Runners", "Bun scripts invoked by Claude Code", "SessionStart, PreCompact, EvaluateSession, UpdateContext")
-    Container(cmds, "Command + Skill Layer", "Markdown specs in commands/ and skills/", "Slash commands (/openltm:*), skills (ContinuousLearning, GitLearn, Learned, session-context)")
+    Container(mcp, "MCP Server", "Bun + TypeScript, STDIO transport", "Long-lived; serves recall, get, learn, forget, relate, revalidate, context, context_items, context_add, proposals, graph, admin_audit")
+    Container(hooks, "Hook Runners", "Bun scripts invoked by Claude Code", "SessionStart, UserPromptSubmit, PostToolUse, UpdateContext (Stop), EvaluateSession + janitor (SessionEnd), PreCompact")
+    Container(cmds, "Command + Skill Layer", "Markdown specs in commands/ and skills/", "Slash commands (/openltm:*), skills (Ltm, MemoryReview, GitLearn, Spec)")
     Container(graph, "Graph Server", "Bun HTTP server (opt-in)", "Serves graph-app SPA + JSON memory/edge feed")
     Container(graphapp, "Graph App", "Static SPA served by graph server", "Force-directed memory graph viz; Playwright E2E tests")
 
     ContainerDb(db, "openltm.db", "SQLite WAL", "memories, context_items, tags, memory_relations, memories_fts, settings")
-    ContainerDb(reg, "registry.json", "JSON file under ~/.claude/projects/", "cwd → project name mapping")
+    ContainerDb(reg, "registry.json", "JSON file under <dataDir>/projects/", "cwd → project name mapping")
     ContainerDb(summary, "context-summary.md", "Markdown fallback file", "Human-readable context snapshot regenerated on PreCompact")
   }
 
@@ -106,7 +106,7 @@ C4Container
   Rel(hooks, db, "SQL queries (shared via shared-db.ts)")
   Rel(hooks, reg, "Read / write project map")
   Rel(hooks, summary, "Regenerate on PreCompact")
-  Rel(dev, graph, "/openltm:admin server start")
+  Rel(dev, graph, "/openltm:server start")
   Rel(graph, graphapp, "Serves SPA")
   Rel(graphapp, graph, "Fetch /api/memories, /api/relations")
   Rel(graph, db, "Read-only queries")
@@ -405,9 +405,16 @@ The capability system is designed so that **no code path depends on an extension
 
 ### 5.8 Registry (out-of-DB)
 
-`~/.claude/projects/registry.json` holds the cwd → project_name map. It is a JSON
-file (not a table) for cross-plugin readability and trivial inspection. Concurrent
-write safety is **not** guaranteed — a known weakness (§7).
+`<dataDir>/projects/registry.json` (data dir = `LTM_DATA_DIR`, else `CLAUDE_PLUGIN_DATA`,
+else the database's folder) holds the cwd → project_name map. Before 2.17 it lived in
+`~/.claude/projects/`, Claude Code's own transcript directory; that legacy file is copied
+on first access and still read, never written. It is a JSON file (not a table) for
+cross-plugin readability and trivial inspection; writes take an `O_EXCL` lock file.
+
+Every host resolves a project name the same way (`packages/openltm-core/src/project.ts`):
+registry exact match → registry longest-prefix match → git repo root folder name →
+working-directory name, normalized. A host's previous name is kept while it is the only
+one with rows in the DB, so upgrading never orphans memories.
 
 ---
 

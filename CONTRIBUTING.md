@@ -21,13 +21,16 @@ cd OpenLtm
 bun install
 ```
 
+`bun install` in a checkout does **not** touch your `~/.claude` — it no longer wires hooks into your global settings (it used to add one more set per clone or worktree). To run this checkout's hooks in your own Claude Code, load it for one session with `claude --plugin-dir .`, or wire it with `bash install.sh` (or `LTM_WIRE_HOOKS=1 bun install`). Re-wiring replaces any LTM hooks from other checkouts instead of adding duplicates.
+
 The project is a Bun workspace. The storage engine lives in `packages/openltm-core`; host adapters live in `packages/adapter-opencode` and `packages/adapter-pi`.
 
 ### Useful scripts
 
 | Command | What it does |
 |---------|-------------|
-| `bun test` | Run the test suite |
+| `bun run test` | Run the test suite with `HOME`/`CLAUDE_CONFIG_DIR` isolated to a temp dir (fails if the real `~/.claude` changes) |
+| `bun run test:isolated <paths>` | Same isolation, for chosen test files |
 | `bun run typecheck` | `tsc --noEmit` across the project |
 | `bun run build:hooks` | Bundle the git hook (`hooks/GitCommit.bundle.mjs`) |
 | `bun run dev:mcp` | Run the MCP server locally |
@@ -61,9 +64,11 @@ Every release must bump all of:
 New behavior needs tests. Bug fixes start with a failing test that the fix turns green.
 
 ```bash
-bun test
+bun run test
 bun run typecheck
 ```
+
+Tests never touch your real `~/.claude`: a `bunfig.toml` preload refuses to run unless `HOME` is a temp dir. For a single file use `bun run test:isolated <path>` or `HOME=$(mktemp -d) bun test <path>`.
 
 Both must pass before a PR is reviewable. E2E tests for the graph app live under `graph-app/` and run with `bun run test:e2e`.
 
@@ -75,7 +80,7 @@ Both must pass before a PR is reviewable. E2E tests for the graph app live under
 
 1. Branch from `main`.
 2. Make the change with tests; keep the diff focused.
-3. `bun test && bun run typecheck && bun run verify-version`.
+3. `bun run test && bun run typecheck && bun run verify-version`.
 4. Open a PR describing **what** changed and **why**. Link the issue.
 5. CI runs typecheck, tests, and a security scan. Green CI + one approval merges.
 

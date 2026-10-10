@@ -1,144 +1,89 @@
-import { describe, it, expect, beforeAll, afterAll } from "bun:test";
-import { readFileSync, unlinkSync } from "fs";
+/**
+ * Pi extension — the real entry point (src/index.ts, what dist/index.js is built
+ * from), driven with a stub Pi host. It bridges to a real `mcp-serve` child over
+ * stdio against a temp DB, exactly as Pi runs it. (The old tests exercised
+ * hooks.ts/tools.ts, which Pi never loaded.)
+ */
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync } from "fs";
+import { tmpdir } from "os";
 import { join } from "path";
-import { Database } from "bun:sqlite";
 
-const dbPath = `/tmp/test-pi-ltm-${process.pid}-${Date.now()}.db`;
-const SCHEMA_PATH = join(import.meta.dir, "..", "..", "..", "openltm-core", "src", "schema.sql");
+type Tool = { name: string; execute: (id: string, params: Record<string, unknown>) => Promise<{ content: Array<{ text: string }> }> };
+type Handler = (event: unknown) => Promise<unknown> | unknown;
 
-function createMockPi() {
-  const tools: Array<{
-    name: string;
-    label: string;
-    description: string;
-    parameters: unknown;
-    execute: (toolCallId: string, params: Record<string, unknown>) => Promise<unknown>;
-  }> = [];
-  const handlers: Record<string, Array<(...args: unknown[]) => unknown>> = {};
+function createStubPi() {
+  const tools = new Map<string, Tool>();
+  const handlers = new Map<string, Handler>();
   return {
     tools,
     handlers,
-    registerTool(def: typeof tools[0]) { tools.push(def); },
-    on(event: string, handler: (...args: unknown[]) => unknown) {
-      if (!handlers[event]) handlers[event] = [];
-      handlers[event]!.push(handler);
-    },
+    registerTool(def: Tool) { tools.set(def.name, def); },
+    on(event: string, handler: Handler) { handlers.set(event, handler); },
   };
 }
 
-beforeAll(async () => {
-  const { runPendingMigrations, _setDbForTesting } = await import("@rohirik/openltm-core");
-  const db = new Database(dbPath, { create: true });
-  db.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
-  db.exec(readFileSync(SCHEMA_PATH, "utf-8"));
-  await runPendingMigrations(db);
-  _setDbForTesting(db);
-}, 30_000);
+async function until(cond: () => boolean, ms = 20_000): Promise<void> {
+  const t0 = Date.now();
+  while (!cond()) {
+    if (Date.now() - t0 > ms) throw new Error("timed out waiting for the MCP bridge");
+    await Bun.sleep(50);
+  }
+}
 
-afterAll(() => {
-  try { unlinkSync(dbPath); } catch {}
-  try { unlinkSync(`${dbPath}-shm`); } catch {}
-  try { unlinkSync(`${dbPath}-wal`); } catch {}
-});
+const text = (r: { content: Array<{ text: string }> }) => r.content.map((c) => c.text).join("\n");
 
-describe("Pi LTM extension — registerTools()", () => {
-  it("registers exactly 3 tools", async () => {
-    const { registerTools } = await import("../tools.js");
-    const pi = createMockPi();
-    registerTools(pi);
-    expect(pi.tools).toHaveLength(3);
+describe("Pi extension (real entry point over the MCP bridge)", () => {
+  const root = mkdtempSync(join(tmpdir(), "ltm-pi-"));
+  // Under Bun (this runner) node:sqlite is unavailable, so the legacy-name check
+  // cannot run and keeps the raw folder name; use one that is already normalized.
+  // Mixed-case unification is exercised under real Node in scripts/qa/adapters-smoke.ts.
+  const cwd = join(root, "code", "pi-demo");
+  const saved = { LTM_DB_PATH: process.env.LTM_DB_PATH, CLAUDE_PLUGIN_DATA: process.env.CLAUDE_PLUGIN_DATA };
+  const pi = createStubPi();
+
+  beforeAll(async () => {
+    mkdirSync(join(cwd, ".git"), { recursive: true });
+    process.env.LTM_DB_PATH = join(root, "openltm.db");
+    delete process.env.CLAUDE_PLUGIN_DATA;
+    const { default: ltmExtension } = await import("../index.js");
+    ltmExtension(pi);
+    await until(() => pi.tools.has("learn") && pi.tools.has("context_add"));
+  }, 30_000);
+
+  afterAll(() => {
+    for (const [k, v] of Object.entries(saved)) v === undefined ? delete process.env[k] : (process.env[k] = v);
+    rmSync(root, { recursive: true, force: true });
   });
 
-  it("registers ltm_recall, ltm_learn, ltm_forget", async () => {
-    const { registerTools } = await import("../tools.js");
-    const pi = createMockPi();
-    registerTools(pi);
-    const names = pi.tools.map(t => t.name);
-    expect(names).toContain("ltm_recall");
-    expect(names).toContain("ltm_learn");
-    expect(names).toContain("ltm_forget");
-  });
-
-  it("tools have label and description", async () => {
-    const { registerTools } = await import("../tools.js");
-    const pi = createMockPi();
-    registerTools(pi);
-    for (const tool of pi.tools) {
-      expect(tool.label).toBeTruthy();
-      expect(tool.description).toBeTruthy();
+  it("registers every MCP tool and hooks before_agent_start + session_compact", () => {
+    for (const name of ["recall", "get", "learn", "context", "context_items", "context_add", "proposals"]) {
+      expect(pi.tools.has(name)).toBe(true);
     }
-  });
-});
-
-describe("Pi LTM extension — registerHooks()", () => {
-  it("registers before_agent_start and session_compact hooks", async () => {
-    const { registerHooks } = await import("../hooks.js");
-    const pi = createMockPi();
-    registerHooks(pi);
-    expect(pi.handlers["before_agent_start"]?.length).toBeGreaterThan(0);
-    expect(pi.handlers["session_compact"]?.length).toBeGreaterThan(0);
+    expect(pi.handlers.has("before_agent_start")).toBe(true);
+    expect(pi.handlers.has("session_compact")).toBe(true);
   });
 
-  it("before_agent_start returns systemPrompt with Prior Knowledge when memories exist", async () => {
-    const { learn } = await import("@rohirik/openltm-core");
-    learn({
-      content: "Pi test memory — use strict types",
-      category: "pattern",
-      importance: 3,
-      project_scope: "pi-test-proj",
-      skipExport: true,
-    });
+  it("learn → before_agent_start injects it for the project resolved from cwd", async () => {
+    const learned = JSON.parse(text(await pi.tools.get("learn")!.execute("t1", {
+      content: "Pi demo: deploys go through the blue/green switch, never in place", category: "workflow", importance: 3, project: "pi-demo",
+    }))) as { id: number };
+    const res = (await pi.handlers.get("before_agent_start")!({ cwd, systemPrompt: "BASE" })) as { systemPrompt: string };
+    expect(res.systemPrompt.startsWith("BASE\n\n## Prior Knowledge (LTM)")).toBe(true);
+    expect(res.systemPrompt).toContain(`Project (pi-demo):`);
+    expect(res.systemPrompt).toContain(`[${learned.id}] Pi demo: deploys go through the blue/green switch`);
+  }, 30_000);
 
-    const { registerHooks } = await import("../hooks.js");
-    const pi = createMockPi();
-    registerHooks(pi);
+  it("session_compact records the summary as project progress via context_add", async () => {
+    const summary = "Compacted session: wired the blue/green deploy switch and documented the rollback steps for the demo service.";
+    await pi.handlers.get("session_compact")!({ cwd, summary });
+    const items = text(await pi.tools.get("context_items")!.execute("t2", { project: "pi-demo", type: "progress" }));
+    expect(items).toContain("Compacted: Compacted session: wired the blue/green deploy switch");
+  }, 30_000);
 
-    const result = await pi.handlers["before_agent_start"]![0]!({
-      cwd: "/tmp/pi-test-proj",
-      systemPrompt: "",
-    }) as { systemPrompt?: string } | undefined;
-
-    expect(result?.systemPrompt).toContain("Prior Knowledge");
-  });
-
-  it("before_agent_start returns undefined when no memories for project", async () => {
-    const { registerHooks } = await import("../hooks.js");
-    const pi = createMockPi();
-    registerHooks(pi);
-
-    const result = await pi.handlers["before_agent_start"]![0]!({
-      cwd: "/tmp/empty-pi-project-xyz-no-memories",
-      systemPrompt: "",
-    });
-
-    expect(result).toBeUndefined();
-  });
-});
-
-describe("ltm_learn / ltm_recall roundtrip via Pi tools", () => {
-  it("stores and retrieves a memory", async () => {
-    const { registerTools } = await import("../tools.js");
-    const pi = createMockPi();
-    registerTools(pi);
-
-    const learnTool = pi.tools.find(t => t.name === "ltm_learn")!;
-    const recallTool = pi.tools.find(t => t.name === "ltm_recall")!;
-
-    const learnResult = await learnTool.execute("call-1", {
-      content: "Pi roundtrip test — always verify types",
-      category: "gotcha",
-      importance: 4,
-    }) as { content: Array<{ type: string; text: string }> };
-
-    const learned = JSON.parse(learnResult.content[0]!.text) as { id: number; action: string };
-    expect(learned.id).toBeGreaterThan(0);
-    expect(learned.action).toBe("created");
-
-    const recallResult = await recallTool.execute("call-2", {
-      query: "Pi roundtrip verify types",
-    }) as { content: Array<{ type: string; text: string }> };
-
-    const memories = JSON.parse(recallResult.content[0]!.text) as Array<{ id: number }>;
-    expect(memories.some(m => m.id === learned.id)).toBe(true);
-  });
+  it("ignores short compaction summaries", async () => {
+    await pi.handlers.get("session_compact")!({ cwd, summary: "too short" });
+    const items = text(await pi.tools.get("context_items")!.execute("t3", { project: "pi-demo", type: "progress" }));
+    expect(items).not.toContain("too short");
+  }, 30_000);
 });

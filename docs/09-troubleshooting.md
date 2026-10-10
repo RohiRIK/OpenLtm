@@ -29,7 +29,14 @@ The MCP tools are exposed as `mcp__plugin_openltm_memory__<tool>` (e.g. `recall`
 
 1. Restart the agent — the MCP server connects at startup.
 2. Run `/openltm:health` to confirm the server is registered.
-3. In Claude Code specifically, MCP servers are wired by the plugin manifest; a stale install can leave the old `ltm` server key behind. Reinstall the plugin if the prefix still reads `mcp__plugin_ltm_memory__`.
+3. If `claude mcp list` (or `/mcp`) shows `plugin:openltm:memory` as failed, run the probe from the project you open in Claude Code:
+
+   ```bash
+   bun <plugin root>/scripts/mcp-probe.ts   # installed plugin: ~/.claude/plugins/cache/OpenLtm/openltm/<version>
+   ```
+
+   It starts the server the way Claude Code does and prints a `FAIL` line for each cause it can see: no `bun` on the PATH, `mcp.enabled: false` in the LTM config, a handshake slower than Claude Code's 30s, or a startup error in the server's stderr. It also prints the tail of Claude Code's own log for the server. Pass `--plugin-data <dir>` if it can't pick the data dir.
+4. In Claude Code specifically, MCP servers are wired by the plugin manifest; a stale install can leave the old `ltm` server key behind. Reinstall the plugin if the prefix still reads `mcp__plugin_ltm_memory__`.
 
 ---
 
@@ -61,7 +68,7 @@ If the `ltm_*` tools are missing **inside** the OpenCode TUI:
 SQLite allows one writer at a time. A lock usually means a previous process didn't release the WAL.
 
 1. Close other agent sessions touching the same database.
-2. Check for an orphaned graph server: `/openltm:admin server status`, then `/openltm:admin server stop`.
+2. Check for an orphaned graph server: `/openltm:server status`, then `/openltm:server stop`.
 3. Background processes can hold the lock invisibly. If you launched one, kill it before retrying.
 
 ---
@@ -88,8 +95,29 @@ Claude Code labels `additionalContext` injections from `PreToolUse` hooks as err
 
 The graph server runs on port **7332**.
 
-1. `/openltm:admin server start`, then open the printed URL.
-2. If the port is taken, stop the stale instance: `/openltm:admin server stop`.
+1. `/openltm:server start`, then open the printed URL.
+2. If the port is taken, stop the stale instance: `/openltm:server stop`.
+
+---
+
+## The graph API returns 403 or 415, or is unreachable from another machine
+
+The API server (port **7331**) has no authentication, so it is **local-only by design**:
+
+- It binds to `127.0.0.1`. It is not reachable from your LAN.
+- It answers only when the `Host` header is `localhost`, `127.0.0.1` or `[::1]`. Any other host (including a LAN IP or a custom hostname) gets **403**. This blocks DNS-rebinding attacks.
+- Browser requests from any origin other than `http://localhost:*`, `http://127.0.0.1:*` or `http://[::1]:*` get **403**. Open the UI at `http://localhost:7332`, not at a LAN IP or hostname.
+- `POST`/`PUT`/`PATCH`/`DELETE` requests that carry a body must send `Content-Type: application/json`, or they get **415**. Plain `curl http://localhost:7331/api/...` GETs and body-less `curl -X POST` calls still work.
+- Provider API keys are shown masked (`••••` plus the last 4 characters) in `GET /api/settings` and `GET /api/config`. Sending the masked value back leaves the stored key unchanged. To replace a key, type the new one.
+- `POST /api/reveal` only opens paths inside the database directory.
+
+To bind another address (for example `0.0.0.0` inside a container whose port is published only to the host's loopback), set `LTM_SERVER_HOST`:
+
+```
+LTM_SERVER_HOST=0.0.0.0 bun src/graph-server.ts
+```
+
+The server prints a **WARNING** to stderr whenever it binds a non-loopback address. Anyone who can reach that address can read, delete and merge every memory and change your settings. The Host and Origin checks still apply, but they stop browsers, not other clients. Never expose this on a shared or untrusted network.
 
 ---
 

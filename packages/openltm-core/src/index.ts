@@ -3,12 +3,12 @@ export type { LtmCoreConfig, LtmAdapterContext, LtmAdapterOptions } from "./adap
 
 // DB singleton + configuration
 export { getDb, initDb, configure, waitForInit, _setDbForTesting, withRetry, DB_PATH,
-         getSetting, setSetting, getAllSettings } from "./shared-db.js";
+         getSetting, setSetting, getAllSettings, getConfiguredDbPath } from "./shared-db.js";
 export { configureCore, configureDocs } from "./db.js";
 
 // Core memory operations
 export {
-  learn, recall, forget, relate, getSimilarMemories,
+  learn, recall, getMemoryById, forget, relate, getSimilarMemories,
   getContextMerge, getContextMergeWithGraph, computeDecayScore,
   exportMarkdown, exportGraphJson, flagStaleByPaths, revalidate,
 } from "./db.js";
@@ -33,7 +33,8 @@ export { setEmbedding, getEmbedding, deleteEmbedding, listMemoryIdsMissingEmbedd
 export { listByProject, upsertGoal, appendProgress, addDecision, addGotcha } from "./dao/contextItems.js";
 
 // Utilities
-export { scrubSecrets } from "./secretsScrubber.js";
+export { scrubSecrets, scrubOrRefuse, scrubForEgress, isEgressScrubFailed, SCRUB_FAILED_PLACEHOLDER, _forceScrubThrowForTesting } from "./secretsScrubber.js";
+export { PRIVATE_TAG, hasPrivateTag, filterPrivateMemories } from "./privacy.js";
 export { normalizeKey } from "./dedup.js";
 export { normalizeAnchorPath, normalizeAnchorPaths } from "./anchors.js";
 export { embedText, getLlmConfig, callLlm } from "./embeddings.js";
@@ -43,14 +44,33 @@ export { categorise } from "./recall/categorise.js";
 export { buildExplainer, computeTemperature } from "./recall/explainer.js";
 export type { MemoryTemperature, RecallExplainer, ExplainerInput } from "./recall/explainer.js";
 
+// Project identity — the one cwd → project_scope resolver every host uses
+export {
+  normalizeProjectName, findRepoRoot, repoIdentityRoot, fallbackProjectName,
+  resolveProjectName, resolveProjectNameDetailed,
+  legacyClaudeSlug, legacyLastSegment,
+  readRegistryFile, loadProjectRegistry, migrateLegacyRegistry,
+  migrateLegacyContextFiles, hasContextFiles, isSafeProjectDirName, CONTEXT_FILES,
+  projectHasData, getHomeDir, getLegacyClaudeDir, getClaudeTranscriptsDir, getLegacyRegistryPath,
+} from "./project.js";
+export type {
+  ProjectRegistry, ProjectDataProbe, ProjectNameSource, ResolveProjectNameOptions,
+  ProjectNameResolution, ProbeDb, ProbeDbOpener,
+} from "./project.js";
+export { createProjectDataProbe } from "./projectProbe.js";
+
+// Storage locations (data dir, registry, config)
+export { getDataDir, getProjectsDir, getRegistryPath, getConfigPath, getLegacyConfigPath } from "./paths.js";
+
 // Session prefill helpers
 export { buildPrefillContext, deriveProjectFromCwd, selectPrefillMemories } from "./prefill.js";
 export type { PrefillOptions, PrefillSelection, PrefillCategory, PrefillQuotaReport } from "./prefill.js";
 export { PREFILL_DEFAULTS } from "./prefill.js";
 
-// Recall ranking
+// Recall ranking (hybrid FTS + semantic, fused with Reciprocal Rank Fusion)
 export { rankRecallResults, isOperationalNoise } from "./db.js";
-export { RANK_WEIGHTS } from "./db.js";
+export { RANK_WEIGHTS, RRF_K, reciprocalRankFusion, fuseRecallRankings, buildFtsQuery, _setRecallSemanticSearchForTesting } from "./db.js";
+export type { RankedList, RecallSemanticSearch } from "./db.js";
 
 // Text similarity (prefill dedupe + learn hygiene)
 export { isNearDuplicate, jaccardSimilarity, tokenize, tokenizeAll } from "./similarity.js";
@@ -67,13 +87,16 @@ export type { PendingProposal } from "./proposals.js";
 
 // Janitor
 export {
-  runJanitor, getJanitorStatus, startAutoRun, stopAutoRun,
+  runJanitor, runJanitorExclusive, getJanitorStatus, startAutoRun, stopAutoRun,
   runArchive, touchMemory,
   approveMemory, getPendingMemories, rejectMemory,
   mergeMemories, parseDedupSource,
-  supersede,
+  supersede, stageContradictions, listStagedConflicts, detectContradictions, sanitizeStagingTerm,
+  acceptStagedConflict, rejectStagedConflict, coexistStagedConflict,
   getEmbeddingProvider, semanticSearch, findSimilarMemories,
 } from "./janitor/index.js";
+export type { Contradiction, StagedConflict } from "./janitor/index.js";
+export { acquireJanitorLock, janitorLockPath } from "./janitor/lock.js";
 export { runDecay } from "./janitor/decay.js";
 export { SETTING_KEYS, SETTING_DEFAULTS } from "./janitor/providers/types.js";
 export { anthropicLLM } from "./janitor/providers/anthropic.js";
