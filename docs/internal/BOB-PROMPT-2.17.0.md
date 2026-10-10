@@ -1,35 +1,41 @@
-# Prompt for Bob: verify OpenLTM 2.17.0 (round 3) and open the release PR
+# Prompt for Bob: verify OpenLTM 2.17.0 (round 4) on release PR #39
 
-You are verifying the OpenLTM 2.17.0 release candidate. If it holds up, you open one pull request with everything. Your job is to find what is broken, not to confirm that it works. Work independently. Stop and report only on a blocker you cannot get past.
+You are verifying the OpenLTM 2.17.0 release candidate. The release PR already exists: **#39**, which you opened in round 3. Your job is to find what is broken, not to confirm that it works. Work independently. Stop and report only on a blocker you cannot get past.
 
-**This is round 3.** Your round-2 report (REJECT at `2b62f7a`) is answered in `docs/internal/HANDOFF-2.17.0.md` §R3:
-- **F1** is fixed.
-- **I7** came from a wrong acceptance criterion in the round-2 prompt. The corrected criterion is in step 4.9 below.
-- The original-config MCP failure needs data from your machine (step 3b).
+**This is round 4.** Your round-3 report (REJECT at `29ff90e`) is answered in `docs/internal/HANDOFF-2.17.0.md` §R4:
+- **S-CI:** the three dependencies are patched, and Trivy is green on PR #39.
+- **J-health:** `/openltm:health` reads the real data dir and DB.
+- **B-quality:** proposals skip failed probes and one-off scripts.
 
-Re-verify every §R3 item yourself before anything else in step 4. §R2 (round 1) items stay in scope.
+Two more bugs were found while fixing these; both are in §R4:
+- Claude Code names the plugin's data dir `openltm-OpenLtm`, not `OpenLtm-openltm`, so Pi did not share Claude Code's DB.
+- `/openltm:admin scan --dry-run` wrote changes.
+
+Re-verify every §R4 item yourself. §R3 and §R2 items stay in scope.
 
 ## What you are testing
 
 - **Repository:** `RohiRIK/OpenLtm` (GitHub). Branch: `feat/2.17-hardening`. Base: `main`.
 - **Version:** `2.17.0`. It is unreleased: not merged, not tagged, not published.
-- **Scope:** the branch consolidates open PRs #27–#38 and six hardening workstreams. It also includes the fixes from three verification rounds.
+- **Scope:** the branch consolidates open PRs #27–#38 and six hardening workstreams. It also includes the fixes from four verification rounds.
 - **Full test plan:** `docs/internal/HANDOFF-2.17.0.md`. It is the source of truth for expected results; this prompt is the order to work in.
-- **What changed:** see `CHANGELOG.md` → `## [2.17.0]`, including "Fixed after the release verification (round 3)".
+- **What changed:** see `CHANGELOG.md` → `## [2.17.0]`, including "Fixed after the release verification (round 4)".
 
 ## Hard rules
 
 1. **Never run tests against your real `~/.claude`.** Every script and `bun run test` isolate `HOME` on their own. Step 3 changes your real Claude Code setup on purpose; back up first, as described there.
 2. **Never use** `git push --force`, merge, tag, `npm publish`, or the Release/Publish workflows. Publishing happens only after the owner merges.
-3. **Only one GitHub write:** open a PR in step 6, and only if your verdict is APPROVE. Never push commits to `feat/2.17-hardening`. If you find a bug, report it with a proposed patch; don't fix it on the branch.
+3. **Only one GitHub write:** one comment on PR #39 with your report and verdict (step 6), whatever the verdict. Don't open another PR. Don't edit, merge or close #39. Never push commits to `feat/2.17-hardening`. If you find a bug, report it with a proposed patch; don't fix it on the branch.
 4. **Evidence for every claim.** Record the exact command, its exit code, and the relevant output. A "PASS" with no output counts as "not run".
 
-## Step 0: State left by round 2
+## Step 0: State left by round 3
 
 Check and report, change nothing:
 
 ```bash
-bun ~/src/OpenLtm/scripts/unwire-legacy-hooks.ts --check   # round 2 removed the legacy hooks: expect exit 0
+claude --version
+ls -la ~/.claude/plugins/data/                              # which plugin data dirs exist on your machine (step 4.13)
+bun ~/src/OpenLtm/scripts/unwire-legacy-hooks.ts --check   # expect exit 0
 ls -la --time-style=full-iso "${XDG_CONFIG_HOME:-$HOME/.config}/opencode/opencode.json" ~/.pi/agent/settings.json "${XDG_CONFIG_HOME:-$HOME/.config}/mise/config.toml" 2>&1
 git config --global --get core.hooksPath
 ```
@@ -50,26 +56,27 @@ Run each gate and record its exit code and the summary lines. Expected results a
 | Gate | Command | Must show |
 |---|---|---|
 | G1 | `bun run typecheck` | exit 0 |
-| G2 | `bun run test` — in your normal shell, **no** `env -u XDG_CONFIG_HOME` or PATH changes | `830 pass`, `0 fail`, `real ~/.claude untouched` (more pass is fine, any fail is not) |
+| G2 | `bun run test` — in your normal shell, **no** `env -u XDG_CONFIG_HOME` or PATH changes | `841 pass`, `0 fail`, `real ~/.claude untouched` (more pass is fine, any fail is not) |
 | G2b | `sha256sum` of `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` and `~/.pi/agent/settings.json` before and after G2, plus `pi list` before and after | identical; your `pi` and `mise` were not run |
 | G3 | `bun run verify-version` | `All version references in sync.` |
 | G4 | `bun run check:openclaw` | `All 17 OpenClaw package checks passed.` |
 | G5 | `claude plugin validate .` | `Validation passed` (one expected warning about the root `CLAUDE.md`) |
 | G6 | `bun run build:hooks && git diff --exit-code hooks/GitCommit.bundle.mjs` | no diff |
-| G7 | `bun run qa:smoke` | six `All … smoke checks passed.` lines (83 checks; new: `continuity`) |
+| G7 | `bun run qa:smoke` | six `All … smoke checks passed.` lines (83 checks) |
 | G7b | `bun run qa:ui` | `32 passed` (Playwright/Chromium; set `PLAYWRIGHT_CHROMIUM=<path>` if the bundled browser is missing) |
 | G7c | `bun run scripts/qa/prompt-recall-eval.ts` | `precision=95.2%  recall=94.5%` |
 | G8 | `cd packages/adapter-pi && bun run build && grep -c bun:sqlite dist/index.js` (repeat in `packages/adapter-openclaw`) | `0` |
+| G9 | `gh pr checks 39 --repo RohiRIK/OpenLtm` (read-only) | `Typecheck & Test`, `Trivy CVE Scan` and `verify` all pass **for the SHA you tested** (`gh pr view 39 --json headRefOid`). Wait for them to finish before the verdict. |
 
 ## Step 3: Update OpenLTM in your Claude Code to 2.17.0 from this branch
 
 Back up first:
 
 ```bash
-cp -a ~/.claude/plugins/data ~/openltm-backup-r3-plugin-data
-cp ~/.claude.json ~/openltm-backup-r3-claude.json
-cp ~/.claude/settings.json ~/openltm-backup-r3-settings.json
-cp -a ~/.claude/projects/registry.json ~/openltm-backup-r3-registry.json 2>/dev/null
+cp -a ~/.claude/plugins/data ~/openltm-backup-r4-plugin-data
+cp ~/.claude.json ~/openltm-backup-r4-claude.json
+cp ~/.claude/settings.json ~/openltm-backup-r4-settings.json
+cp -a ~/.claude/projects/registry.json ~/openltm-backup-r4-registry.json 2>/dev/null
 ```
 
 Use one database for everything: either set nothing (hooks and MCP both use `$CLAUDE_PLUGIN_DATA/openltm.db`), or export `LTM_DB_PATH` (it applies to hooks **and** the MCP server). Don't set `LTM_DATA_DIR` unless you mean it.
@@ -104,7 +111,7 @@ Either way, confirm the loaded version is **2.17.0** and that 12 tools `mcp__plu
 
 ### Step 3b: Your original config — does the MCP server connect?
 
-In round 2 the server showed as failed in your original `~/.claude` config, but connected under a fresh `CLAUDE_CONFIG_DIR`. Run this **in your original config**, from the repo you test in:
+This passed in round 3. Repeat it, because the MCP SDK moved to 1.32.1. Run it **in your original config**, from the repo you test in:
 
 ```bash
 cd <the repo from step 3>
@@ -132,6 +139,10 @@ Rules for this step:
 
 Do a real piece of work in a git repo that already has 2.16 memories (Option B), or in a scratch repo (Option A).
 
+Items 1–7, 9 and 10 passed in round 3 at `29ff90e`. Since then, the MCP SDK, the plugin data dir resolution, three commands and the proposal filter have changed.
+- **Re-run** items 1, 2, 4, 6 and 9, and the new items 11–13.
+- Items 3, 5, 7 and 10 may cite your round-3 evidence if you are short of time; say so in the report. G7b re-covers the UI actions of 7 and 10.
+
 1. **Existing data survives.**
    - Your 2.16 projects resolve to the same names (HANDOFF §3-I).
    - `context` returns your old goals and decisions.
@@ -148,7 +159,7 @@ Do a real piece of work in a git repo that already has 2.16 memories (Option B),
 5. **Commits** (§3-E): commit through Claude. Memories anchored to the committed files become stale. `git commit --amend` and an empty commit don't double-flag.
 6. **End of session:** exit the session.
    - `learned/patterns/` in the plugin data dir (next to that `openltm.db`) gains one file.
-   - `/openltm:memory propose review` lists only real proposals.
+   - `/openltm:memory propose review` lists only real proposals. During the session, have Claude run a failing probe (`ls /nonexistent-openltm`) and a failing one-off (`bun -e 'throw new Error("one-off")'`). Neither may become a proposal (round-3 B-quality). A failing project command may.
    - `janitor.log` next to the DB shows a run, or a "skipped: not due".
    - The plugin checkout gains no files (`git status` stays clean).
 7. **Graph UI:** run `/openltm:server start`.
@@ -170,6 +181,32 @@ Do a real piece of work in a git repo that already has 2.16 memories (Option B),
     - The table must update at once (the delete was stale until round 3), and both changes must survive a reload.
     - G7b now automates this; do it by hand once anyway.
 
+11. **`/openltm:health` in your original config** (round-3 J-health): no `LTM_DB_PATH` or `CLAUDE_PLUGIN_DATA` in your shell.
+    - No generated Bash subcommand fails.
+    - Janitor Status shows counts from the database that `mcp-probe.ts` printed, not "no such table".
+    - The Log Health paths are in that data dir.
+12. **`/openltm:admin scan --dry-run` is a dry run.** Use a scratch database, never your real one:
+
+    ```bash
+    export LTM_DB_PATH=/tmp/openltm-scan-check/scan.db; mkdir -p /tmp/openltm-scan-check
+    (cd ~/src/OpenLtm && bun -e 'const c=await import("@rohirik/openltm-core"); await c.waitForInit(); c.getDb().run("INSERT INTO memories (content, category, importance, status, dedup_key) VALUES (?, ?, 3, ?, ?)", ["deploy key AKIAIOSFODNN7EXAMPLE rotates monthly", "gotcha", "active", "scan-check"])')
+    claude -p "/openltm:admin scan --dry-run" --plugin-dir ~/src/OpenLtm --allowedTools Bash
+    sqlite3 $LTM_DB_PATH "select content from memories where dedup_key='scan-check'"   # still contains the key
+    claude -p "/openltm:admin scan" --plugin-dir ~/src/OpenLtm --allowedTools Bash
+    sqlite3 $LTM_DB_PATH "select content from memories where dedup_key='scan-check'"   # [REDACTED:aws-access-key]
+    unset LTM_DB_PATH
+    ```
+
+13. **The plugin data dir name** (found in round 4):
+    - From step 0's `ls`: an OpenLTM plugin installed from a marketplace keeps its data in `openltm-<marketplace>`, e.g. `openltm-OpenLtm`. `--plugin-dir` gives `openltm-inline`. Report what your Claude Code version created.
+    - If the plugin is installed from a marketplace (your 2.16 install, or Option B), check Pi's discovery with the built bundle. It is read-only: it only resolves paths.
+
+      ```bash
+      cd ~/src/OpenLtm/packages/adapter-pi && bun run build && node --input-type=module -e "const m = await import('./dist/index.js'); console.log(JSON.stringify(m.findMcpServer()))"
+      ```
+
+      `dbPath` must be that plugin's `openltm.db`, the one in the dir from step 0.
+
 From HANDOFF §3, also cover whatever else you have time for. In priority order: I (identity and storage, user data), A2, H1, E1, F2, J2.
 
 ## Step 5: Report and verdict
@@ -177,38 +214,22 @@ From HANDOFF §3, also cover whatever else you have time for. In priority order:
 Report every finding in the format from HANDOFF §6 (ID / Severity / Command / Expected / Actual / Notes). End with a table of area → pass / fail / not run (with the reason), then one verdict.
 
 - **APPROVE** requires all of these:
-  - all gates pass, with G2 run in your normal shell;
-  - every §R3 item re-verified;
+  - all gates pass, including G9 (CI green on the tested SHA) and G2 run in your normal shell;
+  - every §R4 item re-verified;
   - step 3b passes, or its failure is shown to come from your setup;
   - no blocker or major findings;
-  - step 4 items 1–6, 9 and 10 pass.
-- **REJECT:** anything else. List the blockers, each with a proposed fix, and stop. No PR.
+  - step 4 items 1, 2, 4, 6, 9, 11, 12 and 13 pass in this round, and items 3, 5, 7 and 10 pass (this round or round 3).
+- **REJECT:** anything else. List the blockers, each with a proposed fix.
 
-## Step 6: Only if APPROVE, open the PR
+## Step 6: One comment on PR #39
 
-Open one PR from `feat/2.17-hardening` into `main`. Don't merge it.
-
-- **Title:** `release: 2.17.0 — hardening, prompt-time recall, unified project identity (consolidates #27–#38)`
-- **Body:** follow `.github/PULL_REQUEST_TEMPLATE.md`.
-  - **Summary:** 3 bullets taken from the CHANGELOG 2.17.0 intro and its Security / Added sections.
-  - **Changes:** list the main areas and link to `CHANGELOG.md` for the full list:
-    - graph-server security;
-    - privacy and scrubbing;
-    - hook lifecycle, and the new UserPromptSubmit/PostToolUse hooks;
-    - MCP tools;
-    - hybrid recall;
-    - unified project identity and the storage move;
-    - the standalone janitor;
-    - skills consolidation.
-  - **Test plan:** tick only the boxes you actually verified. Paste your gate table (commands + results) and the step 3b and step 4 results. State the commit SHA you tested.
-  - **Related:** "Supersedes #27, #28, #29, #30, #31, #32, #33, #34, #35, #36, #37, #38. Close them after this merges."
-- Comment once on the PR with your full report from step 5.
+Post exactly one comment on PR #39, whatever the verdict. Its body is your full step-5 report. It starts with `Round 4: APPROVE at <sha>` or `Round 4: REJECT at <sha>`. The PR body still shows your round-3 pre-CI approval; this comment supersedes it. Don't edit the PR body, merge, close, or open another PR.
 
 Then hand back to the owner with:
-- the PR link;
+- the comment link;
 - your verdict;
 - the list of anything "not run";
-- the post-merge steps from `CLAUDE.md`:
+- on APPROVE, the post-merge steps from `CLAUDE.md`:
   - tag `v2.17.0` and push it (the Release and Publish workflows run via OIDC);
   - `bun run catalog:sync`, plus a re-pin PR to `NousResearch/hermes-agent`;
   - close #27–#38.

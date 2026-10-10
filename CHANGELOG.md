@@ -76,6 +76,16 @@ The first independent verification rejected the candidate; these are its finding
 - **Graph UI lists went stale after an inspector edit or delete.** On the project and memory-table pages, a deleted memory stayed listed, and an edit kept its old text, until a manual reload. Both pages now refetch.
 - **Diagnostics:** `scripts/mcp-probe.ts` starts the MCP server the way Claude Code does and says why it would show as failed. The new `qa/continuity-smoke.ts` checks the default database end to end: an MCP `learn` reaches the next SessionStart under an alternate `CLAUDE_CONFIG_DIR`, with exactly one database. The Ltm skill now says when a `learn` is global and which memories the SessionStart index lists.
 
+### Fixed after the release verification (round 4)
+- **Security CI:** patched the three dependency findings.
+  - `@modelcontextprotocol/sdk` now requires ≥ 1.31.0 (1.32.1 locked) in the root and in `openltm-core`.
+  - `proxy-addr` 2.0.8 via override.
+  - `source-map-js` 1.2.2 in the graph app.
+- **The plugin's data dir is `openltm-OpenLtm`.** Claude Code names an installed plugin's data dir `<plugin>-<marketplace>`; OpenLTM assumed `OpenLtm-openltm`. So the Pi adapter opened a separate database instead of Claude Code's, and fallbacks wrote logs and proposals where nothing read them. All of them now use the dir Claude Code uses; a database under the old name is still found. The bunx installer shares the plugin's database.
+- **`/openltm:health`** read an empty in-memory database ("no such table: settings") and the wrong log dir, because the model's shell has no `CLAUDE_PLUGIN_DATA`. Commands now use the path Claude Code substitutes into them.
+- **`/openltm:admin scan --dry-run` wrote changes.** The flag was never read. The scan also imported a file that had moved, and opened no real database. All three are fixed.
+- **Session proposals** no longer include failures of read-only probes (`ls`, `lsof`, `curl`…) or one-off scripts (`bun --eval`, `sqlite3`…), and drop the `Exit code N` prefix.
+
 ### Removed
 - Skills `ContinuousLearning`, `session-context`, `Learned`, `LtmServer`; committed session logs; `r2-split-harness/`, `scripts/tmp_*`, `verify_split*.ts`.
 

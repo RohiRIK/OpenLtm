@@ -1,10 +1,33 @@
 # Test handoff: OpenLTM 2.17.0
 
 **For:** QA / test agents.
-**Branch:** `feat/2.17-hardening` (base `main` @ `d35e2cf`, 110 commits, 282 files).
-**Status:** round 3. Round 2 (Bob, at `2b62f7a`) was a REJECT with two findings, F1 and I7; §R3 answers them. Round 1 (at `94f5fa0`) is answered in §R2. All automated gates are green in the build container, including an environment that reproduces the reviewer's machine. Not merged, not tagged, not published.
+**Branch:** `feat/2.17-hardening` (base `main` @ `d35e2cf`, 115 commits, 291 files).
+**Status:** round 4. Round 3 (Bob, at `29ff90e`) passed every local check, but security CI on the release PR (#39) then failed. §R4 answers that and the two minor findings. Rounds 2 and 1 are answered in §R3 and §R2. All automated gates are green in the build container, including an environment that reproduces the reviewer's machine. Not merged, not tagged, not published.
 
 This release combines open PRs #27–#38 with six workstreams (security, hook lifecycle, new hooks, MCP and recall, skills, project identity and storage) into a single release. Your job is to break it.
+
+---
+
+## R4. Round 4 — answers to the round-3 report (REJECT at `29ff90e`, PR #39 open)
+
+Round 3 re-verified everything in §R3: F1, the corrected I7 criterion, step 3b (MCP connected in the original config; probe handshake 112 ms) and step 4 items 1–7, 9 and 10. Only the items below were open.
+
+| Finding | Answer | Evidence |
+|---|---|---|
+| **S-CI** (major): Trivy fails on three locked dependencies | **Fixed** (`6e29bff`). `@modelcontextprotocol/sdk` now requires `^1.31.0` (1.32.1 locked) in the root and in `openltm-core`, so npm consumers get it too. Overrides: `proxy-addr` `^2.0.8` (via express) and `source-map-js` `^1.2.2` (graph app). | PR #39 on `6e29bff`: **Trivy CVE Scan success**, Typecheck & Test success, verify success. Locally: frozen-lockfile installs, 830/0, 83 smoke checks, 32 UI tests. Live: Claude Code connects to the 1.32.1 server (12 tools) and `context` answers. |
+| **J-health** (minor): `/openltm:health` assumes env vars the model's shell lacks | **Fixed.** Claude Code substitutes the exact `${CLAUDE_PLUGIN_DATA}` / `${CLAUDE_PLUGIN_ROOT}` tokens in a plugin command's text, code fences included (measured with a probe plugin). The commands use those tokens. The DB is `LTM_DB_PATH` or `<plugin data>/openltm.db`, opened read-only, with a message if it doesn't exist. | Live `/openltm:health`, no env: all five sections ran without error; Janitor Status read the real DB (4 active); logs from the real data dir. |
+| **B-quality** (minor): proposals are raw stderr from probes and one-offs | **Fixed.** A failed Bash result is skipped when its command is a one-off evaluation (`bun --eval`, `node -e`, `python -c`, `sqlite3`) or a chain of read-only probes (`ls`, `cat`, `lsof`, `curl`, …). Errors from project commands are kept. `Exit code N` is stripped. | Test (failed first) with your three exact commands: no proposals; a failing `bun test` gives exactly its TypeError. |
+
+**Found while fixing J-health:**
+- **The plugin data dir is `openltm-OpenLtm`, not `OpenLtm-openltm`.** I measured this by installing the plugin from this checkout as a local marketplace into a sandbox `CLAUDE_CONFIG_DIR`: Claude Code created `plugins/data/openltm-OpenLtm` (`<plugin>-<marketplace>`; `--plugin-dir` gives `openltm-inline`). The code had assumed `OpenLtm-openltm` since the `ltm` → `OpenLtm` rename.
+  - Effect: the Pi adapter's "share Claude Code's DB" (new on this branch) opened a database that doesn't exist for a real install. Fallbacks and the bunx installer used the wrong dir too.
+  - Fix: `getClaudePluginDataDir()` returns the first of the two names that holds an `openltm.db`, else `openltm-OpenLtm`, and follows `CLAUDE_CONFIG_DIR`. Pi, the installer, logs, proposals, EvaluateSession and onboarding use it.
+  - Evidence: Pi discovery tests (failed first); the built Pi bundle under Node, against the plugin Claude Code installed, opened `plugins/data/openltm-OpenLtm/openltm.db`.
+- **`/openltm:admin scan --dry-run` ran in write mode.** It read `argv` from index 2 and passed `$@`, which is empty in the model's shell. It also imported a file that had moved and opened `new Database(undefined)`.
+  - Fix: it now passes `$ARGUMENTS`, parses its flags properly, uses the moved import, and opens the real DB.
+  - Evidence: live against a planted AWS key in a scratch `LTM_DB_PATH`. The dry run reported `would redact: aws-access-key` and left the row; `scan` stored `[REDACTED:aws-access-key]`.
+
+**Known gap, pre-existing on `main`, owner's call:** OpenCode and OpenClaw use their own database unless `LTM_DB_PATH` points at the plugin's. Their READMEs claimed sharing; they now say how to share.
 
 ---
 
@@ -67,7 +90,7 @@ bun install --frozen-lockfile        # Bun ≥ 1.3
 | # | Command | Expected |
 |---|---|---|
 | G1 | `bun run typecheck` | no output, exit 0 |
-| G2 | `bun run test` — run it **as is**, in your normal shell (inherited `XDG_CONFIG_HOME`, wrapper CLIs on PATH): no environment workaround | `830 pass, 0 fail` and `real ~/.claude untouched`. Must not touch `$XDG_CONFIG_HOME/opencode`, `~/.config/opencode` or `~/.pi` (the drift guard now watches them) and must never run your `pi` |
+| G2 | `bun run test` — run it **as is**, in your normal shell (inherited `XDG_CONFIG_HOME`, wrapper CLIs on PATH): no environment workaround | `841 pass, 0 fail` and `real ~/.claude untouched`. Must not touch `$XDG_CONFIG_HOME/opencode`, `~/.config/opencode` or `~/.pi` (the drift guard now watches them) and must never run your `pi` |
 | G3 | `bun run verify-version` | `All version references in sync.` (2.17.0 everywhere, CHANGELOG entry present) |
 | G4 | `bun run check:openclaw` | `All 17 OpenClaw package checks passed.` |
 | G5 | `claude plugin validate .` | `Validation passed with warnings`. The one warning (root `CLAUDE.md` is not loaded as plugin context) is expected: that file is for contributors. |
@@ -76,6 +99,7 @@ bun install --frozen-lockfile        # Bun ≥ 1.3
 | G7b | `cd graph-app && bun install && cd .. && bun run qa:ui` | `32 passed` / `All UI smoke checks passed.` (Playwright in Chromium; set `PLAYWRIGHT_CHROMIUM` if the bundled browser is missing). Ports 7331/7332 free. |
 | G7c | `bun run scripts/qa/prompt-recall-eval.ts` | `precision=95.2%  recall=94.5%` (labelled corpus in `src/__tests__/hooks/fixtures/promptRecallCorpus.ts`) |
 | G8 | `cd packages/adapter-pi && bun run build && grep -c bun:sqlite dist/index.js` | build ok, count `0` (Pi runs on Node). Repeat in `packages/adapter-openclaw`. |
+| G9 | `gh pr checks 39 --repo RohiRIK/OpenLtm` (read-only) on the SHA you test | `Typecheck & Test`, `Trivy CVE Scan` and `verify` all `pass` for that exact head. Security CI is part of the gate, not something found after the PR. |
 
 ## 3. Areas to test by hand
 
