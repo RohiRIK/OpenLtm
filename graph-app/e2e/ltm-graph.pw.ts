@@ -36,7 +36,8 @@ test.describe("navigation", () => {
   test("4. graph route renders force-graph canvas", async ({ page }) => {
     await page.goto("/");
     await page.getByRole("link", { name: "Graph" }).click();
-    await expect(page).toHaveURL(/\/graph$/);
+    // `next dev` compiles /graph on first visit — the same budget as the canvas below.
+    await expect(page).toHaveURL(/\/graph$/, { timeout: 15000 });
     await expect(page.locator("canvas")).toBeVisible({ timeout: 15000 });
   });
 
@@ -96,7 +97,8 @@ test.describe("command palette", () => {
     const input = page.getByPlaceholder("Search or type a command...");
     await expect(input).toBeVisible({ timeout: 3000 });
     await page.getByRole("option", { name: "Global Graph" }).click();
-    await expect(page).toHaveURL(/\/graph$/);
+    // `next dev` compiles /graph on first visit (see test 4).
+    await expect(page).toHaveURL(/\/graph$/, { timeout: 15000 });
   });
 
   test("10b. palette keyword search finds a stored memory", async ({ page, request }) => {
