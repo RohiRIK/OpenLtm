@@ -4,6 +4,8 @@ argument-hint: "<migrate|scan|audit> [args]"
 allowed-tools: ["Bash", "mcp__plugin_openltm_memory__admin_audit"]
 ---
 
+Arguments: `$ARGUMENTS`
+
 Parse the first word of the arguments as `<subcommand>`. Pass remaining words as `<args>`.
 
 If no subcommand given, show:
@@ -40,7 +42,7 @@ For `reset`: ask user to confirm with "yes" before running.
 After schema migration check, also detect legacy DB:
 
 ```bash
-[ -f "$HOME/.claude/memory/openltm.db" ] && [ ! -f "$CLAUDE_PLUGIN_DATA/openltm.db" ] && echo "⚠ Legacy DB found at ~/.claude/memory/openltm.db. Run /openltm:admin migrate --legacy to migrate it."
+[ -f "$HOME/.claude/memory/openltm.db" ] && [ ! -f "${CLAUDE_PLUGIN_DATA}/openltm.db" ] && echo "⚠ Legacy DB found at ~/.claude/memory/openltm.db. Run /openltm:admin migrate --legacy to migrate it."
 ```
 
 When `--legacy` is the argument:
@@ -59,11 +61,15 @@ bun "${CLAUDE_PLUGIN_ROOT}/scripts/migrate-db.ts"
 bun --eval "
 import { Database } from 'bun:sqlite';
 await (async () => {
-  const { scrubSecrets } = await import(process.env.CLAUDE_PLUGIN_ROOT + '/src/secretsScrubber.ts');
-  const args = process.argv.slice(2);
+  const { scrubSecrets } = await import('${CLAUDE_PLUGIN_ROOT}/packages/openltm-core/src/secretsScrubber.ts');
+  // bun --eval: argv[0] is bun; the rest are this command's arguments.
+  const args = process.argv.slice(1);
   const dryRun = args.includes('--dry-run');
-  const project = args[args.indexOf('--project') + 1] ?? null;
-  const db = new Database(process.env.LTM_DB_PATH);
+  const p = args.indexOf('--project');
+  const project = p >= 0 ? args[p + 1] ?? null : null;
+  const dbPath = process.env.LTM_DB_PATH || '${CLAUDE_PLUGIN_DATA}/openltm.db';
+  if (!(await import('fs')).existsSync(dbPath)) { console.log('No database at ' + dbPath); return; }
+  const db = new Database(dbPath);
   const where = project ? \"WHERE status='active' AND project_scope=?\" : \"WHERE status='active'\";
   const rows = db.query('SELECT id, content FROM memories ' + where).all(...(project ? [project] : []));
   let scanned = 0, redacted = 0;
@@ -81,7 +87,7 @@ await (async () => {
   const typeStr = Object.entries(typeCounts).map(([k,v]) => k+'('+v+')').join(', ');
   console.log('Scanned ' + scanned + ', redacted ' + redacted + (typeStr ? ' ('+typeStr+')' : '') + (dryRun ? ' [dry-run]' : ''));
 })();
-" -- $@
+" -- $ARGUMENTS
 ```
 
 `--dry-run` is safe to run anytime.

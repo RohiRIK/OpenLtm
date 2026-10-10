@@ -102,7 +102,7 @@ Maps the current directory (or any path) to a friendly name in the context regis
 
 **Step 2 — Validate name:** lowercase, alphanumeric + hyphens only, 3–40 chars.
 
-**Step 3 — Read registry:** `cat "${LTM_DATA_DIR:-${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/OpenLtm-openltm}}/projects/registry.json"` (treat missing as `{}`). Legacy installs may also have `~/.claude/projects/registry.json`; its entries are still read, but always write the new file.
+**Step 3 — Read registry:** `cat "${LTM_DATA_DIR:-${CLAUDE_PLUGIN_DATA}}/projects/registry.json"` (treat missing as `{}`). Legacy installs may also have `~/.claude/projects/registry.json`; its entries are still read, but always write the new file.
 
 **Step 4 — Check for conflicts:** warn if name used by different path, or path registered under different name.
 

@@ -41,7 +41,7 @@ import { readFileSync, existsSync, statSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 
-const PLUGIN_DATA = process.env.CLAUDE_PLUGIN_DATA ?? join(homedir(), '.claude', 'plugins', 'data', 'OpenLtm-openltm');
+const PLUGIN_DATA = '${CLAUDE_PLUGIN_DATA}' || process.env.CLAUDE_PLUGIN_DATA;
 const JSONL_LOG = join(PLUGIN_DATA, 'logs', 'ltm.jsonl');
 const HOOKS_LOG = join(homedir(), '.claude', 'logs', 'hooks.log');
 
@@ -123,7 +123,7 @@ import { existsSync, statSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 
-const PLUGIN_DATA = process.env.CLAUDE_PLUGIN_DATA ?? join(homedir(), '.claude', 'plugins', 'data', 'OpenLtm-openltm');
+const PLUGIN_DATA = '${CLAUDE_PLUGIN_DATA}' || process.env.CLAUDE_PLUGIN_DATA;
 const JSONL_LOG = join(PLUGIN_DATA, 'logs', 'ltm.jsonl');
 const HOOKS_LOG = join(homedir(), '.claude', 'logs', 'hooks.log');
 
@@ -162,7 +162,11 @@ Always run, regardless of graph server status:
 ```bash
 bun --eval "
 import { Database } from 'bun:sqlite';
-const db = new Database(process.env.LTM_DB_PATH);
+import { existsSync } from 'fs';
+import { join } from 'path';
+const DB_PATH = process.env.LTM_DB_PATH || join('${CLAUDE_PLUGIN_DATA}' || process.env.CLAUDE_PLUGIN_DATA, 'openltm.db');
+if (!existsSync(DB_PATH)) { console.log('Janitor Status: no database at ' + DB_PATH + ' yet'); process.exit(0); }
+const db = new Database(DB_PATH, { readonly: true });
 const get = k => db.query('SELECT value FROM settings WHERE key=?').get(k)?.value ?? '';
 const lastRunAt  = get('ltm.janitor.lastRunAt');
 const refreshed  = get('ltm.janitor.lastDecayRefreshed');
