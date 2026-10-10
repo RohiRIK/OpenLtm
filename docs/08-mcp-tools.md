@@ -12,7 +12,7 @@ If you ever need to call them yourself (e.g. from a custom hook or script), this
 |------|-------------|
 | `recall` | Search memories. Hybrid full-text + semantic search fused with Reciprocal Rank Fusion (see [How recall ranks](#how-recall-ranks)). Optional `workspace_id` / `agent_id` filters. Results carry a `stale` flag and stale memories are downranked. Pass `includePrivate: true` to include memories tagged `private` (default omitted). |
 | `get` | Fetch one memory by id after compact recall. Private-tagged memories return `{ ok:false, error:"private" }` unless `includePrivate: true`. |
-| `learn` | Store or reinforce a memory. Deduplicates automatically. Optional `files` param anchors the memory to repo-relative paths it references; optional `workspace_id` / `agent_id` scope it. |
+| `learn` | Store or reinforce a memory. Deduplicates automatically. Optional `files` param anchors the memory to repo-relative paths it references; optional `project` scopes it to one project (the current one by default when `files` is given, otherwise global); optional `workspace_id` / `agent_id` scope it. The SessionStart index lists project memories with importance ≥ 3 (≥ 2 when embeddings are on) and globals with importance ≥ 4, up to `injectTopN` — a lower-importance global surfaces through `recall` and prompt recall. |
 | `forget` | Delete a memory by ID. Cascades to relations. |
 | `revalidate` | Clear a memory's stale flag after review — the code changed but the memory is still correct. Use `forget` when it's actually wrong. |
 | `relate` | Create a typed relationship between two memories. |
