@@ -13,7 +13,7 @@ Parse the first word of the arguments as `<action>`: `start`, `stop`, or `status
 | Bind address | `127.0.0.1` only — not reachable from other machines |
 | API server | `${CLAUDE_PLUGIN_ROOT}/src/graph-server.ts` |
 | UI source | `${CLAUDE_PLUGIN_ROOT}/graph-app/` |
-| PID / logs | `~/.claude/tmp/ltm-server.pid`, `~/.claude/tmp/ltm-server.log`, `~/.claude/tmp/nextjs.log` |
+| PID / logs | `~/.claude/tmp/ltm-server.pid` (API), `~/.claude/tmp/nextjs.pid` (UI), `~/.claude/tmp/ltm-server.log`, `~/.claude/tmp/nextjs.log` |
 
 ---
 
@@ -44,13 +44,16 @@ Report the result in one line. If both are down, suggest `/openltm:server start`
 **1 — Clear anything stale on 7331 / 7332:**
 
 ```bash
-PID_FILE="$HOME/.claude/tmp/ltm-server.pid"
-[ -f "$PID_FILE" ] && kill "$(cat "$PID_FILE")" 2>/dev/null
-rm -f "$PID_FILE"
+TMP="$HOME/.claude/tmp"
+[ -f "$TMP/ltm-server.pid" ] && kill "$(cat "$TMP/ltm-server.pid")" 2>/dev/null
+if [ -f "$TMP/nextjs.pid" ]; then
+  pkill -TERM -P "$(cat "$TMP/nextjs.pid")" 2>/dev/null; kill "$(cat "$TMP/nextjs.pid")" 2>/dev/null
+fi
+rm -f "$TMP/ltm-server.pid" "$TMP/nextjs.pid"
 for port in 7331 7332; do
   lsof -ti ":$port" 2>/dev/null | xargs kill 2>/dev/null || true
 done
-mkdir -p "$HOME/.claude/tmp"
+mkdir -p "$TMP"
 ```
 
 **2 — Start the API server (port 7331):**
@@ -76,6 +79,7 @@ The server writes its own PID to `~/.claude/tmp/ltm-server.pid`. Stop here if th
   nohup env NEXT_PUBLIC_WS_URL=ws://localhost:7331 \
     ./node_modules/.bin/next "$MODE" --hostname 127.0.0.1 --port 7332 \
     > "$HOME/.claude/tmp/nextjs.log" 2>&1 &
+  echo $! > "$HOME/.claude/tmp/nextjs.pid"
   echo "UI starting in $MODE mode (log: ~/.claude/tmp/nextjs.log)"
 )
 ```
@@ -96,16 +100,28 @@ Report: `Graph server running — UI http://localhost:7332 · API http://localho
 ## stop
 
 ```bash
-PID_FILE="$HOME/.claude/tmp/ltm-server.pid"
-if [ -f "$PID_FILE" ]; then
-  PID=$(cat "$PID_FILE")
-  kill "$PID" 2>/dev/null && echo "Stopped API (PID $PID)" || echo "PID $PID was not running"
-  rm -f "$PID_FILE"
+TMP="$HOME/.claude/tmp"
+if [ -f "$TMP/ltm-server.pid" ]; then
+  PID=$(cat "$TMP/ltm-server.pid")
+  kill "$PID" 2>/dev/null && echo "Stopped API (PID $PID)" || echo "API PID $PID was not running"
 fi
+if [ -f "$TMP/nextjs.pid" ]; then
+  PID=$(cat "$TMP/nextjs.pid")
+  pkill -TERM -P "$PID" 2>/dev/null   # next dev/start runs the server as a child
+  kill "$PID" 2>/dev/null && echo "Stopped UI (PID $PID)" || echo "UI PID $PID was not running"
+fi
+rm -f "$TMP/ltm-server.pid" "$TMP/nextjs.pid"
 for port in 7331 7332; do
   lsof -ti ":$port" 2>/dev/null | xargs kill 2>/dev/null || true
 done
-echo "OpenLTM graph server stopped."
+sleep 2
+for port in 7331 7332; do
+  if curl -s -o /dev/null --max-time 2 "http://127.0.0.1:$port/"; then
+    echo "port $port: STILL ANSWERING"
+  else
+    echo "port $port: free"
+  fi
+done
 ```
 
-If a port is still held after a few seconds, re-run `stop`; only then fall back to `kill -9` on the PID that `lsof -ti :<port>` prints.
+Report exactly what the last loop printed — a port is only free if it says `free`. If one is still answering after a few seconds, re-run `stop`; only then fall back to `kill -9` on the PID that `lsof -ti :<port>` (or `fuser <port>/tcp`) prints.
