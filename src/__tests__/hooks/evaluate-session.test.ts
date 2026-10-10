@@ -37,6 +37,10 @@ const JUNK_ERRORS = [
   "Claude requested permissions to use Bash, but you haven't granted it yet.",
   "Permission for this action was denied by the Claude Code auto mode classifier. Reason: [Irreversible Local Destruction]. If you have other tasks that don't depend on this action, continue working on them.",
   "Exit code 1",
+  // Routine git outcomes, not project knowledge (one became a "gotcha" proposal in a live run).
+  "Exit code 1\nOn branch master\nnothing to commit, working tree clean",
+  "Exit code 1\nOn branch main\nChanges not staged for commit:\n  modified: src/a.ts\nno changes added to commit (use \"git add\" and/or \"git commit -a\")",
+  "Exit code 1\nAlready up to date.",
 ];
 
 function writeTranscript(name: string, entries: Entry[]): string {

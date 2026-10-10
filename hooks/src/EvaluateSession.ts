@@ -55,6 +55,9 @@ const NOISE_ERROR_PATTERNS: RegExp[] = [
   /haven'?t granted/i,
   /\bpermission\b[\s\S]*\b(?:has been|was|is) denied\b/i,
   /\bdenied by (?:the )?(?:user|hook|policy)/i,
+  // Routine git outcomes reported with a non-zero exit — not project knowledge.
+  /nothing to commit|no changes added to commit|working tree clean/i,
+  /\balready up[ -]to[ -]date\b|\beverything up-to-date\b/i,
 ];
 
 type TranscriptEntry = {
