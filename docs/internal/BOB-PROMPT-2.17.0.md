@@ -1,6 +1,8 @@
-# Prompt for Bob: verify OpenLTM 2.17.0 and open the release PR
+# Prompt for Bob: verify OpenLTM 2.17.0 (round 2) and open the release PR
 
 You are verifying the OpenLTM 2.17.0 release candidate. If it holds up, you open one pull request with everything. Your job is to find what is broken, not to confirm that it works. Work independently. Stop and report only on a blocker you cannot get past.
+
+**This is round 2.** Your round-1 report (REJECT at `94f5fa0`) is answered in `docs/internal/HANDOFF-2.17.0.md` §R2: each finding, its fix, and the evidence. Re-verify every §R2 item yourself, on your own machine, before anything else in step 4.
 
 ## What you are testing
 
@@ -16,6 +18,18 @@ You are verifying the OpenLTM 2.17.0 release candidate. If it holds up, you open
 2. **Never use** `git push --force`, merge, tag, `npm publish`, or the Release/Publish workflows. Publishing happens only after the owner merges.
 3. **Only one GitHub write:** open a PR in step 6, and only if your verdict is APPROVE. Never push commits to `feat/2.17-hardening`. If you find a bug, report it with a proposed patch; don't fix it on the branch.
 4. **Evidence for every claim.** Record the exact command, its exit code, and the relevant output. A "PASS" with no output counts as "not run".
+
+## Step 0: What round 1 may have changed on your machine
+
+Before round 1's fixes, the default `bun run test` could run your real `pi` (your wrapper calls `mise use -g`) and read or rewrite `$XDG_CONFIG_HOME/opencode/opencode.json`. Check and report, change nothing:
+
+```bash
+ls -la --time-style=full-iso "${XDG_CONFIG_HOME:-$HOME/.config}/opencode/opencode.json" ~/.pi/agent/settings.json "${XDG_CONFIG_HOME:-$HOME/.config}/mise/config.toml" 2>&1
+pi list 2>&1 | head                      # is @rohirik/pi-ltm registered, and since when?
+git config --global --get core.hooksPath  # 2.16's install set this to ~/.claude/hooks/git
+```
+
+Compare the modification times with your round-1 run. Report anything that changed then; the owner decides what to restore.
 
 ## Step 1: Get the branch
 
@@ -35,13 +49,14 @@ Run each gate and record its exit code and the summary lines. Expected results a
 | Gate | Command | Must show |
 |---|---|---|
 | G1 | `bun run typecheck` | exit 0 |
-| G2 | `bun run test` | `812 pass`, `0 fail`, `real ~/.claude untouched` (more pass is fine, any fail is not) |
+| G2 | `bun run test` — in your normal shell, **no** `env -u XDG_CONFIG_HOME` or PATH changes | `827 pass`, `0 fail`, `real ~/.claude untouched` (more pass is fine, any fail is not) |
+| G2b | `sha256sum` of `${XDG_CONFIG_HOME:-~/.config}/opencode/opencode.json` and `~/.pi/agent/settings.json` before and after G2, plus `pi list` before and after | identical; your `pi` and `mise` were not run (round-1 finding I6) |
 | G3 | `bun run verify-version` | `All version references in sync.` |
 | G4 | `bun run check:openclaw` | `All 17 OpenClaw package checks passed.` |
 | G5 | `claude plugin validate .` | `Validation passed` (one expected warning about the root `CLAUDE.md`) |
 | G6 | `bun run build:hooks && git diff --exit-code hooks/GitCommit.bundle.mjs` | no diff |
-| G7 | `bun run qa:smoke` | five `All … smoke checks passed.` lines |
-| G7b | `bun run qa:ui` | `24 passed` (Playwright/Chromium; set `PLAYWRIGHT_CHROMIUM=<path>` if the bundled browser is missing) |
+| G7 | `bun run qa:smoke` | five `All … smoke checks passed.` lines (70 checks) |
+| G7b | `bun run qa:ui` | `30 passed` (Playwright/Chromium; set `PLAYWRIGHT_CHROMIUM=<path>` if the bundled browser is missing) |
 | G7c | `bun run scripts/qa/prompt-recall-eval.ts` | `precision=95.2%  recall=94.5%` |
 | G8 | `cd packages/adapter-pi && bun run build && grep -c bun:sqlite dist/index.js` (repeat in `packages/adapter-openclaw`) | `0` |
 
@@ -55,6 +70,17 @@ cp ~/.claude.json ~/openltm-backup-claude.json
 cp ~/.claude/settings.json ~/openltm-backup-settings.json
 cp -a ~/.claude/projects/registry.json ~/openltm-backup-registry.json 2>/dev/null
 ```
+
+Your `settings.json` has OpenLTM hooks from an old dev install (round 1). Next to the plugin they fire a second time and run that checkout's code. 2.17 has a fix command for exactly this — use it (the backup above covers the file):
+
+```bash
+bun ~/src/OpenLtm/scripts/unwire-legacy-hooks.ts --check   # list them (exit 3 if any)
+bun ~/src/OpenLtm/scripts/unwire-legacy-hooks.ts           # remove only those, keeps settings.json.bak-openltm-<time>
+```
+
+If you would rather keep them for now, start sessions with `--setting-sources project,local` and confirm SessionStart prints the "⚠️ … also wired in …settings.json" warning in a session without that flag.
+
+Use one database for everything: either set nothing (hooks and MCP both use `$CLAUDE_PLUGIN_DATA/openltm.db`), or export `LTM_DB_PATH` — it now applies to hooks **and** the MCP server (round-1 finding). Don't set `LTM_DATA_DIR` unless you mean it.
 
 Then pick **one** of the two options.
 
@@ -107,13 +133,16 @@ Do a real piece of work in a git repo that already has 2.16 memories (Option B),
 7. **Graph UI:** run `/openltm:server start`. In the UI, run approve, merge, delete and janitor; every action should return 2xx. Save Settings with a key set; the key must survive. Then run `/openltm:server stop`.
 8. **If you have llama.cpp or Ollama:** do HANDOFF §3-G1 with a real embedding model.
 
+9. **One database (round-1 finding).** After a `learn` through MCP, the next session's SessionStart index lists it, and no directory named `${CLAUDE_PLUGIN_DATA}` (or any `${…}`) appears in your repo. Repeat once with `LTM_DB_PATH` exported to a scratch path: hooks and MCP must both use it.
+10. **Graph UI edit and delete** (broken before 2.17, now fixed): edit a memory's text in the UI and delete another; reload; both changes must have happened.
+
 From HANDOFF §3, also cover whatever else you have time for. In priority order: I (identity and storage, user data), A2, H1, E1, F2, J2.
 
 ## Step 5: Report and verdict
 
 Report every finding in the format from HANDOFF §6 (ID / Severity / Command / Expected / Actual / Notes). End with a table of area → pass / fail / not run (with the reason), then one verdict:
 
-- **APPROVE:** all gates pass, there are no blocker or major findings, and step 4 items 1–6 pass.
+- **APPROVE:** all gates pass (G2 in your normal shell), every §R2 item re-verified, there are no blocker or major findings, and step 4 items 1–6, 9 and 10 pass.
 - **REJECT:** anything else. List the blockers, each with a proposed fix, and stop. No PR.
 
 ## Step 6: Only if APPROVE, open the PR

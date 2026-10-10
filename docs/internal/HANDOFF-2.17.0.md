@@ -2,11 +2,35 @@
 
 **For:** QA / test agents.
 **Branch:** `feat/2.17-hardening` (base `main` @ `d35e2cf`, 93 commits, 263 files).
-**Status:** all automated gates green in the build container, plus a live Claude Code session with the plugin loaded (§4a). Not merged, not tagged, not published.
+**Status:** round 2. The first verification (Bob, at `94f5fa0`) was a REJECT; its findings and everything the follow-up live acceptance run found are fixed (§R2). All automated gates are green in the build container, including an environment that reproduces the reviewer's machine. Not merged, not tagged, not published.
 
 This release combines open PRs #27–#38 with six workstreams (security, hook lifecycle, new hooks, MCP and recall, skills, project identity and storage) into a single release. Your job is to break it.
 
 ---
+
+## R2. Round 2 — reviewer findings and the live acceptance run
+
+**Reviewer findings (REJECT at `94f5fa0`) → fixed, each with a test that failed first:**
+
+| Finding | Fix | Evidence |
+|---|---|---|
+| I6/G2 (major): tests escape the fake HOME through an inherited `XDG_CONFIG_HOME`; Pi tests run the real `pi` | installers honour XDG only for the process home; Pi never runs for another home, timeouts; harness redirects XDG_*; drift guard watches OpenCode/Pi config | Reproduced here: 12 failures, the outside `opencode.json` rewritten, `pi install` ran 4×. After: 827/0 with XDG outside HOME and a fake `pi` on PATH, `pi` run 0×, outside dir byte-identical; a planted write to the real OpenCode dir fails the run |
+| Hooks vs MCP on different DBs when `LTM_DB_PATH` is set | manifest no longer pins `LTM_DB_PATH`; MCP resolves like the hooks | Live, `LTM_DB_PATH` set: SessionStart and prompt recall showed a canary seeded there, MCP `recall` found it, MCP `learn` wrote to it; plugin-data DB untouched |
+| Legacy dev-install hooks in `settings.json` next to the plugin | SessionStart warning, `/openltm:health` check, `scripts/unwire-legacy-hooks.ts` | Live: 2.16's own `bun install` wired 4 hooks into this container's real settings; the 2.17 session warned; the script removed exactly those 4 with a backup, other settings identical |
+
+**Found by the live acceptance run (real Claude Code 2.1.295, `--plugin-dir`, default config) and fixed:**
+- The first fix for the DB split used `"CLAUDE_PLUGIN_DATA": "${CLAUDE_PLUGIN_DATA}"`, which Claude Code passes unexpanded — the MCP server wrote `<project>/${CLAUDE_PLUGIN_DATA}/openltm.db`. Now passed as `LTM_PLUGIN_DATA` and normalised before core loads (`src/pluginEnv.ts`); placeholders are never used as paths.
+- `git commit --amend` re-flagged an already-stale memory → flag once until revalidated.
+- Janitor with embeddings disabled: error + exit 2 every run → skips.
+- A failed `git commit` ("nothing to commit") became a memory proposal → filtered.
+- Graph UI edit and delete were silent no-ops (also on `main`); edits now scrubbed. `graph-app/e2e/actions-2.17.pw.ts` covers approve/edit/supersede/merge/delete/boost/clusters/janitor/config through the proxy.
+- `/openltm:server stop` reported a port free while the UI kept serving → stops by PID, verifies with curl.
+
+**Live acceptance sequence actually run (multi-turn, one session):** learn ×3 (anchored, global, private) and `context_add` ×2 without `project` → prompt recall injected exactly the anchored memory and never the private one → Claude edited and committed → anchored memory flagged with the commit → amend and an empty commit did not re-flag (after the fix) → `/compact` (PreCompact snapshot led SessionStart) → `/clear` → `recall` of the private note's words returned nothing → session end: patterns file and proposals under plugin data, janitor ran once then "not due", plugin checkout clean → `/openltm:server start|status|stop` with ports verified independently.
+
+**2.16 → 2.17 upgrade rehearsal (real 2.16 code):** 2.16.2 (`origin/main`) ran SessionStart and wrote memories, goals, decisions and context files for three repos (`alpha-repo`, `Beta_Service`, a monorepo subfolder `web`). 2.17 SessionStart on the same home kept all three names, restored goals/decisions/memories, copied the context files to the data dir, and left all legacy files byte-identical. The MCP server (`context` without `project`, with the manifest's env) and the Pi/OpenCode resolver gave the same names.
+
+**Prompt recall on 15 fresh prompts (not used for tuning; real hook process; 50-memory DB about this repo):** 3 chit-chat/generic prompts silent; 15 injected hits, of which 2–3 are noise (e.g. a single generic word "full" matched a memory) and 2 borderline; 4 relevant memories missed. The pre-2.17 algorithm on the same prompts: ~7 noisy hits of 16. Better, but well short of the 95% the labelled corpus suggests — that corpus overestimates.
 
 ## 0. Ground rules
 
@@ -26,13 +50,13 @@ bun install --frozen-lockfile        # Bun ≥ 1.3
 | # | Command | Expected |
 |---|---|---|
 | G1 | `bun run typecheck` | no output, exit 0 |
-| G2 | `bun run test` | `812 pass, 0 fail` and `real ~/.claude untouched` |
+| G2 | `bun run test` — run it **as is**, in your normal shell (inherited `XDG_CONFIG_HOME`, wrapper CLIs on PATH): no environment workaround | `827 pass, 0 fail` and `real ~/.claude untouched`. Must not touch `$XDG_CONFIG_HOME/opencode`, `~/.config/opencode` or `~/.pi` (the drift guard now watches them) and must never run your `pi` |
 | G3 | `bun run verify-version` | `All version references in sync.` (2.17.0 everywhere, CHANGELOG entry present) |
 | G4 | `bun run check:openclaw` | `All 17 OpenClaw package checks passed.` |
 | G5 | `claude plugin validate .` | `Validation passed with warnings`. The one warning (root `CLAUDE.md` is not loaded as plugin context) is expected: that file is for contributors. |
 | G6 | `bun run build:hooks && git diff --exit-code hooks/GitCommit.bundle.mjs` | no diff (committed bundle is fresh; this is what CI's bundle job checks) |
-| G7 | `bun run qa:smoke` | Five `All … smoke checks passed.` lines — MCP, hooks, semantic, adapters, server (68 checks). Needs port 7331 free; the adapters smoke needs `node` ≥ 22.5. |
-| G7b | `cd graph-app && bun install && cd .. && bun run qa:ui` | `24 passed` / `All UI smoke checks passed.` (Playwright in Chromium; set `PLAYWRIGHT_CHROMIUM` if the bundled browser is missing). Ports 7331/7332 free. |
+| G7 | `bun run qa:smoke` | Five `All … smoke checks passed.` lines — MCP, hooks, semantic, adapters, server (70 checks). Needs port 7331 free; the adapters smoke needs `node` ≥ 22.5. |
+| G7b | `cd graph-app && bun install && cd .. && bun run qa:ui` | `30 passed` / `All UI smoke checks passed.` (Playwright in Chromium; set `PLAYWRIGHT_CHROMIUM` if the bundled browser is missing). Ports 7331/7332 free. |
 | G7c | `bun run scripts/qa/prompt-recall-eval.ts` | `precision=95.2%  recall=94.5%` (labelled corpus in `src/__tests__/hooks/fixtures/promptRecallCorpus.ts`) |
 | G8 | `cd packages/adapter-pi && bun run build && grep -c bun:sqlite dist/index.js` | build ok, count `0` (Pi runs on Node). Repeat in `packages/adapter-openclaw`. |
 
@@ -231,7 +255,7 @@ Work for 20+ turns on a small task in a git repo. Make a commit through Claude, 
 
 ## 5. Known gaps and decisions for the owner
 
-- **Not exercised:** a real embedding model (G1); skill evals (J1, `--trust-plugin` is the owner's call); real Pi, OpenCode and OpenClaw *hosts* (their built bundles are exercised under Node/Bun by `adapters-smoke.ts`); Node < 22.5 (I5); an interactive multi-turn session with `/compact` and `/clear` typed by a person (§4).
+- **Not exercised:** a real embedding model (G1); skill evals (J1, `--trust-plugin` is the owner's call); real Pi, OpenCode and OpenClaw *hosts* (their built bundles are exercised under Node/Bun by `adapters-smoke.ts`); Node < 22.5 (I5); a person typing an interactive session (the multi-turn run in §R2 used `claude -p --resume`); an upgrade on a real long-lived 2.16 install (§R2 used data produced by 2.16 code in a fake home).
 - **Resolved since the first handoff:** the source-text tests were replaced with behavior tests on real hook output; Pi's dead `hooks.ts`/`tools.ts` were removed and `session_compact` now runs through the bridge; the README one-step install line was added.
 - **Found and fixed during final verification** (each with a test that failed first; full list in CHANGELOG "Fixed after end-to-end verification"): private memories leaking to the embedding/LLM providers, prompt recall, MCP resources and graph traversal; recall's top-N taken before the project filter; systemd units failing on paths with spaces; non-Latin folder names collapsing to ""; prompt-recall precision/recall.
 - **After merging:** close PRs #27–#38 as included in 2.17.0 (#30 was already folded into #33). Re-pin the Hermes catalog per `CLAUDE.md` (`bun run catalog:sync` + PR to `NousResearch/hermes-agent`).

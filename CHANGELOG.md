@@ -22,6 +22,7 @@ Hardening and "recall everywhere". Consolidates open PRs #27–#38 with six para
 - **Supersede review** — contradictions are staged, never auto-applied; SessionStart lists pending ones; `ltm conflict list|accept|reject|coexist` (#34, #35).
 - **Learn near-dedup** — FTS shortlist + Jaccard tiers with `matched_by`/`score`/`matched_id` on the result (#36).
 - **Standalone janitor** — `ltm janitor run|status|schedule|daemon`, single-instance lock, `SessionEnd` trigger, systemd/launchd/cron units (#27).
+- **`scripts/unwire-legacy-hooks.ts`** — lists (`--check`) or removes OpenLTM hook entries from `~/.claude/settings.json`, with a backup.
 - **QA harness** — `bun run qa:smoke` (MCP over stdio, every hook as a subprocess, the semantic path against a stub embeddings server, the built Pi/OpenClaw bundles under Node and OpenCode under Bun, graph-server network guards) and `bun run qa:ui` (the graph UI in Chromium via Playwright). `scripts/qa/prompt-recall-eval.ts` measures prompt-recall precision/recall on a labelled corpus.
 - **Skills** — one `Ltm` memory skill (merges ContinuousLearning, session-context, Learned) with reference files; new `MemoryReview` curation skill; `/openltm:server` command replaces the LtmServer skill; trigger evals under `evals/`.
 
@@ -58,6 +59,17 @@ Found by running the plugin in a real Claude Code session, the smoke scripts abo
 - Folder names in non-Latin scripts normalized to an empty name, splitting one repository into a different project per host.
 - SessionStart listed every project's staged conflicts; identical permanent decisions/gotchas were stored repeatedly.
 - `hooks/GitCommit.bundle.mjs` rebuilt. Eight graph-app e2e tests still targeted the pre-2.8 UI and failed on `main` too; they now test the current shell.
+
+### Fixed after the release verification (round 2)
+The first independent verification rejected the candidate; these are its findings plus what the follow-up live acceptance run found.
+- **Tests could write the real user's config.** An inherited `XDG_CONFIG_HOME` let installer tests read and rewrite the real OpenCode `opencode.json`, and the Pi tests ran the real `pi install` from PATH. Installers now only honour `XDG_CONFIG_HOME` for the process's own home, never run the Pi on PATH for another home, and bound Pi calls with timeouts. The test harness points every XDG dir into the temp home, and its drift guard also watches the real OpenCode config and `~/.pi`.
+- **Hooks and the MCP server could use two databases.** The manifest pinned the MCP server's `LTM_DB_PATH`, so an exported `LTM_DB_PATH` only reached the hooks. It also used a self-referential `CLAUDE_PLUGIN_DATA` entry that Claude Code passes unexpanded, which created `<project>/${CLAUDE_PLUGIN_DATA}/openltm.db`. Both now resolve `LTM_DB_PATH` → `$CLAUDE_PLUGIN_DATA/openltm.db`, and an unexpanded placeholder is never used as a path.
+- **OpenLTM hooks left in `~/.claude/settings.json`** by a git-clone or bunx install fire next to the plugin's. SessionStart now warns about them, `/openltm:health` lists them, and `scripts/unwire-legacy-hooks.ts` removes only those entries after backing up the file.
+- **Graph UI edit and delete did nothing.** The GET route for a memory answered PUT and DELETE too (also on `main`). UI edits now go through the secret scrubber.
+- **Stale flags:** `git commit --amend` re-flagged an already-stale memory; a memory is now flagged once until revalidated.
+- **Janitor** with embeddings `disabled` logged an error and exited 2 on every run; it now skips the embed step.
+- **Session proposals** no longer include routine git output ("nothing to commit").
+- **`/openltm:server stop`** left the UI running while reporting its port free; it now stops the UI by PID and reports only what it verified.
 
 ### Removed
 - Skills `ContinuousLearning`, `session-context`, `Learned`, `LtmServer`; committed session logs; `r2-split-harness/`, `scripts/tmp_*`, `verify_split*.ts`.
