@@ -71,6 +71,11 @@ The first independent verification rejected the candidate; these are its finding
 - **Session proposals** no longer include routine git output ("nothing to commit").
 - **`/openltm:server stop`** left the UI running while reporting its port free; it now stops the UI by PID and reports only what it verified.
 
+### Fixed after the release verification (round 3)
+- **`context` didn't return what `context_add` stored.** It returned only memories, so a decision recorded with `context_add` was saved but missing from `context`. `context` now returns the project's `goal`, `decisions`, `gotchas` and the last 5 `progress` entries (secret-scrubbed), next to `globals` and `scoped`. `learn` now returns the `project_scope` it stored the memory under.
+- **Graph UI lists went stale after an inspector edit or delete.** On the project and memory-table pages, a deleted memory stayed listed, and an edit kept its old text, until a manual reload. Both pages now refetch.
+- **Diagnostics:** `scripts/mcp-probe.ts` starts the MCP server the way Claude Code does and says why it would show as failed. The new `qa/continuity-smoke.ts` checks the default database end to end: an MCP `learn` reaches the next SessionStart under an alternate `CLAUDE_CONFIG_DIR`, with exactly one database. The Ltm skill now says when a `learn` is global and which memories the SessionStart index lists.
+
 ### Removed
 - Skills `ContinuousLearning`, `session-context`, `Learned`, `LtmServer`; committed session logs; `r2-split-harness/`, `scripts/tmp_*`, `verify_split*.ts`.
 

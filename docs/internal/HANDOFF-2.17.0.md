@@ -1,10 +1,27 @@
 # Test handoff: OpenLTM 2.17.0
 
 **For:** QA / test agents.
-**Branch:** `feat/2.17-hardening` (base `main` @ `d35e2cf`, 93 commits, 263 files).
-**Status:** round 2. The first verification (Bob, at `94f5fa0`) was a REJECT; its findings and everything the follow-up live acceptance run found are fixed (§R2). All automated gates are green in the build container, including an environment that reproduces the reviewer's machine. Not merged, not tagged, not published.
+**Branch:** `feat/2.17-hardening` (base `main` @ `d35e2cf`, 110 commits, 282 files).
+**Status:** round 3. Round 2 (Bob, at `2b62f7a`) was a REJECT with two findings, F1 and I7; §R3 answers them. Round 1 (at `94f5fa0`) is answered in §R2. All automated gates are green in the build container, including an environment that reproduces the reviewer's machine. Not merged, not tagged, not published.
 
 This release combines open PRs #27–#38 with six workstreams (security, hook lifecycle, new hooks, MCP and recall, skills, project identity and storage) into a single release. Your job is to break it.
+
+---
+
+## R3. Round 3 — answers to the round-2 report (REJECT at `2b62f7a`)
+
+| Finding | Answer | Evidence |
+|---|---|---|
+| **F1** (major): a decision stored with `context_add` is missing from `context` | **Fixed.** `context` returned only memories. It now returns `{ project, goal, decisions, gotchas, progress (last 5), globals, scoped }`, with context items egress-scrubbed. | Tests failed first: `mcp-server.test.ts` (readback, scrub) and `mcp-smoke.ts` ("context {} returns the decision context_add just stored"). Live, real Claude Code with `--plugin-dir` in a fresh repo: `context_add {type: decision}` with no `project` → `context {}` returned `"decisions":["We use RRF k=60 for hybrid recall."]`. |
+| **I7** (major): with an alternate `CLAUDE_CONFIG_DIR`, an MCP `learn` is missing from the next SessionStart index | **Not a defect. The acceptance criterion was wrong; that was my error in the round-2 prompt.** Hooks and MCP use one DB. The canary was learned with no `project` and the default importance 3, so it is a global memory with importance 3. The index lists globals only from importance ≥ 4 (project memories from ≥ 3). Your own data shows this: the canary is in `fresh-claude/plugins/data/openltm-inline/openltm.db`, the DB that SessionStart reads under that config. "restored: 3 ctx items" came from that DB, and recall found the canary. | Reproduced live here under a fresh `CLAUDE_CONFIG_DIR` with no `LTM_DB_PATH`: one DB holding the onboarding memory (project) and the canary (`project_scope: null`, importance 3). The next SessionStart listed the project memory and not the canary; `recall` found it. New `scripts/qa/continuity-smoke.ts` (part of `qa:smoke`) repeats this without a host: the MCP server starts from `plugin.json` with the host's measured placeholder handling and an alternate config dir. The project memory and a global importance-4 memory reach the next index; a global importance-3 memory does not, but `recall` and prompt recall find it. Exactly one DB exists and the checkout's dev-fallback DB is untouched. Against the old self-referential manifest the smoke fails 5 checks. |
+| Original-config MCP connection "failed" (not attributed to the candidate) | **Unexplained; needs data from your machine.** Startup takes ~350ms here, against Claude Code's 30s budget. Claude Code only writes `mcp-needs-auth-cache.json` entries for HTTP, SSE and claude.ai connector servers, never a stdio plugin server, so that "OpenLTM entry" is probably another server in that config. | New `scripts/mcp-probe.ts` starts the server the way Claude Code does. It prints FAIL lines for: no `bun` on PATH, `mcp.enabled: false`, a slow handshake, or a startup error (stderr). It also prints the DB, the config path, and the tail of Claude Code's log for the server. Checked in a sandbox: healthy, `mcp.enabled=false`, and no `bun` on PATH are each reported correctly. |
+
+**Also found and fixed in round 3:**
+- **Graph UI lists went stale after an inspector edit or delete** (project and memory-table pages): a deleted memory stayed listed until a manual reload. New Playwright tests drive the real controls — table row → inspector → Edit/Save, and Delete with the confirm dialog — then check the table before and after a reload and the DB row. Both failed before the fix. This is round-2 item 10 "UI controls NOT RUN", now automated.
+- The `/graph` URL check in `ltm-graph.pw.ts` had the default 5s budget. `next dev` compiles the route on first visit and once took longer (1 failure in 5 full runs). It now has the 15s budget the canvas check already used.
+- The Ltm skill and `docs/08-mcp-tools.md` now say when a `learn` is global and which memories the SessionStart index lists. `learn` returns `project_scope`.
+
+**Corrected acceptance criterion (round-2 prompt item 9):** a `learn` with `project` (or `files`), or with importance ≥ 4, appears in the next SessionStart index. A global importance-3 `learn` is reachable through `recall` and prompt recall, not the index. "One database" is checked on the DB file itself, not via the index.
 
 ---
 
@@ -50,13 +67,13 @@ bun install --frozen-lockfile        # Bun ≥ 1.3
 | # | Command | Expected |
 |---|---|---|
 | G1 | `bun run typecheck` | no output, exit 0 |
-| G2 | `bun run test` — run it **as is**, in your normal shell (inherited `XDG_CONFIG_HOME`, wrapper CLIs on PATH): no environment workaround | `827 pass, 0 fail` and `real ~/.claude untouched`. Must not touch `$XDG_CONFIG_HOME/opencode`, `~/.config/opencode` or `~/.pi` (the drift guard now watches them) and must never run your `pi` |
+| G2 | `bun run test` — run it **as is**, in your normal shell (inherited `XDG_CONFIG_HOME`, wrapper CLIs on PATH): no environment workaround | `830 pass, 0 fail` and `real ~/.claude untouched`. Must not touch `$XDG_CONFIG_HOME/opencode`, `~/.config/opencode` or `~/.pi` (the drift guard now watches them) and must never run your `pi` |
 | G3 | `bun run verify-version` | `All version references in sync.` (2.17.0 everywhere, CHANGELOG entry present) |
 | G4 | `bun run check:openclaw` | `All 17 OpenClaw package checks passed.` |
 | G5 | `claude plugin validate .` | `Validation passed with warnings`. The one warning (root `CLAUDE.md` is not loaded as plugin context) is expected: that file is for contributors. |
 | G6 | `bun run build:hooks && git diff --exit-code hooks/GitCommit.bundle.mjs` | no diff (committed bundle is fresh; this is what CI's bundle job checks) |
-| G7 | `bun run qa:smoke` | Five `All … smoke checks passed.` lines — MCP, hooks, semantic, adapters, server (70 checks). Needs port 7331 free; the adapters smoke needs `node` ≥ 22.5. |
-| G7b | `cd graph-app && bun install && cd .. && bun run qa:ui` | `30 passed` / `All UI smoke checks passed.` (Playwright in Chromium; set `PLAYWRIGHT_CHROMIUM` if the bundled browser is missing). Ports 7331/7332 free. |
+| G7 | `bun run qa:smoke` | Six `All … smoke checks passed.` lines — MCP, hooks, continuity, semantic, adapters, server (83 checks). Needs port 7331 free; the adapters smoke needs `node` ≥ 22.5. |
+| G7b | `cd graph-app && bun install && cd .. && bun run qa:ui` | `32 passed` / `All UI smoke checks passed.` (Playwright in Chromium; set `PLAYWRIGHT_CHROMIUM` if the bundled browser is missing). Ports 7331/7332 free. |
 | G7c | `bun run scripts/qa/prompt-recall-eval.ts` | `precision=95.2%  recall=94.5%` (labelled corpus in `src/__tests__/hooks/fixtures/promptRecallCorpus.ts`) |
 | G8 | `cd packages/adapter-pi && bun run build && grep -c bun:sqlite dist/index.js` | build ok, count `0` (Pi runs on Node). Repeat in `packages/adapter-openclaw`. |
 
@@ -150,7 +167,7 @@ Each area gives what changed, what the scripts already cover, and what still nee
 **Covered:** `mcp-smoke.ts` (real stdio), `mcp-server.test.ts`, `mcp-get.test.ts`, `private-tags.test.ts`.
 
 **Still to test:**
-- F1. In a live session (§4), ask Claude to "record a decision that we use RRF for recall". It should call `context_add` **without** `project`, and the item should then show up in `context`.
+- F1. In a live session (§4), ask Claude to "record a decision that we use RRF for recall". It should call `context_add` **without** `project`, and the item should then show up in `context` under `decisions` (fixed in round 3; see §R3).
 - F2. `bunx`-style standalone: `bun packages/openltm-core/src/cli/bin.ts mcp-serve` from a repo subfolder. `context {}` should resolve to the repo-root name.
 - F3. Read-only tools are auto-approved by hosts that honour `readOnlyHint`, and `forget` still prompts.
 
