@@ -404,7 +404,9 @@ export interface FlagStaleResult {
  * Flag active memories anchored to any of `paths` as stale — the code they
  * reference changed. Never deletes (audit trail preserved) and never touches
  * importance=5 (permanent). Matches anchors in the same project scope or global
- * (NULL-scoped) anchors. Idempotent: re-flagging refreshes stale_flagged_at.
+ * (NULL-scoped) anchors. A memory is flagged once until revalidated: later
+ * commits to the same files (an amend, the next edit) keep the first
+ * invalidating commit as the reason and add no audit rows.
  */
 export function flagStaleByPaths(
   paths: string[],
@@ -423,6 +425,7 @@ export function flagStaleByPaths(
          JOIN memory_files mf ON mf.memory_id = m.id
         WHERE m.status = 'active'
           AND m.importance <> 5
+          AND m.stale_flagged_at IS NULL
           AND mf.path IN (${placeholders})
           AND (mf.project_scope IS ? OR mf.project_scope IS NULL)`,
     )

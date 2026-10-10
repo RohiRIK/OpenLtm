@@ -147,6 +147,22 @@ describe("flagStaleByPaths (invalidate-on-commit)", () => {
     expect(audit?.n ?? 0).toBeGreaterThanOrEqual(1);
   });
 
+  // Found live (git commit --amend after a commit): the amend re-flagged the
+  // memory, replacing the reason and adding an audit row per later commit.
+  it("flags a memory once until it is revalidated", () => {
+    const m = learn({ content: "ledger rounding happens on cents in toCents", category: "gotcha", project_scope: "p", files: ["src/money.ts"], skipExport: true });
+    const audits = () => db.query<{ n: number }, [number]>("SELECT count(*) n FROM memory_audit WHERE memory_id=? AND op='update'").get(m.id)!.n;
+    expect(flagStaleByPaths(["src/money.ts"], { project_scope: "p", reason: "commit first" }).flagged).toBe(1);
+    const at = staleAt(m.id);
+    const n = audits();
+    expect(flagStaleByPaths(["src/money.ts"], { project_scope: "p", reason: "commit amended" }).flagged).toBe(0);
+    expect(db.query<{ stale_reason: string }, [number]>("SELECT stale_reason FROM memories WHERE id=?").get(m.id)!.stale_reason).toBe("commit first");
+    expect(staleAt(m.id)).toBe(at);
+    expect(audits()).toBe(n);
+    revalidate(m.id);
+    expect(flagStaleByPaths(["src/money.ts"], { project_scope: "p", reason: "commit later" }).flagged).toBe(1);
+  });
+
   it("never flags importance=5 memories (AC12)", () => {
     const m = learn({
       content: "permanent architectural rule never decays",
