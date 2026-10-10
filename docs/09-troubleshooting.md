@@ -29,7 +29,14 @@ The MCP tools are exposed as `mcp__plugin_openltm_memory__<tool>` (e.g. `recall`
 
 1. Restart the agent — the MCP server connects at startup.
 2. Run `/openltm:health` to confirm the server is registered.
-3. In Claude Code specifically, MCP servers are wired by the plugin manifest; a stale install can leave the old `ltm` server key behind. Reinstall the plugin if the prefix still reads `mcp__plugin_ltm_memory__`.
+3. If `claude mcp list` (or `/mcp`) shows `plugin:openltm:memory` as failed, run the probe from the project you open in Claude Code:
+
+   ```bash
+   bun <plugin root>/scripts/mcp-probe.ts   # installed plugin: ~/.claude/plugins/cache/OpenLtm/openltm/<version>
+   ```
+
+   It starts the server the way Claude Code does and prints a `FAIL` line for each cause it can see: no `bun` on the PATH, `mcp.enabled: false` in the LTM config, a handshake slower than Claude Code's 30s, or a startup error in the server's stderr. It also prints the tail of Claude Code's own log for the server. Pass `--plugin-data <dir>` if it can't pick the data dir.
+4. In Claude Code specifically, MCP servers are wired by the plugin manifest; a stale install can leave the old `ltm` server key behind. Reinstall the plugin if the prefix still reads `mcp__plugin_ltm_memory__`.
 
 ---
 
