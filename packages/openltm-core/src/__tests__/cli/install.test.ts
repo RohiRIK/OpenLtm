@@ -5,7 +5,7 @@
  * config files are touched.
  */
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, rmSync, existsSync, readFileSync } from "fs";
+import { chmodSync, mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import os from "os";
 
@@ -16,6 +16,21 @@ function makeTmp(): string {
   );
   mkdirSync(dir, { recursive: true });
   return dir;
+}
+
+/**
+ * A fake `pi` CLI in the tmp dir: `list` prints what was installed, `install`
+ * records it. The real Pi on the machine is never run (it would do a network
+ * install into the real user's Pi).
+ */
+function fakePi(dir: string): string {
+  const bin = join(dir, "bin");
+  mkdirSync(bin, { recursive: true });
+  const state = join(dir, "pi-installed.txt");
+  const cmd = join(bin, "pi");
+  writeFileSync(cmd, `#!/bin/sh\ncase "$1" in\n  list) cat "${state}" 2>/dev/null; exit 0;;\n  install) echo "@rohirik/pi-ltm" >> "${state}";;\nesac\n`);
+  chmodSync(cmd, 0o755);
+  return cmd;
 }
 
 describe("runInstallCli — orchestration", () => {
@@ -64,11 +79,12 @@ describe("runInstallCli — orchestration", () => {
       dryRun: false,
       homedir: tmpDir,
       silent: true,
+      piCmd: fakePi(tmpDir),
     });
     expect(result.exitCode).toBe(0);
     expect(result.results[0]!.target).toBe("pi");
-    // "skipped" is valid when Pi is already registered in the real environment
-    expect(["installed", "skipped"]).toContain(result.results[0]!.status);
+    expect(result.results[0]!.status).toBe("installed");
+    expect(readFileSync(join(tmpDir, "pi-installed.txt"), "utf8")).toContain("@rohirik/pi-ltm");
   });
 
   it("e2e: installs all three targets when all flags given", async () => {
@@ -78,12 +94,12 @@ describe("runInstallCli — orchestration", () => {
       dryRun: false,
       homedir: tmpDir,
       silent: true,
+      piCmd: fakePi(tmpDir),
     });
     expect(result.exitCode).toBe(0);
     expect(result.results.length).toBe(3);
-    const statuses = result.results.map((r) => r.status);
-    // "skipped" is also a valid success (e.g. Pi already installed)
-    expect(statuses.every((s) => s === "installed" || s === "skipped")).toBe(true);
+    expect(result.results.map((r) => r.status)).toEqual(["installed", "installed", "installed"]);
+    expect(existsSync(join(tmpDir, ".config", "opencode", "opencode.json"))).toBe(true);
 
     // Verify Claude and OpenCode config files were created
     expect(existsSync(join(tmpDir, ".claude", "settings.json"))).toBe(true);
@@ -96,6 +112,7 @@ describe("runInstallCli — orchestration", () => {
       dryRun: false,
       homedir: tmpDir,
       silent: true,
+      piCmd: fakePi(tmpDir),
     };
     await runInstallCli(opts);
     const second = await runInstallCli(opts);
