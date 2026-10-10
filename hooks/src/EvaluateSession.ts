@@ -12,7 +12,6 @@
  */
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
-import { homedir } from "os";
 import { resolveProject } from "../lib/resolveProject.js";
 import { logHook, logEvent } from "../lib/hookLogger.js";
 import { EVENTS } from "../lib/eventNames.js";
@@ -21,10 +20,9 @@ import { extractProposals } from "../lib/llmExtract.js";
 import { writeProposals, type MemoryProposal } from "../lib/proposalQueue.js";
 import { promptRecallStatePath } from "../lib/promptRecall.js";
 import { readConfigSync } from "../../src/config.js";
-import { emitEvent } from "@rohirik/openltm-core";
+import { emitEvent, getClaudePluginDataDir } from "@rohirik/openltm-core";
 
-const PLUGIN_DATA_DIR = process.env.CLAUDE_PLUGIN_DATA
-  || join(homedir(), ".claude", "plugins", "data", "OpenLtm-openltm");
+const PLUGIN_DATA_DIR = process.env.CLAUDE_PLUGIN_DATA || getClaudePluginDataDir();
 const LEARNED_DIR = join(PLUGIN_DATA_DIR, "learned");
 const PATTERNS_DIR = join(LEARNED_DIR, "patterns");
 const SUMMARY_FILE = join(LEARNED_DIR, "summary.md");

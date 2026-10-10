@@ -112,7 +112,7 @@ export LTM_DB_PATH=/custom/path/openltm.db
 OpenLTM keeps its own files in a **data dir**, resolved as:
 
 1. `LTM_DATA_DIR` env var
-2. `CLAUDE_PLUGIN_DATA` (set by the plugin system, e.g. `~/.claude/plugins/data/OpenLtm-openltm`)
+2. `CLAUDE_PLUGIN_DATA` (set by the plugin system, e.g. `~/.claude/plugins/data/openltm-OpenLtm`, or `openltm-inline` with `--plugin-dir`)
 3. the directory that holds the database
 
 | File | Location |

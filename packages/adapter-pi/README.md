@@ -26,11 +26,13 @@ The current Pi adapter does not register a compaction hook.
 
 ## Shared memory
 
-Default database path:
+When the Claude Code plugin is installed, Pi uses its database, so both agents share memories:
 
 ```text
-~/.claude/plugins/data/OpenLtm-openltm/openltm.db
+~/.claude/plugins/data/openltm-OpenLtm/openltm.db
 ```
+
+(An older install's `OpenLtm-openltm/openltm.db` is used if that is the one that exists.)
 
 Override it before starting Pi:
 

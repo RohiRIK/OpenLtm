@@ -34,11 +34,13 @@ idempotent — safe to run multiple times.
 
 ## Shared database
 
-All agents share a single SQLite database:
+Claude Code's plugin keeps its database here, and the installer's Claude Code wiring and the Pi adapter share it:
 
 ```
-~/.claude/plugins/data/OpenLtm-openltm/openltm.db
+~/.claude/plugins/data/openltm-OpenLtm/openltm.db
 ```
+
+For OpenCode and OpenClaw, set `LTM_DB_PATH` to this path to share it.
 
 ## CLI flags
 

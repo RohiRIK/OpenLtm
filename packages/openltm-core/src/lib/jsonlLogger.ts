@@ -9,7 +9,7 @@
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
-import { homedir } from "os";
+import { getClaudePluginDataDir } from "../project.js";
 
 export interface LtmEvent {
   ts: string;
@@ -32,8 +32,7 @@ let _lastRotateCheck = 0;
 
 export function getLogPath(): string {
   if (_logPath) return _logPath;
-  const base = process.env.CLAUDE_PLUGIN_DATA
-    ?? join(homedir(), ".claude", "plugins", "data", "OpenLtm-openltm");
+  const base = process.env.CLAUDE_PLUGIN_DATA ?? getClaudePluginDataDir();
   _logPath = join(base, "logs", "ltm.jsonl");
   return _logPath;
 }

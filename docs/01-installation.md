@@ -15,7 +15,7 @@ OpenLTM installs in three ways. Pick one. All of them produce the same thing: a 
 | **OS** | macOS, Linux, or WSL |
 | **System SQLite** (optional) | Homebrew-installed sqlite on macOS (`brew install sqlite`) or a system `libsqlite3.so` on Linux — required for sqlite-vec vector recall and Honker queue/cron/pub-sub. Without it, the plugin runs on Bun's built-in SQLite (FTS5, JS-cosine) with no feature loss, just software fallbacks. |
 
-The database lives **outside** the plugin directory — at `~/.claude/plugins/data/OpenLtm-openltm/openltm.db` — so it survives every plugin update. OpenLTM's other files sit next to it in the same data dir: the project registry and per-project context in `projects/`, and `config.json`.
+The database lives **outside** the plugin directory — at `~/.claude/plugins/data/openltm-OpenLtm/openltm.db` — so it survives every plugin update. Claude Code names the dir `<plugin>-<marketplace>`; with `--plugin-dir` it is `openltm-inline`. Docs up to 2.16 said `OpenLtm-openltm`; the adapters and installers still find a database left there. OpenLTM's other files sit next to it in the same data dir: the project registry and per-project context in `projects/`, and `config.json`.
 
 ### Upgrading from an older install
 
@@ -61,7 +61,7 @@ bunx @rohirik/openltm-core --dry-run --claude  # preview without writing anythin
 
 `--dry-run` prints exactly what would be installed and changes nothing on disk.
 
-For Claude Code, `--claude` registers the MCP server in `~/.claude.json` and adds two hooks to `~/.claude/settings.json`: SessionStart (injects prior knowledge) and SessionEnd (runs the janitor if due). Both point at `~/.claude/plugins/data/OpenLtm-openltm/openltm.db`, the same database the plugin uses. This is a lighter setup than the plugin (no prompt-time recall, commit stale-flagging or session evaluation). Versions before 2.17 wrote entries Claude Code ignored; re-running the installer replaces them.
+For Claude Code, `--claude` registers the MCP server in `~/.claude.json` and adds two hooks to `~/.claude/settings.json`: SessionStart (injects prior knowledge) and SessionEnd (runs the janitor if due). Both point at the plugin's database, `~/.claude/plugins/data/openltm-OpenLtm/openltm.db` (or `OpenLtm-openltm/` if an earlier install created it there). This is a lighter setup than the plugin (no prompt-time recall, commit stale-flagging or session evaluation). Versions before 2.17 wrote entries Claude Code ignored; re-running the installer replaces them.
 
 ---
 

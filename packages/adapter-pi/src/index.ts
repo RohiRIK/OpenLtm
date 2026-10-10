@@ -13,7 +13,7 @@ import { homedir } from "node:os";
 import { existsSync, readdirSync } from "node:fs";
 import { findCoreCli } from "./find-core.js";
 // Relative import so esbuild inlines the Node-safe resolver into dist (core itself is external).
-import { dataDirFor, legacyLastSegment, loadProjectRegistry, resolveProjectName } from "../../openltm-core/src/project.js";
+import { dataDirFor, getClaudePluginDataDir, getLegacyClaudeDir, legacyLastSegment, loadProjectRegistry, resolveProjectName } from "../../openltm-core/src/project.js";
 
 // ── Fork-bomb prevention ──────────────────────────────────────────────────────
 
@@ -62,20 +62,24 @@ interface McpServerLocation {
   dbPath: string | null;
 }
 
-function findMcpServer(): McpServerLocation | null {
+export function findMcpServer(): McpServerLocation | null {
   const explicitDb = process.env["LTM_DB_PATH"] || null;
   // 1. Claude Code plugin cache — newest version first. Share Claude Code's
   //    database (its plugin data dir) so both agents see the same memories.
-  const claudeDir = join(homedir(), ".claude", "plugins");
-  for (const [marketplace, plugin, dataDirName] of [["OpenLtm", "openltm", "OpenLtm-openltm"], ["ltm", "ltm", "ltm-ltm"]] as const) {
-    const cacheBase = join(claudeDir, "cache", marketplace, plugin);
+  const claudeDir = process.env["CLAUDE_CONFIG_DIR"] || getLegacyClaudeDir();
+  const plugins = join(claudeDir, "plugins");
+  for (const [marketplace, plugin, dataDir] of [
+    ["OpenLtm", "openltm", getClaudePluginDataDir(claudeDir)],
+    ["ltm", "ltm", join(plugins, "data", "ltm-ltm")],
+  ] as const) {
+    const cacheBase = join(plugins, "cache", marketplace, plugin);
     if (!existsSync(cacheBase)) continue;
     try {
       const versions = readdirSync(cacheBase).filter((v) => /^\d/.test(v)).sort(compareVersions).reverse();
       for (const v of versions) {
         const script = join(cacheBase, v, "src", "mcp-server.ts");
         if (existsSync(script)) {
-          return { script, args: [], dbPath: explicitDb ?? join(claudeDir, "data", dataDirName, "openltm.db") };
+          return { script, args: [], dbPath: explicitDb ?? join(dataDir, "openltm.db") };
         }
       }
     } catch {

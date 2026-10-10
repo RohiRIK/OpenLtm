@@ -19,7 +19,7 @@ Symptoms: a new session opens with no memory block above your first message.
 1. Run `/openltm:health` — confirm hook registration is green.
 2. Confirm Bun is on `PATH` (`which bun`). The hooks run on Bun; if it's missing they fail silently.
 3. Confirm the project is seeded: `/openltm:project init`. With no goal and no memories, there is nothing to inject.
-4. Confirm the database exists at `~/.claude/plugins/data/OpenLtm-openltm/openltm.db`.
+4. Confirm the database exists at `~/.claude/plugins/data/openltm-OpenLtm/openltm.db` (`openltm-inline` with `--plugin-dir`); `scripts/mcp-probe.ts` prints the exact path.
 
 ---
 

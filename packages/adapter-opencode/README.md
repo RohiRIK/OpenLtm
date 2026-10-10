@@ -22,13 +22,13 @@ OpenCode automatically installs and updates the plugin on startup.
 
 ## Shared memory
 
-All three tools read from and write to the same database:
+To share memories with Claude Code, point OpenCode at the plugin's database:
 
 ```
-~/.claude/plugins/data/OpenLtm-openltm/openltm.db
+~/.claude/plugins/data/openltm-OpenLtm/openltm.db
 ```
 
-A memory learned in OpenCode appears in the next Claude Code session, and vice versa.
+Set it as `LTM_DB_PATH` (below). A memory learned in OpenCode then appears in the next Claude Code session, and vice versa. Without `LTM_DB_PATH`, OpenCode uses its own database.
 
 ## Custom DB path
 

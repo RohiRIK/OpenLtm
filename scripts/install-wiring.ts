@@ -114,7 +114,7 @@ if (!permissions.allow.includes(LTM_MCP_RULE)) {
 // only reads it for marketplace installs. Best signal: CLAUDE_PLUGIN_DATA is set,
 // or the plugin cache directory exists.
 // Names: the marketplace was "ltm" before 2.x and is "OpenLtm" now (cache/OpenLtm/openltm,
-// data/OpenLtm-openltm). A root inside ~/.claude/plugins is the plugin system's own copy.
+// data/openltm-OpenLtm — Claude Code names it <plugin>-<marketplace>). A root inside ~/.claude/plugins is the plugin system's own copy.
 const pluginsDir = join(CLAUDE_DIR, "plugins");
 const pluginDataDir = join(pluginsDir, "data");
 const hasPluginData = existsSync(pluginDataDir)

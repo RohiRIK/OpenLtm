@@ -6,7 +6,7 @@
  */
 import { existsSync, readdirSync, readFileSync, writeFileSync, unlinkSync } from "fs";
 import { join } from "path";
-import { homedir } from "os";
+import { getClaudePluginDataDir } from "./project.js";
 import { learn } from "./db.js";
 import type { MemoryCategory } from "./db.js";
 
@@ -36,8 +36,7 @@ export interface PendingProposal {
 }
 
 function getProposalsDir(): string {
-  const base = process.env.CLAUDE_PLUGIN_DATA
-    ?? join(homedir(), ".claude", "plugins", "data", "OpenLtm-openltm");
+  const base = process.env.CLAUDE_PLUGIN_DATA ?? getClaudePluginDataDir();
   return join(base, "proposals");
 }
 

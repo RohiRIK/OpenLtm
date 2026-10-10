@@ -16,7 +16,7 @@ import * as p from "@clack/prompts";
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from "fs";
 import { join, dirname } from "path";
 import { homedir } from "os";
-import { getDb, upsertGoal, learn } from "@rohirik/openltm-core";
+import { getDb, upsertGoal, learn, getClaudePluginDataDir } from "@rohirik/openltm-core";
 // Same resolver + registry the hooks use, so onboarding never names a project
 // differently from SessionStart (or clobbers a registered/continuity name).
 // All three resolve their paths per call, never at module load.
@@ -85,7 +85,7 @@ export function runDiagnostics(): DiagnosticResult[] {
 }
 
 export function getOnboardedFlagPath(pluginDataDir?: string): string {
-  const base = pluginDataDir ?? process.env.CLAUDE_PLUGIN_DATA ?? join(claudeDir(), "plugins", "data", "OpenLtm-openltm");
+  const base = pluginDataDir ?? process.env.CLAUDE_PLUGIN_DATA ?? getClaudePluginDataDir();
   return join(base, "onboarded.flag");
 }
 

@@ -45,6 +45,26 @@ export function getLegacyClaudeDir(): string {
 }
 
 /**
+ * Data dir names Claude Code may hold the OpenLTM plugin's data under, most
+ * current first. Measured with Claude Code 2.1.296: `plugins/data/<plugin>-<marketplace>`,
+ * so `openltm@OpenLtm` → `openltm-OpenLtm` (`--plugin-dir` → `openltm-inline`).
+ * OpenLTM ≤ 2.16 assumed `OpenLtm-openltm`; the bunx/git installers put their
+ * database there, so it stays a candidate.
+ */
+export const CLAUDE_PLUGIN_DATA_NAMES = ["openltm-OpenLtm", "OpenLtm-openltm"] as const;
+
+/**
+ * The installed plugin's data dir, for code running outside the plugin
+ * (adapters, installers, fallbacks without CLAUDE_PLUGIN_DATA): the first of
+ * {@link CLAUDE_PLUGIN_DATA_NAMES} that holds an `openltm.db`, else `openltm-OpenLtm`.
+ */
+export function getClaudePluginDataDir(claudeDir: string = process.env["CLAUDE_CONFIG_DIR"] || getLegacyClaudeDir()): string {
+  const base = join(claudeDir, "plugins", "data");
+  const existing = CLAUDE_PLUGIN_DATA_NAMES.find((name) => existsSync(join(base, name, "openltm.db")));
+  return join(base, existing ?? CLAUDE_PLUGIN_DATA_NAMES[0]);
+}
+
+/**
  * `~/.claude/projects` — Claude Code's transcript directory. OpenLTM kept its
  * registry and context files here originally; it is now read-only for OpenLTM
  * (legacy migration source + transcripts).

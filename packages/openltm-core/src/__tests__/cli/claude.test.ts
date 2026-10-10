@@ -29,7 +29,7 @@ describe("installClaude", () => {
     expect(mcp.type).toBe("stdio");
     expect(mcp.args).toEqual(["@rohirik/openltm-core", "mcp-serve"]);
     expect(mcp.command.endsWith("bunx")).toBe(true);
-    expect(mcp.env.LTM_DB_PATH).toBe(join(home, ".claude", "plugins", "data", "OpenLtm-openltm", "openltm.db"));
+    expect(mcp.env.LTM_DB_PATH).toBe(join(home, ".claude", "plugins", "data", "openltm-OpenLtm", "openltm.db"));
     expect(read(settingsPath()).mcpServers).toBeUndefined();
   });
 
@@ -41,9 +41,17 @@ describe("installClaude", () => {
       const [entry] = hooks[event]!;
       expect(entry!.matcher).toBe("");
       expect(entry!.hooks![0]!.type).toBe("command");
-      expect(entry!.hooks![0]!.command).toContain(`LTM_DB_PATH=${join(home, ".claude", "plugins", "data", "OpenLtm-openltm", "openltm.db")}`);
+      expect(entry!.hooks![0]!.command).toContain(`LTM_DB_PATH=${join(home, ".claude", "plugins", "data", "openltm-OpenLtm", "openltm.db")}`);
       expect(entry!.hooks![0]!.command).toContain(`@rohirik/openltm-core hook --name ${event}`);
     }
+  });
+
+  it("keeps sharing a database an earlier install created under OpenLtm-openltm", async () => {
+    const legacy = join(home, ".claude", "plugins", "data", "OpenLtm-openltm");
+    mkdirSync(legacy, { recursive: true });
+    writeFileSync(join(legacy, "openltm.db"), "");
+    await install();
+    expect(read(claudeJsonPath()).mcpServers.openltm.env.LTM_DB_PATH).toBe(join(legacy, "openltm.db"));
   });
 
   it("is idempotent", async () => {

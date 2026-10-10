@@ -13,6 +13,7 @@
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
+import { getClaudePluginDataDir } from "../project.js";
 import os from "os";
 import type { InstallResult } from "./types.js";
 
@@ -60,8 +61,9 @@ function isLtmEntry(e: HookEntry): boolean {
     && e.hooks.every((h) => typeof h?.command === "string" && h.command.includes(`${PACKAGE} hook --name `));
 }
 
+/** The plugin's database when Claude Code has one (shared), else where it will create it. */
 export function claudeDbPath(homedir: string): string {
-  return join(homedir, ".claude", "plugins", "data", "OpenLtm-openltm", "openltm.db");
+  return join(getClaudePluginDataDir(join(homedir, ".claude")), "openltm.db");
 }
 
 function desiredHookEntries(dbPath: string, bunx: string): Record<string, HookEntry> {
