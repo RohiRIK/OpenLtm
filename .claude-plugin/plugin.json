@@ -13,7 +13,7 @@
         "${CLAUDE_PLUGIN_ROOT}/src/mcp-server.ts"
       ],
       "env": {
-        "LTM_DB_PATH": "${CLAUDE_PLUGIN_DATA}/openltm.db"
+        "CLAUDE_PLUGIN_DATA": "${CLAUDE_PLUGIN_DATA}"
       }
     }
   },

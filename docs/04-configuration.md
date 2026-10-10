@@ -97,8 +97,10 @@ All four env vars are read at process start. The extension layer degrades gracef
 Three ways to set it (priority order):
 
 1. **`LTM_DB_PATH` env var** — set in your shell profile for a permanent override
-2. **`CLAUDE_PLUGIN_DATA`** — set automatically by the plugin system on marketplace installs
-3. **Default fallback** — `$CLAUDE_PLUGIN_DATA/openltm.db`
+2. **`CLAUDE_PLUGIN_DATA`** — set automatically by the plugin system on marketplace installs; the DB is `$CLAUDE_PLUGIN_DATA/openltm.db`
+3. **Default fallback** — `data/openltm.db` in a dev checkout
+
+The hooks and the MCP server resolve it the same way, so an `LTM_DB_PATH` you export applies to both (before 2.17 the plugin's MCP server ignored it and used `$CLAUDE_PLUGIN_DATA/openltm.db`).
 
 ```bash
 # Shell override example
