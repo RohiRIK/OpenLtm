@@ -90,3 +90,38 @@ test.describe("2.17 UI actions through the Next proxy", () => {
     expect((await call(page, "PUT", "/config", { ltm: { promptRecallLimit: 5 } })).status).toBe(200);
   });
 });
+
+// The same edit and delete, but through the controls a person uses: a row in
+// the project's memory table → the inspector → Edit/Save or Delete (confirm).
+test.describe("2.17 UI controls: edit and delete from the memory table", () => {
+  const table = (page: Page) => page.locator("tbody");
+
+  test("edit in the inspector updates the table, survives a reload, lands in the DB", async ({ page }) => {
+    const id = insert("controls: text before the edit");
+    await page.goto("/projects/ui-smoke/memories");
+    await table(page).getByText("controls: text before the edit").click();
+    const inspector = page.getByTestId("sidebar");
+    await inspector.getByRole("button", { name: "Edit", exact: true }).click();
+    await inspector.locator("textarea").fill("controls: text after the edit");
+    await inspector.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(inspector.getByText("controls: text after the edit")).toBeVisible();
+    await expect(table(page).getByText("controls: text after the edit")).toBeVisible();
+    await page.reload();
+    await expect(table(page).getByText("controls: text after the edit")).toBeVisible();
+    await expect(table(page).getByText("controls: text before the edit")).toHaveCount(0);
+    expect(row(id)?.content).toBe("controls: text after the edit");
+  });
+
+  test("delete in the inspector removes the row, survives a reload, lands in the DB", async ({ page }) => {
+    const id = insert("controls: memory deleted from the UI");
+    await page.goto("/projects/ui-smoke/memories");
+    await table(page).getByText("controls: memory deleted from the UI").click();
+    page.once("dialog", (d) => void d.accept());
+    await page.getByTestId("sidebar").getByRole("button", { name: "Delete", exact: true }).click();
+    await expect(table(page).getByText("controls: memory deleted from the UI")).toHaveCount(0);
+    await page.reload();
+    await expect(table(page).getByText("UI smoke: graph renders memories as nodes")).toBeVisible();
+    await expect(table(page).getByText("controls: memory deleted from the UI")).toHaveCount(0);
+    expect(row(id)).toBeUndefined();
+  });
+});
