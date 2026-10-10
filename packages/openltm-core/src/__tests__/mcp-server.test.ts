@@ -437,3 +437,41 @@ describe("mcp/server — context_add keeps permanent items unique", () => {
     expect(items.filter((i) => i.content === "Use WAL mode for the ledger DB").length).toBe(1);
   });
 });
+
+// Round-2 release verification (F1): `context` promised goals, decisions and
+// gotchas but returned memories only — a context_add decision never showed up.
+describe("mcp/server — context returns the project's context items", () => {
+  it("context_add without project, then context: goal, decisions, gotchas, progress are there", async () => {
+    const client = await connect({ defaultProject: () => "ctx-f1" });
+    json(await call(client, "context_add", { type: "goal", content: "Ship hybrid recall" }));
+    json(await call(client, "context_add", { type: "decision", content: "We use RRF k=60 for hybrid recall." }));
+    json(await call(client, "context_add", { type: "gotcha", content: "FTS5 needs quoted tokens" }));
+    json(await call(client, "context_add", { type: "progress", content: "wired the semantic retriever" }));
+    const ctx = json<{ project: string; goal: string | null; decisions: string[]; gotchas: string[]; progress: string[]; globals: unknown[]; scoped: unknown[] }>(await call(client, "context"));
+    expect(ctx.project).toBe("ctx-f1");
+    expect(ctx.goal).toBe("Ship hybrid recall");
+    expect(ctx.decisions).toContain("We use RRF k=60 for hybrid recall.");
+    expect(ctx.gotchas).toContain("FTS5 needs quoted tokens");
+    expect(ctx.progress).toContain("wired the semantic retriever");
+    expect(Array.isArray(ctx.globals) && Array.isArray(ctx.scoped)).toBe(true);
+  });
+
+  it("memories in context are egress-scrubbed", async () => {
+    const core = await import("../index.js");
+    const db = core.getDb();
+    const key = "AKIA" + "IOSFODNN7EXAMPLE";
+    db.run("INSERT INTO memories (content, category, importance, project_scope, dedup_key) VALUES (?, 'gotcha', 4, 'ctx-scrub', 'ctx-scrub-1')", [`legacy row with ${key} in it`]);
+    const client = await connect();
+    const ctx = json<{ scoped: Array<{ content: string }> }>(await call(client, "context", { project: "ctx-scrub" }));
+    expect(ctx.scoped.some((m) => m.content.startsWith("legacy row with"))).toBe(true);
+    expect(JSON.stringify(ctx)).not.toContain(key);
+  });
+
+  it("learn reports the scope it stored the memory under", async () => {
+    const client = await connect({ defaultProject: () => "scope-proj" });
+    const global = json<{ project_scope: string | null }>(await call(client, "learn", { content: "Scope report: cross-project fact", category: "pattern" }));
+    expect(global.project_scope).toBeNull();
+    const anchored = json<{ project_scope: string | null }>(await call(client, "learn", { content: "Scope report: anchored fact", category: "gotcha", files: ["src/a.ts"] }));
+    expect(anchored.project_scope).toBe("scope-proj");
+  });
+});

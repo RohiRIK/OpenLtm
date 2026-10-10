@@ -97,6 +97,9 @@ const NO_PROJECT_MESSAGE =
   "No project given and the server could not infer one from its working directory. " +
   "Pass `project` — the LTM project name (see the SessionStart context banner or ~/.claude/projects/registry.json).";
 
+/** Progress lines `context` returns (most recent last), like SessionStart's summary. */
+const CONTEXT_RECENT_PROGRESS = 5;
+
 /** Proposal session ids are file stems in the proposals dir — never allow a path. */
 const SESSION_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
@@ -242,7 +245,9 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
 
       notify(`memory_stored: id=${result.id} category=${resolvedCategory}${categoriseSource ? ` (auto:${categoriseSource})` : ""} importance=${importance ?? 3} action=${result.action}`);
 
-      return jsonResult({ ...result, category: resolvedCategory, categoriseSource });
+      // project_scope tells the model where it landed: null = cross-project (global),
+      // which SessionStart only lists from importance 4 up.
+      return jsonResult({ ...result, category: resolvedCategory, categoriseSource, project_scope: scope ?? null });
     },
   );
 
@@ -329,7 +334,7 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
     "context",
     {
       title: "Project context",
-      description: "Restore project goals, decisions, and gotchas at session start or when switching projects. Returns merged context (globals + project-scoped memories).",
+      description: "Restore project state at session start or when switching projects — what SessionStart injects: the current goal, decisions, gotchas and recent progress (context items), plus high-importance global memories (importance ≥ 4) and the project's memories.",
       inputSchema: {
         project: projectParam,
       },
@@ -338,7 +343,18 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
     async ({ project }) => {
       const resolved = await resolveProjectArg(project);
       if (!resolved) return errorResult(NO_PROJECT_MESSAGE);
-      return jsonResult({ project: resolved, ...getContextMerge(resolved) });
+      const items = getItems(resolved);
+      const ofType = (type: ContextType) => items.filter((i) => i.type === type).map((i) => scrubForEgress(i.content));
+      const merged = getContextMerge(resolved);
+      return jsonResult({
+        project: resolved,
+        goal: ofType("goal").at(-1) ?? null,
+        decisions: ofType("decision"),
+        gotchas: ofType("gotcha"),
+        progress: ofType("progress").slice(-CONTEXT_RECENT_PROGRESS),
+        globals: scrubMemoryPayload(merged.globals),
+        scoped: scrubMemoryPayload(merged.scoped),
+      });
     },
   );
 

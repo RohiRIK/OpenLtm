@@ -18,14 +18,14 @@ If you ever need to call them yourself (e.g. from a custom hook or script), this
 | `relate` | Create a typed relationship between two memories. |
 | `graph` | Traverse the memory graph from seed nodes. |
 | `admin_audit` | Query the audit log (insert, update, forget, redact, …) with before/after snapshots. |
-| `context` | Get merged context (globals + project-scoped memories) for a project. `project` is optional. |
+| `context` | Restore a project: goal, decisions, gotchas, recent progress, plus globals (importance ≥ 4) and project-scoped memories. `project` is optional. |
 | `context_items` | List context items by type (goal/decision/progress/gotcha). `project` is optional. |
 | `context_add` | Record a goal, decision, gotcha, or progress note for a project. `project` is optional. |
 | `proposals` | List, accept, or reject memories proposed by end-of-session evaluation. |
 
 ### Optional `project`
 
-`context`, `context_items` and `context_add` take an optional `project` (the LTM registry name). When it's omitted, the server uses the current project — the plugin resolves it from the server's working directory exactly like the hooks do (registry exact or longest-prefix match, else the git repo root's folder name, else the working directory's). If no project can be resolved (e.g. a host that supplies no default — `bunx @rohirik/openltm-core mcp-serve` now defaults to its working directory), the tool returns an error asking for `project`. `context` echoes the project it used: `{ project, globals, scoped }`.
+`context`, `context_items` and `context_add` take an optional `project` (the LTM registry name). When it's omitted, the server uses the current project — the plugin resolves it from the server's working directory exactly like the hooks do (registry exact or longest-prefix match, else the git repo root's folder name, else the working directory's). If no project can be resolved (e.g. a host that supplies no default — `bunx @rohirik/openltm-core mcp-serve` now defaults to its working directory), the tool returns an error asking for `project`. `context` echoes the project it used: `{ project, goal, decisions, gotchas, progress, globals, scoped }` — context items as written by `context_add` and the hooks, memories egress-scrubbed. `learn` returns the `project_scope` it stored the memory under (`null` = cross-project).
 
 Hosts embedding the server pick the default with `buildMcpServer({ defaultProject: () => "<name>" })` / `startMcpServer({ defaultProject })`.
 

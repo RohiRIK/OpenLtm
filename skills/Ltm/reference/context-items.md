@@ -14,7 +14,7 @@ Besides long-term `memories`, OpenLTM keeps a small per-project state table, `co
 ## Reading
 
 - `context_items {type?, project?}` — the rows themselves, newest first.
-- `context {project?}` — the merged memory restore for a project: global memories with importance ≥ 4 plus up to 15 project-scoped memories with importance ≥ 3.
+- `context {project?}` — the full restore for a project, as SessionStart injects it: `goal`, `decisions`, `gotchas` and the last 5 `progress` lines, plus global memories with importance ≥ 4 and up to 15 project-scoped memories with importance ≥ 3. A memory `learn`ed without `project` (and without `files`) is global, so it only shows here from importance 4 up — `recall` finds it either way.
 - SessionStart already injects goal, decisions, gotchas, recent progress, and top memories, so read these tools only when that block is missing or you switched projects mid-session.
 
 `project` defaults to the current project. `/openltm:project register` names or renames the current directory's project.

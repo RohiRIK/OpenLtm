@@ -72,6 +72,8 @@ try {
   check("context_add decision ok", !add.isError && json(add).ok === true, add.content[0]?.text);
   const items = await call("context_items", { type: "decision" });
   check("context_items lists the new decision", items.content[0]!.text.includes("Smoke decision"), items.content[0]?.text);
+  const ctxAfter = await call("context", {});
+  check("context {} returns the decision context_add just stored", (json(ctxAfter).decisions ?? []).includes("Smoke decision: hybrid recall uses RRF k=60"), ctxAfter.content[0]?.text);
 
   const list = await call("proposals", { action: "list" });
   check("proposals list shows the queued proposal", json(list).count === 1 && json(list).proposals[0].session_id === "smoke-session", json(list));
