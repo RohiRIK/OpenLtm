@@ -27,6 +27,15 @@ const toolError = (content: unknown): Entry => ({
   message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t", is_error: true, content }] },
 });
 
+/** A Bash call and its failed result, linked by id the way the transcript links them. */
+const bashError = (command: string, content: string): Entry[] => {
+  const id = `b-${Math.random()}`;
+  return [
+    { type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", id, name: "Bash", input: { command } }] } },
+    { type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: id, is_error: true, content }] } },
+  ];
+};
+
 const REAL_ERROR = "Exit code 1\nerror: Cannot find module 'left-pad' from '/repo/src/index.ts'";
 const JUNK_ERRORS = [
   "<tool_use_error>File has not been read yet. Read it first before writing to it.</tool_use_error>",
@@ -132,7 +141,7 @@ describe("EvaluateSession hook (SessionEnd)", () => {
     expect(typeof project).toBe("string"); // accepted proposals are scoped to it
     expect(project!.length).toBeGreaterThan(0);
     expect(proposals).toHaveLength(1);
-    expect(proposals[0]!.content).toBe(REAL_ERROR.replace(/\s+/g, " "));
+    expect(proposals[0]!.content).toBe("error: Cannot find module 'left-pad' from '/repo/src/index.ts'"); // no "Exit code 1" prefix
     expect(proposals[0]!.category).toBe("gotcha");
     expect(proposals[0]!.source).toBe("evaluate-session");
   });
@@ -155,6 +164,24 @@ describe("EvaluateSession hook (SessionEnd)", () => {
     expect(run.exitCode).toBe(0);
     expect(run.stdout).toBe("");
     expect(existsSync(join(pluginData, "proposals", "noisesess-0000.json"))).toBe(false);
+  }, 30_000);
+
+  it("skips failures of read-only probes and one-off scripts, keeps a project command's", async () => {
+    // The first three are the proposals a live verification run produced (round 3).
+    const transcript = writeTranscript("eval-adhoc", [
+      userMsg("check the server and the database"),
+      ...bashError(`TMP="$HOME/.claude/tmp"; ls -la $TMP/ltm-server.pid $TMP/nextjs.pid 2>&1; for port in 7331 7332; do echo "port $port:"; lsof -i ":$port" 2>/dev/null; done`,
+        "Exit code 127\nls: cannot access '/home/u/.claude/tmp/ltm-server.pid': No such file or directory\nport 7331:\nport 7332:"),
+      ...bashError(`bun --eval "\nimport { Database } from 'bun:sqlite';\nconst db = new Database(process.env.LTM_DB_PATH);\n"`,
+        "Exit code 1\n1 | \n2 | import { Database } from 'bun:sqlite';\n3 | const db = new Database(process.env.LTM_DB_PATH);\nSQLiteError: no such table: settings"),
+      ...bashError(`sqlite3 ~/.claude/plugins/data/openltm-inline/openltm.db "select titel from memories"`, "Exit code 1\nParse error near line 1: no such column: titel"),
+      ...bashError(`python3 -c "import json; json.load(open('x.json'))"`, "Exit code 1\nFileNotFoundError: [Errno 2] No such file or directory: 'x.json'"),
+      ...bashError("cd /repo && bun test src/config.test.ts", "Exit code 1\nTypeError: loadConfig is not a function. (In 'loadConfig()', 'loadConfig' is undefined)"),
+    ]);
+    const run = await runHook({ session_id: "adhocsess-0000", transcript_path: transcript, cwd: "/tmp/ltm-evaluate-session-project" });
+    expect(run.exitCode).toBe(0);
+    const { proposals } = JSON.parse(readFileSync(join(pluginData, "proposals", "adhocsess-0000.json"), "utf-8")) as { proposals: Array<{ content: string }> };
+    expect(proposals.map((p) => p.content)).toEqual(["TypeError: loadConfig is not a function. (In 'loadConfig()', 'loadConfig' is undefined)"]);
   }, 30_000);
 
   it("skips short sessions and missing transcripts", async () => {

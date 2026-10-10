@@ -58,6 +58,33 @@ const NOISE_ERROR_PATTERNS: RegExp[] = [
   /\balready up[ -]to[ -]date\b|\beverything up-to-date\b/i,
 ];
 
+/**
+ * One-off evaluations (`bun --eval`, `node -e`, `python -c`, `sqlite3 …`) and
+ * chains of read-only probes (`ls`, `cat`, `lsof`, `curl`, …) fail on what was
+ * not there at that moment — a PID file, a guessed column — not on the
+ * project, so their errors are not proposals. Seen live: three such errors
+ * were the only proposals of a verification session.
+ */
+const ONE_OFF_EVAL = /\b(?:bun|node|deno|python3?|ruby|perl)\s+(?:--eval|-e|-c|eval)\b|(?:^|[\s;&|(])sqlite3\s/;
+const PROBE_COMMANDS = new Set([
+  "ls", "stat", "test", "[", "[[", "cat", "head", "tail", "wc", "file", "readlink", "realpath", "du", "df",
+  "pgrep", "ps", "lsof", "ss", "netstat", "kill", "which", "command", "type", "curl", "wget",
+  "echo", "printf", "true", "false", "sleep", "grep", "rg", "find", "pwd", "id", "whoami", "env", "printenv", "date", "uname", "cd",
+]);
+const SHELL_KEYWORDS = /^(?:if|then|else|elif|fi|do|done|while|until|!|\{|\})$/;
+
+function isProbeOrOneOff(command: string): boolean {
+  if (ONE_OFF_EVAL.test(command)) return true;
+  const segments = command.split(/\|\||&&|[;|\n]/).map((seg) => seg.trim()).filter(Boolean);
+  return segments.length > 0 && segments.every((seg) => {
+    let words = seg.split(/\s+/);
+    while (words.length && SHELL_KEYWORDS.test(words[0]!)) words = words.slice(1);
+    while (words.length && /^\w+=/.test(words[0]!)) words = words.slice(1); // VAR=value prefixes
+    if (words.length === 0 || words[0] === "for") return true;                // `for x in …`, bare keywords, assignments
+    return PROBE_COMMANDS.has(words[0]!.replace(/^.*\//, ""));
+  });
+}
+
 type TranscriptEntry = {
   type?: string;
   error?: { message?: string };
@@ -82,9 +109,15 @@ function contentBlocks(entry: TranscriptEntry): any[] {
 function collectErrors(entries: TranscriptEntry[]): string[] {
   const seen = new Set<string>();
   const errors: string[] = [];
+  const bashCommands = new Map<string, string>();
+  for (const entry of entries) {
+    for (const block of contentBlocks(entry)) {
+      if (block?.type === "tool_use" && block.name === "Bash" && typeof block.input?.command === "string") bashCommands.set(block.id, block.input.command);
+    }
+  }
   const consider = (raw: string) => {
     if (NOISE_ERROR_PATTERNS.some(re => re.test(raw))) return;
-    const msg = raw.replace(/\s+/g, " ").trim().substring(0, MAX_ERROR_CHARS);
+    const msg = raw.replace(/^\s*Exit code \d+\s*/, "").replace(/\s+/g, " ").trim().substring(0, MAX_ERROR_CHARS);
     if (msg.length < MIN_ERROR_CHARS || seen.has(msg)) return;
     seen.add(msg);
     errors.push(msg);
@@ -92,6 +125,8 @@ function collectErrors(entries: TranscriptEntry[]): string[] {
   for (const entry of entries) {
     for (const block of contentBlocks(entry)) {
       if (block?.type !== "tool_result" || !block.is_error) continue;
+      const command = bashCommands.get(block.tool_use_id);
+      if (command && isProbeOrOneOff(command)) continue;
       consider(Array.isArray(block.content)
         ? block.content.map((c: any) => c?.text || "").join(" ")
         : String(block.content || ""));
