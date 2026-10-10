@@ -22,7 +22,7 @@ import {
   runPendingMigrations,
   startEmbeddingWorker, startJanitorScheduler,
   startLtmListener,
-  getCapabilities, acquireJanitorLock,
+  getCapabilities, acquireJanitorLock, scrubOrRefuse,
 } from "@rohirik/openltm-core";
 import { detectCommunities, generateClusterLabel, assignClusterColors } from "./cluster.js";
 import { getDbPath, getSchemaPath } from "./paths.js";
@@ -970,7 +970,8 @@ Bun.serve({
     }
 
     const memMatch = p.match(/^\/api\/memory\/(\d+)$/);
-    if (memMatch?.[1]) {
+    // GET only: PUT (edit) and DELETE on the same path are handled further down.
+    if (memMatch?.[1] && req.method === "GET") {
       const m = getMemoryById(parseInt(memMatch[1], 10));
       return m ? Response.json(m) : new Response("Not found", { status: 404 });
     }
@@ -1152,8 +1153,9 @@ Bun.serve({
       if (body.tags !== undefined && (!Array.isArray(body.tags) || body.tags.some(t => typeof t !== "string")))
         return Response.json({ error: "tags must be a string array" }, { status: 400 });
       if (body.content !== undefined) {
+        // Same fail-closed scrub as every other durable write.
         db.run("UPDATE memories SET content=?, last_confirmed_at=? WHERE id=?",
-          [body.content.trim(), new Date().toISOString(), id]);
+          [scrubOrRefuse(body.content.trim()).scrubbed, new Date().toISOString(), id]);
       }
       if (body.importance !== undefined) {
         db.run("UPDATE memories SET importance=? WHERE id=?", [body.importance, id]);

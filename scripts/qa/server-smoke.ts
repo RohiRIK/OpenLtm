@@ -61,6 +61,19 @@ try {
   check("POST /api/janitor/run → 409 while another process holds the janitor lock", busy.status === 409, busy);
   rmSync(dbPath + ".janitor.lock", { force: true });
 
+  // The GET route for /api/memory/:id used to answer every method, so the UI's
+  // edit (PUT) and delete (DELETE) returned 200 and changed nothing.
+  const rw = new Database(dbPath);
+  const ins = (content: string) => Number(rw.run("INSERT INTO memories (content, category, importance, dedup_key) VALUES (?, 'pattern', 3, ?)", [content, `smoke-${content}`]).lastInsertRowid);
+  const editId = ins("server smoke: memory to edit");
+  const delId = ins("server smoke: memory to delete");
+  const edit = await req(`/api/memory/${editId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: `edited with key ${"AKIA" + "IOSFODNN7EXAMPLE"}` }) });
+  const edited = rw.query<{ content: string }, [number]>("SELECT content FROM memories WHERE id=?").get(editId)?.content ?? "";
+  check("PUT /api/memory/:id edits the memory and scrubs secrets", edit.status === 200 && edited.startsWith("edited with key") && !edited.includes("IOSFODNN7EXAMPLE"), edited);
+  const del = await req(`/api/memory/${delId}`, { method: "DELETE", headers: { "Content-Type": "application/json" } });
+  check("DELETE /api/memory/:id deletes the memory", del.status === 200 && !rw.query("SELECT 1 FROM memories WHERE id=?").get(delId), del);
+  rw.close();
+
   check("/api/reveal outside the DB dir → 403", (await req("/api/reveal", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: "/etc/passwd" }) })).status === 403);
 } catch (err) {
   failures++;
