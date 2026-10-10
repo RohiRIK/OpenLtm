@@ -21,6 +21,13 @@ The database lives **outside** the plugin directory — at `~/.claude/plugins/da
 
 Older versions kept the project registry and context files in `~/.claude/projects/` (Claude Code's own transcript folder) and the config in `~/.claude/config.json`. Nothing to do by hand: on first use the registry and context files are **copied** into the data dir, and the legacy files are left exactly as they were. An existing `~/.claude/config.json` keeps working until a `config.json` exists in the data dir. Project names that already hold memories are kept. Details and overrides (`LTM_DATA_DIR`, `LTM_CONFIG_PATH`): [Configuration → File locations](04-configuration.md#file-locations).
 
+**Moving from a git clone or bunx install to the plugin?** Those wrote OpenLTM hooks into `~/.claude/settings.json`; next to the plugin they fire a second time. SessionStart warns when it sees them, and `/openltm:health` lists them. Remove only those entries (the file is backed up first):
+
+```bash
+bun ~/.claude/plugins/cache/OpenLtm/openltm/*/scripts/unwire-legacy-hooks.ts --check   # list
+bun ~/.claude/plugins/cache/OpenLtm/openltm/*/scripts/unwire-legacy-hooks.ts           # remove
+```
+
 ---
 
 ## Option A — Marketplace (recommended)

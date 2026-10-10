@@ -197,3 +197,15 @@ console.log('Active: ' + active + '  |  Deprecated: ' + dep + '  |  Archived (al
 console.log('At-risk (decay_score < 0.25): ' + atRisk + ' memories');
 "
 ```
+
+---
+
+## Duplicate hooks
+
+```bash
+bun "${CLAUDE_PLUGIN_ROOT}/scripts/unwire-legacy-hooks.ts" --check
+```
+
+Exit 0: no OpenLTM hooks in `~/.claude/settings.json` — show `🟢 hooks come from the plugin only`.
+Exit 3: it lists entries from a dev install, an older version or the bunx installer — they fire alongside the plugin's hooks. Show them as 🔴 and offer to run the same command without `--check` (it backs the file up first, then removes only OpenLTM entries); restart Claude Code afterwards.
+

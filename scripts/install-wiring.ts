@@ -9,6 +9,7 @@ import { existsSync, readFileSync, readdirSync, writeFileSync, copyFileSync, mkd
 import { join, basename, resolve, sep } from "path";
 import { homedir } from "os";
 import { execSync } from "child_process";
+import { removeLtmHooks as removeLtmHookEntries } from "../hooks/lib/settingsHooks.js";
 
 const root = process.argv[2];
 if (!root) {
@@ -133,8 +134,7 @@ function legacyHookCommand(file: string): string {
   return `CLAUDE_PLUGIN_ROOT=${root} bun run ${root}/hooks/src/${file}`;
 }
 
-// Substring patterns for the four original hooks (pre-existing cleanup behaviour,
-// kept so stale entries from older installs at any root are still removed).
+// The four original hooks — older plugin versions also copied them into ~/.claude/hooks/.
 const LTM_HOOK_PATTERNS = [
   "hooks/src/SessionStart.ts",
   "hooks/src/UpdateContext.ts",
@@ -142,28 +142,13 @@ const LTM_HOOK_PATTERNS = [
   "hooks/src/PreCompact.ts",
 ];
 // SessionEnd.ts, UserPromptSubmit.ts and PostToolUse.ts are generic file names other
-// tools may use, so they are only ever removed on an exact match with a command
-// this script writes.
+// tools may use: beyond the shared matcher (hooks/lib/settingsHooks.ts), they are
+// also removed on an exact match with a command this script writes for this root.
 const GENERIC_HOOK_FILES = ["SessionEnd.ts", "UserPromptSubmit.ts", "PostToolUse.ts"];
 const LTM_EXACT_COMMANDS = new Set(GENERIC_HOOK_FILES.flatMap((f) => [hookCommand(f), legacyHookCommand(f)]));
-// The exact shape this script writes, for any root — quoted or legacy unquoted.
-const LTM_WRITTEN_COMMAND_RE =
-  /^CLAUDE_PLUGIN_ROOT=('?)(.+)\1 bun run ('?)\2\/hooks\/src\/(SessionStart|UserPromptSubmit|PostToolUse|UpdateContext|EvaluateSession|SessionEnd|PreCompact)\.ts\3$/;
-const isLtmHookCommand = (cmd: string): boolean =>
-  LTM_EXACT_COMMANDS.has(cmd) || LTM_WRITTEN_COMMAND_RE.test(cmd) || LTM_HOOK_PATTERNS.some((p) => cmd.includes(p));
-/** Drop every LTM hook entry (any root) so one install never leaves duplicates behind. */
+/** Drop every LTM hook entry (any root, bunx installer too) so one install never leaves duplicates behind. */
 function removeLtmHooks(): number {
-  let removed = 0;
-  for (const event of Object.keys(hooks)) {
-    for (const e of hooks[event]!) {
-      const before = e.hooks.length;
-      e.hooks = e.hooks.filter((h) => !isLtmHookCommand(h.command));
-      removed += before - e.hooks.length;
-    }
-    hooks[event] = hooks[event]!.filter((e) => e.hooks.length > 0);
-    if (hooks[event]!.length === 0) delete hooks[event];
-  }
-  return removed;
+  return removeLtmHookEntries(hooks, LTM_EXACT_COMMANDS);
 }
 
 if (isMarketplaceInstall) {

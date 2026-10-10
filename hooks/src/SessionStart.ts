@@ -18,6 +18,7 @@ import { EVENTS } from "../lib/eventNames.js";
 import { trimSummary } from "../lib/summaryTrim.js";
 import { recordInjectedIds } from "../lib/promptRecall.js";
 import { applyInjectTopN } from "../lib/injectTopN.js";
+import { findLtmHooksInUserSettings, userSettingsPath } from "../lib/settingsHooks.js";
 import { getContextMerge, getSimilarMemories, getContextMergeWithGraph,
          embedText, getDb, listMemoryIdsMissingEmbedding, exportContextMarkdown,
          waitForInit, getRecentConflicts, listStagedConflicts, emitEvent, listPendingProposals,
@@ -157,6 +158,25 @@ function buildBackfillHint(cfg: Cfg): string {
   }
 }
 
+/**
+ * Running as the plugin (CLAUDE_PLUGIN_DATA is only set for plugin hooks) while
+ * settings.json still wires OpenLTM hooks from a dev install, an older version
+ * or bunx: every hook fires twice, the extra copy running other code against
+ * another DB. Say so every session until it is fixed.
+ */
+function buildDuplicateHooksNotice(): string {
+  if (!process.env.CLAUDE_PLUGIN_DATA) return "";
+  try {
+    const found = findLtmHooksInUserSettings();
+    if (found.length === 0) return "";
+    return `⚠️ ${found.length} OpenLTM hook entr${found.length === 1 ? "y is" : "ies are"} also wired in ${userSettingsPath()} ` +
+      `(e.g. ${found[0]!.event}) — they fire alongside this plugin's hooks. ` +
+      `Remove them: bun "${PLUGIN_ROOT}/scripts/unwire-legacy-hooks.ts"\n`;
+  } catch {
+    return "";
+  }
+}
+
 /** EvaluateSession queues proposals in ${CLAUDE_PLUGIN_DATA}/proposals; surface them so they get reviewed. */
 function buildProposalsNotice(): string {
   try {
@@ -276,6 +296,7 @@ async function main(): Promise<void> {
     output += `\n${directive}${LTM_REMINDER}`;
   }
   output += buildProposalsNotice();
+  output += buildDuplicateHooksNotice();
   output += buildBackfillHint(cfg);
 
   process.stdout.write(output);
