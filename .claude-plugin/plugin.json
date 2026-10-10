@@ -13,7 +13,7 @@
         "${CLAUDE_PLUGIN_ROOT}/src/mcp-server.ts"
       ],
       "env": {
-        "CLAUDE_PLUGIN_DATA": "${CLAUDE_PLUGIN_DATA}"
+        "LTM_PLUGIN_DATA": "${CLAUDE_PLUGIN_DATA}"
       }
     }
   },

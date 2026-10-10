@@ -14,9 +14,17 @@ import { dirname, join } from "path";
 import { existsSync } from "fs";
 import { getLegacyClaudeDir } from "./project.js";
 
+/** An env value, unless empty or an unexpanded `${…}` placeholder from a host config. */
+function envPath(name: string): string | undefined {
+  const v = process.env[name];
+  return v && !v.includes("${") ? v : undefined;
+}
+
 export function getDbPath(): string {
-  if (process.env["LTM_DB_PATH"]) return process.env["LTM_DB_PATH"];
-  if (process.env["CLAUDE_PLUGIN_DATA"]) return join(process.env["CLAUDE_PLUGIN_DATA"], "openltm.db");
+  const explicit = envPath("LTM_DB_PATH");
+  if (explicit) return explicit;
+  const pluginData = envPath("CLAUDE_PLUGIN_DATA");
+  if (pluginData) return join(pluginData, "openltm.db");
   return join(import.meta.dir, "..", "..", "..", "data", "openltm.db");
 }
 
@@ -27,7 +35,7 @@ export function getDbPath(): string {
  * function to defer it — it is only called when neither env var is set.
  */
 export function getDataDir(dbPath: string | (() => string) = getDbPath): string {
-  const fromEnv = process.env["LTM_DATA_DIR"] || process.env["CLAUDE_PLUGIN_DATA"];
+  const fromEnv = envPath("LTM_DATA_DIR") || envPath("CLAUDE_PLUGIN_DATA");
   if (fromEnv) return fromEnv;
   return dirname(typeof dbPath === "function" ? dbPath() : dbPath);
 }

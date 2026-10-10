@@ -8,10 +8,17 @@
  * project for context tools called without `project` (the registry name the
  * hooks resolve for the server's cwd — Claude Code launches it in the project).
  *
+ * The DB is resolved like the hooks': LTM_DB_PATH → $CLAUDE_PLUGIN_DATA/openltm.db
+ * (see pluginEnv.ts for why plugin.json passes LTM_PLUGIN_DATA).
+ *
  * IMPORTANT: Never use console.log() — STDIO transport uses stdout for protocol.
  */
-import { startMcpServer } from "@rohirik/openltm-core/mcp";
-import { resolveProject } from "../hooks/lib/resolveProject.js";
+import { normalizePluginEnv } from "./pluginEnv.js";
+
+// Before core is imported: it resolves the DB path from the environment at load time.
+normalizePluginEnv();
+const { startMcpServer } = await import("@rohirik/openltm-core/mcp");
+const { resolveProject } = await import("../hooks/lib/resolveProject.js");
 
 async function readConfig(): Promise<Record<string, unknown>> {
   try {
