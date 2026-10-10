@@ -212,6 +212,18 @@ describe("cli/janitor — ltm binary (subprocess)", () => {
     expect(out.errors).toEqual([]);
   });
 
+  // Found live: with embeddings disabled every run ended "janitor errors ...
+  // Unknown embedding provider: disabled" and exit 2.
+  it("exit 0 with no errors when embeddings are disabled", () => {
+    const dbPath = join(dir, "disabled.db");
+    expect(ltm(["memory", "learn", "--text", "janitor with embeddings disabled"], { LTM_DB_PATH: dbPath, LTM_EMBED_PROVIDER: "disabled" }).code).toBe(0);
+    const r = ltm(["janitor", "run", "--json"], { LTM_DB_PATH: dbPath, LTM_EMBED_PROVIDER: "disabled" });
+    expect(r.code).toBe(0);
+    const out = JSON.parse(r.stdout);
+    expect(out.errors).toEqual([]);
+    expect(out.embed.embedded).toBe(0);
+  });
+
   it("exit 4 when the lock is held by a live process", () => {
     const dbPath = join(dir, "locked.db");
     ltm(["memory", "learn", "--text", "locked janitor memory"], { LTM_DB_PATH: dbPath });

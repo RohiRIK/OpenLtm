@@ -22,11 +22,20 @@ import {
   type ProviderType,
 } from "./providers/types.js";
 
+/** The configured embedding provider name: LTM_EMBED_PROVIDER > setting > default. */
+function configuredEmbedProvider(): string {
+  const env = process.env.LTM_EMBED_PROVIDER?.trim().toLowerCase();
+  return env || getSetting(SETTING_KEYS.EMBED_PROVIDER) || getDefault(SETTING_KEYS.EMBED_PROVIDER);
+}
+
+/** True when embeddings are switched off ("disabled") — callers skip, they do not fail. */
+export function embeddingsDisabled(): boolean {
+  return configuredEmbedProvider() === "disabled";
+}
+
 /** Resolve the active embedding provider from settings. */
 export function getEmbeddingProvider(): EmbeddingProvider {
-  const env = process.env.LTM_EMBED_PROVIDER?.trim().toLowerCase();
-  const provider = (env || getSetting(SETTING_KEYS.EMBED_PROVIDER) ||
-    getDefault(SETTING_KEYS.EMBED_PROVIDER)) as ProviderType;
+  const provider = configuredEmbedProvider() as ProviderType;
 
   switch (provider) {
     case "llamacpp":
@@ -93,6 +102,7 @@ export function cosineSimilarity(a: EmbeddingVector, b: EmbeddingVector): number
 export async function embedMissingMemories(
   batchSize = 50,
 ): Promise<number> {
+  if (embeddingsDisabled()) return 0;
   const db = getDb();
   const provider = getEmbeddingProvider();
 
@@ -156,6 +166,7 @@ export async function semanticSearch(
   topK = 10,
   minSimilarity = 0.5,
 ): Promise<Array<{ id: number; content: string; category: string; importance: number; project_scope: string | null; similarity: number }>> {
+  if (embeddingsDisabled()) return [];
   const db = getDb();
   const provider = getEmbeddingProvider();
 
