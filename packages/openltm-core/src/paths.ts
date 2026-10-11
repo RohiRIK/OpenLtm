@@ -12,12 +12,18 @@
  */
 import { dirname, join } from "path";
 import { existsSync } from "fs";
+import { homedir } from "os";
 import { getLegacyClaudeDir, sharedDbPath } from "./project.js";
 
-/** An env value, unless empty or an unexpanded `${…}` placeholder from a host config. */
+/**
+ * An env value, unless empty or an unexpanded `${…}` placeholder from a host
+ * config. A leading `~/` is expanded: values from Claude Code's settings.json
+ * `env` never pass through a shell, and would otherwise name a directory "~".
+ */
 function envPath(name: string): string | undefined {
   const v = process.env[name];
-  return v && !v.includes("${") ? v : undefined;
+  if (!v || v.includes("${")) return undefined;
+  return v === "~" || v.startsWith("~/") ? join(homedir(), v.slice(1)) : v;
 }
 
 export function getDbPath(): string {

@@ -13,7 +13,17 @@
  *
  * IMPORTANT: Never use console.log() — STDIO transport uses stdout for protocol.
  */
+import { join } from "path";
 import { normalizePluginEnv } from "./pluginEnv.js";
+import { ensurePluginDeps } from "../scripts/ensure-deps.js";
+
+// Claude Code skips installing this plugin's packages (its bun.lock lists more
+// than one workspace), so install them on first start. Claude Code waits 30s
+// for the handshake; a slower install fails this start and the next one works.
+if (!ensurePluginDeps(join(import.meta.dir, ".."), { waitMs: 25_000 })) {
+  process.stderr.write("[ltm-mcp] the plugin's packages are still installing; the server starts next session\n");
+  process.exit(1);
+}
 
 // Before core is imported: it resolves the DB path from the environment at load time.
 normalizePluginEnv();

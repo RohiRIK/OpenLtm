@@ -370,7 +370,8 @@ class OpenLtmpMemoryProvider(MemoryProvider):
                     logger.debug("OpenLTM prefetch embed failed: %s", e)
             if query_embedding:
                 results = db_mod.hybrid_search(
-                    self._conn, query, query_embedding, limit=8
+                    self._conn, query, query_embedding, limit=8,
+                    model=getattr(self._embedder, "model", None),
                 )
             else:
                 results = db_mod.recall(self._conn, query=query, limit=8)
@@ -462,6 +463,7 @@ class OpenLtmpMemoryProvider(MemoryProvider):
                         project=args.get("project"),
                         category=args.get("category"),
                         limit=args.get("limit", 10),
+                        model=getattr(self._embedder, "model", None),
                     )
                 else:
                     results = db_mod.recall(
@@ -501,7 +503,8 @@ class OpenLtmpMemoryProvider(MemoryProvider):
                         vec = self._embedder.embed(args["content"])
                         if vec:
                             from ._providers import embedding_to_blob
-                            db_mod.store_embedding(self._conn, result["id"], embedding_to_blob(vec))
+                            db_mod.store_embedding(self._conn, result["id"], embedding_to_blob(vec),
+                                                   getattr(self._embedder, "model", None))
                     except Exception as e:
                         logger.debug("Embedding computation failed: %s", e)
                 return json.dumps(result)

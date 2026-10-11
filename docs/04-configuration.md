@@ -110,6 +110,8 @@ The hooks and the MCP server resolve it the same way, so an `LTM_DB_PATH` you ex
 export LTM_DB_PATH=/custom/path/openltm.db
 ```
 
+A leading `~/` is expanded, so `"env": { "LTM_DB_PATH": "~/…" }` in `~/.claude/settings.json` works too (Claude Code doesn't pass those values through a shell). To share one memory with the Hermes plugin, point `LTM_DB_PATH` at its database: see [Hermes Integration → Sharing one memory with Claude Code](10-hermes-plugin.md#sharing-one-memory-with-claude-code-2171).
+
 ## File locations
 
 OpenLTM keeps its own files in a **data dir**, resolved as:

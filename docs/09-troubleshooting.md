@@ -40,6 +40,20 @@ The MCP tools are exposed as `mcp__plugin_openltm_memory__<tool>` (e.g. `recall`
 
 ---
 
+## "Cannot find module '@rohirik/openltm-core'" / "The packages it lists were not installed"
+
+Claude Code installs a plugin's packages only when its `bun.lock` lists the plugin as its only workspace. OpenLTM is a monorepo, so `claude plugin list` notes *"The packages it lists were not installed, because its bun.lock does not list the plugin as its only workspace"*, and in 2.17.0 the hooks and the MCP server then failed with `Cannot find module '@rohirik/openltm-core'`.
+
+Since 2.17.1 the plugin installs them itself on first use: the first hook or MCP server start runs `bun install --frozen-lockfile` in the plugin directory (a few seconds), logging to `~/.claude/plugins/data/openltm-OpenLtm/deps-install.log`. SessionStart and the MCP server wait for it; other hooks skip their run until it finishes. If it keeps failing, read that log, or run the install yourself:
+
+```bash
+cd ~/.claude/plugins/cache/OpenLtm/openltm/<version> && bun install --frozen-lockfile
+```
+
+The note in `claude plugin list` goes away once `node_modules` exists.
+
+---
+
 ## Can't write memories from a plain shell (OpenCode CLI, scripts, cron)
 
 Symptoms: `/openltm:memory learn ...` at a bash prompt errors with `No such file or directory`; `ltm` is `command not found`; the `ltm_learn`/`ltm_recall` tools don't exist.

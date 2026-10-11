@@ -7,6 +7,7 @@ import {
   deleteVec,
   knnVec,
   rebuildVecIndex,
+  syncVecIndex,
   getActiveEmbedDim,
   isVecAvailable,
   DEFAULT_EMBED_DIM,
@@ -108,6 +109,27 @@ describe("vec module", () => {
     expect(n).toBe(5);
     const hits = knnVec(db, blob([5, 0, 0, 0]), 1);
     expect(hits[0]?.id).toBe(5);
+  });
+
+  it("syncVecIndex indexes rows another writer added to memory_embeddings", () => {
+    if (!vecOn) {
+      expect(syncVecIndex(db)).toBe(-1);
+      return;
+    }
+    db.run("INSERT OR REPLACE INTO settings(key,value) VALUES ('ltm.embed.dim','4')");
+    // Index already holds 1..5 from the rebuild above; a writer without the vec
+    // extension (the Hermes plugin on a shared DB) adds row 6 to the table only.
+    db.run("INSERT INTO memory_embeddings(memory_id, embedding, model, dim) VALUES (?,?,?,?)", [
+      6,
+      blob([0, 0, 0, 1]),
+      "nomic-embed-text",
+      DIM,
+    ]);
+    expect(knnVec(db, blob([0, 0, 0, 1]), 1)[0]?.id).not.toBe(6);
+    expect(syncVecIndex(db)).toBe(1);
+    expect(knnVec(db, blob([0, 0, 0, 1]), 1)[0]?.id).toBe(6);
+    expect(syncVecIndex(db)).toBe(0); // nothing missing now
+    db.run("DELETE FROM settings WHERE key='ltm.embed.dim'");
   });
 
   it("scales to 1k vectors and returns the exact nearest", () => {

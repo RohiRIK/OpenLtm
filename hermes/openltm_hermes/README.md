@@ -62,7 +62,7 @@ A Hermes memory provider plugin that wraps [OpenLTM](https://github.com/RohiRIK/
 
 ## Database
 
-Single SQLite file at `~/.hermes/openltm.db`. WAL mode for concurrent access. Schema matches OpenLTM's standard format — compatible with the Claude Code plugin if you use both.
+Single SQLite file at `~/.hermes/openltm.db`. WAL mode for concurrent access. Claude Code and the other OpenLTM hosts can share it by pointing `LTM_DB_PATH` at it (OpenLTM 2.17.1+); vectors are read and written in whichever layout the DB has. See [Sharing one memory with Claude Code](../../docs/10-hermes-plugin.md#sharing-one-memory-with-claude-code-2171).
 
 ## Architecture
 

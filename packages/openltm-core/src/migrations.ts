@@ -210,13 +210,14 @@ export function parseMigration(content: string): ParsedMigration {
   return { up, down };
 }
 
-// ── R-2: fail-closed self-heal gate ─────────────────────────────────────────────
+// ── R-2: fail-closed reconciliation ────────────────────────────────────────────
 // The old runPendingMigrations() catch treated any `duplicate column name` /
 // `already exists` error as proof the migration could be recorded. That is
 // unsound: db.exec(up) aborts at the FIRST failing statement, so the error only
 // proves the first colliding statement — nothing about later columns, tables,
-// indexes, or backfills. The recorder must never trust the error string; it must
-// independently prove the whole post-migration state against the live schema.
+// indexes, or backfills. The recorder never trusts the error string: it replays
+// the migration statement by statement (`reconcileMigration`), proving each
+// skipped statement's object against the live schema and running the rest.
 
 function skipWs(s: string, pos: number): number {
   while (pos < s.length && /\s/.test(s.charAt(pos))) pos++;
@@ -348,8 +349,8 @@ export interface DdlTarget {
 }
 
 /**
- * Parse a single SQL statement into one of the four DDL forms the self-heal
- * gate can prove against the live schema:
+ * Parse a single SQL statement into one of the four DDL forms whose effect
+ * reconciliation can prove against the live schema:
  *
  *   - `ALTER TABLE <t> ADD [COLUMN] <c> <column-definition>`
  *   - `CREATE TABLE [IF NOT EXISTS] <t> ( ... )`
@@ -358,8 +359,8 @@ export interface DdlTarget {
  *
  * Returns null for anything else — UPDATE / INSERT / DELETE, DROP, ALTER ...
  * RENAME, CREATE VIEW / VIRTUAL TABLE, PRAGMA writes, VACUUM, REPLACE,
- * multi-action ALTER — so the gate refuses to self-heal whenever any statement
- * is not one of the supported forms.
+ * multi-action ALTER — so reconciliation never skips such a statement; it runs
+ * it (or refuses it, if destructive).
  */
 export function parseStatementDdl(stmt: string): DdlTarget | null {
   const s = stmt.trim();
@@ -456,63 +457,126 @@ function schemaObjectExists(
 }
 
 /**
- * Narrow, source-independent recovery gate. Called from the error catch in
- * `runPendingMigrations` instead of trusting the error string.
- *
- * Splits `up` into statements and requires every statement to be one of the
- * four supported DDL forms (`parseStatementDdl`), then verifies every declared
- * schema target (column / table / index / trigger) against the LIVE schema. If
- * any statement is unrecognised, data-changing, or destructive, or any declared
- * target is missing, this throws and the runner fails closed — it refuses to
- * record the version.
- *
- * Empty marker migrations (no DDL) never reach the caller's catch and return
- * here defensively with nothing to prove.
+ * Split SQL text into complete statements. Semicolons inside string literals,
+ * quoted identifiers and comments do not end a statement, and a
+ * `CREATE [TEMP] TRIGGER` statement runs to the `END;` that closes its body
+ * (the inner statements' semicolons are part of it). Comments are dropped.
  */
-export function assertSelfHealEligible(db: Database, up: string): void {
-  const statements = up
-    .split(";")
-    .map((stmt) => stmt.trim())
-    .filter((stmt) => stmt.length > 0);
-
-  if (statements.length === 0) return;
-
-  const targets: DdlTarget[] = [];
-  for (const statement of statements) {
-    const target = parseStatementDdl(statement);
-    if (target === null) {
-      throw new Error(
-        `statement is not a supported idempotent DDL form (ALTER TABLE ... ADD COLUMN, ` +
-          `CREATE TABLE, CREATE INDEX, CREATE TRIGGER): "${statement}"`,
-      );
+export function splitSqlStatements(sql: string): string[] {
+  const statements: string[] = [];
+  let buf = "";
+  let segment = ""; // text since the last top-level `;` inside the current statement
+  let i = 0;
+  const flush = (): void => {
+    const s = buf.trim();
+    if (s.length > 0) statements.push(s);
+    buf = "";
+    segment = "";
+  };
+  while (i < sql.length) {
+    const ch = sql.charAt(i);
+    if (ch === "-" && sql.charAt(i + 1) === "-") {
+      const nl = sql.indexOf("\n", i);
+      i = nl === -1 ? sql.length : nl;
+      buf += " ";
+      continue;
     }
-    targets.push(target);
+    if (ch === "/" && sql.charAt(i + 1) === "*") {
+      const close = sql.indexOf("*/", i + 2);
+      i = close === -1 ? sql.length : close + 2;
+      buf += " ";
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === "`" || ch === "[") {
+      const closeCh = ch === "[" ? "]" : ch;
+      let j = i + 1;
+      while (j < sql.length) {
+        if (sql.charAt(j) === closeCh) {
+          if (closeCh !== "]" && sql.charAt(j + 1) === closeCh) {
+            j += 2; // doubled quote inside the literal
+            continue;
+          }
+          break;
+        }
+        j++;
+      }
+      const lit = sql.slice(i, j + 1);
+      buf += lit;
+      segment += lit;
+      i = j + 1;
+      continue;
+    }
+    if (ch === ";") {
+      const isTrigger = /^CREATE\s+(?:TEMP(?:ORARY)?\s+)?TRIGGER\b/i.test(buf.trimStart());
+      if (!isTrigger || segment.trim().toUpperCase() === "END") {
+        flush();
+      } else {
+        buf += ch;
+        segment = "";
+      }
+      i++;
+      continue;
+    }
+    buf += ch;
+    segment += ch;
+    i++;
   }
+  flush();
+  return statements;
+}
 
-  for (const target of targets) {
-    switch (target.kind) {
-      case "alter-add-column":
-        if (!columnExists(db, target.name, target.column!)) {
-          throw new Error(
-            `column "${target.column}" is missing on table "${target.name}"`,
-          );
-        }
-        break;
-      case "create-table":
-        if (!schemaObjectExists(db, "table", target.name)) {
-          throw new Error(`table "${target.name}" does not exist`);
-        }
-        break;
-      case "create-index":
-        if (!schemaObjectExists(db, "index", target.name)) {
-          throw new Error(`index "${target.name}" does not exist`);
-        }
-        break;
-      case "create-trigger":
-        if (!schemaObjectExists(db, "trigger", target.name)) {
-          throw new Error(`trigger "${target.name}" does not exist`);
-        }
-        break;
+/**
+ * True for a statement that removes schema or rows: `DROP ...`, `DELETE ...`,
+ * `ALTER TABLE ... DROP|RENAME ...`, `VACUUM`. Reconciliation never runs these.
+ */
+export function isDestructiveStatement(stmt: string): boolean {
+  const s = stmt.trimStart();
+  if (/^(DROP|DELETE|VACUUM)\b/i.test(s)) return true;
+  // A plain ADD COLUMN (parser-verified) is safe even if a literal says "drop".
+  if (parseStatementDdl(s)?.kind === "alter-add-column") return false;
+  return /^ALTER\s+TABLE\b/i.test(s) && /\b(DROP|RENAME)\b/i.test(s);
+}
+
+/** True when the schema object (or column) a parsed DDL statement creates already exists. */
+function ddlTargetPresent(db: Database, target: DdlTarget): boolean {
+  switch (target.kind) {
+    case "alter-add-column":
+      return schemaObjectExists(db, "table", target.name) && columnExists(db, target.name, target.column!);
+    case "create-table":
+      return schemaObjectExists(db, "table", target.name);
+    case "create-index":
+      return schemaObjectExists(db, "index", target.name);
+    case "create-trigger":
+      return schemaObjectExists(db, "trigger", target.name);
+  }
+}
+
+/**
+ * Fail-closed recovery for a migration whose plain `db.exec(up)` failed —
+ * typically because another writer (the Hermes plugin, or schema.sql on a
+ * fresh install) already created some of the objects it adds. Must run inside
+ * the caller's transaction.
+ *
+ * Walks the statements in order. A statement is skipped only when it is one of
+ * the four supported DDL forms (`parseStatementDdl`) AND the object it creates
+ * is verifiably present in the live schema. Every other statement runs. A
+ * destructive statement (`isDestructiveStatement`) is refused rather than run
+ * against a schema this runner did not build, and any statement error throws,
+ * so the caller rolls the whole migration back and records nothing. The error
+ * string of the original failure is never trusted: on success every statement
+ * has either run or had its effect proven present.
+ */
+export function reconcileMigration(db: Database, up: string): void {
+  for (const statement of splitSqlStatements(up)) {
+    const target = parseStatementDdl(statement);
+    if (target !== null && ddlTargetPresent(db, target)) continue;
+    if (isDestructiveStatement(statement)) {
+      throw new Error(`refusing to run a destructive statement during reconciliation: "${statement}"`);
+    }
+    try {
+      db.exec(statement);
+    } catch (err: unknown) {
+      throw new Error(`statement failed during reconciliation: "${statement}": ${(err as Error).message}`);
     }
   }
 }
@@ -601,22 +665,25 @@ export async function runPendingMigrations(db?: Database): Promise<MigrationResu
       // R-2: a duplicate-column / already-exists error only proves the FIRST
       // colliding statement failed — db.exec(up) aborts there, so later
       // columns, tables, indexes, and backfills may still be missing. Never
-      // trust the error string: self-heal only when every statement is a
-      // supported idempotent DDL form AND every declared schema target is
-      // verifiably present in the live schema. Otherwise fail closed.
+      // trust the error string: replay the migration statement by statement,
+      // skipping only DDL whose object is verifiably present and running the
+      // rest, all in one transaction. Any refusal or error rolls it back and
+      // fails closed.
       try {
-        assertSelfHealEligible(_db, up);
-      } catch (selfHealErr: unknown) {
+        _db.transaction(() => {
+          reconcileMigration(_db, up);
+          _db.run(
+            `INSERT INTO _schema_version (version, name, checksum) VALUES (?, ?, ?)`,
+            [file.version, file.name, checksum],
+          );
+        })();
+      } catch (reconcileErr: unknown) {
         throw new Error(
-          `Migration ${file.version} (${file.name}) failed and is not self-heal eligible; ` +
+          `Migration ${file.version} (${file.name}) failed and could not be reconciled; ` +
             `refusing to record it. Original error: ${(err as Error).message}. ` +
-            `Self-heal refusal: ${(selfHealErr as Error).message}`,
+            `Reconcile refusal: ${(reconcileErr as Error).message}`,
         );
       }
-      _db.run(
-        `INSERT OR IGNORE INTO _schema_version (version, name, checksum) VALUES (?, ?, ?)`,
-        [file.version, file.name, checksum],
-      );
     }
 
     results.push({ version: file.version, name: file.name, action: "applied" });

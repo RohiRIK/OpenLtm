@@ -70,7 +70,53 @@ Then a `git pull` + gateway restart = live update with zero install drift.
 
 ## Where the DB lives
 
-The plugin stores everything in `~/.hermes/openltm.db` (direct SQLite, WAL,
-no server). The migration history is applied by the OpenLtm core runner
-(`packages/openltm-core/src/migrations.ts`, versions 001–025) — the plugin itself
-does not run migrations.
+The plugin stores everything in `$HERMES_HOME/openltm.db` — `~/.hermes/openltm.db`
+for the default profile, `~/.hermes/profiles/<name>/openltm.db` for the others
+(direct SQLite, WAL, no server). The plugin creates its own schema
+(`init_schema()` in `openltm_hermes/_db.py`) and does not run OpenLtm's
+migrations; a DB it creates has no `_schema_version` rows.
+
+## Sharing one memory with Claude Code (2.17.1+)
+
+Claude Code, the `ltm` CLI and the other adapters can use the Hermes DB instead
+of their own, so a memory learned in either place is recalled in both. Point
+`LTM_DB_PATH` at the Hermes profile's DB:
+
+```json
+// ~/.claude/settings.json
+{ "env": { "LTM_DB_PATH": "~/.hermes/openltm.db", "LTM_EMBED_PROVIDER": "ollama" } }
+```
+
+or export both in your shell profile to share it with the CLI, OpenCode and Pi
+too. `LTM_EMBED_PROVIDER=ollama` matches the plugin's default embedder (see
+below; if `openltm.json` picks another provider, set the same one). Restart
+Claude Code, and the Hermes gateway after updating the plugin.
+
+What happens on the first open:
+
+- OpenLtm core runs its migrations on the Hermes DB. Where the Hermes schema
+  already has a column, index or table a migration adds, the runner skips that
+  statement and runs the rest, so every version is recorded. Nothing is dropped
+  except `memories.embedding`: migration 010 moves the vectors to the
+  `memory_embeddings` table first. Core backs up the DB before migrating, but
+  stop the Hermes gateway and copy the DB (`sqlite3 ~/.hermes/openltm.db ".backup
+  ~/openltm-hermes-backup.db"`) before the first open anyway.
+- The Hermes plugin (2.17.1+) reads and writes vectors in whichever layout the
+  DB has, so semantic recall keeps working after the move. **Update the Hermes
+  plugin before pointing Claude Code at its DB**: an older plugin with an
+  embedder configured finds no `memories.embedding` column on the migrated DB,
+  and its recall returns nothing.
+- Vectors from different embedding models are not comparable, so each side
+  only compares vectors from its own model, and each memory holds one vector.
+  The defaults differ: the Hermes plugin uses Ollama `nomic-embed-text`, core
+  uses llama.cpp `bge-m3` when a llama-server is running. With different models,
+  core's janitor re-embeds memories with its own model, and those then match
+  Hermes by keyword (FTS) only. To share semantic recall, run core on the same
+  model: add `"LTM_EMBED_PROVIDER": "ollama"` next to `LTM_DB_PATH` (core's Ollama
+  default is `nomic-embed-text`, 768-d, the same key the plugin writes).
+- Exact-text dedup keys differ between the two writers, so learning the very
+  same sentence on both sides can store it twice; semantic dedup still catches
+  it when both use the same model.
+
+Each Hermes profile keeps its own DB; share only the one you point
+`LTM_DB_PATH` at.
