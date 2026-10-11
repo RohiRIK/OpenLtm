@@ -34,13 +34,13 @@ idempotent — safe to run multiple times.
 
 ## Shared database
 
-Claude Code's plugin keeps its database here, and the installer's Claude Code wiring and the Pi adapter share it:
+Claude Code's plugin keeps its database here, and the other hosts share it by default (the installer's Claude Code wiring, Pi, OpenCode, OpenClaw and the `ltm` CLI):
 
 ```
 ~/.claude/plugins/data/openltm-OpenLtm/openltm.db
 ```
 
-For OpenCode and OpenClaw, set `LTM_DB_PATH` to this path to share it.
+`LTM_DB_PATH` overrides it. A database the core package already created for itself in an earlier version stays in use until you point `LTM_DB_PATH` at the shared one.
 
 ## CLI flags
 

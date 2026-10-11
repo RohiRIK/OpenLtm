@@ -23,7 +23,7 @@ bunx @rohirik/openltm-core janitor status         # last run, next due, pending 
 
 From a clone: `bun packages/openltm-core/src/cli/bin.ts janitor run`.
 
-**Which database.** `--db <path>` > `LTM_DB_PATH` > `$CLAUDE_PLUGIN_DATA/openltm.db` > dev fallback. This is the same resolution `ltm memory` and the adapters use. A Claude marketplace install keeps its DB at `~/.claude/plugins/data/openltm-OpenLtm/openltm.db`. If you run the janitor from a plain shell, point at that path with `--db` or `LTM_DB_PATH`.
+**Which database.** `--db <path>` > `LTM_DB_PATH` > `$CLAUDE_PLUGIN_DATA/openltm.db` > the default from [configuration](04-configuration.md#db-path). That default shares the Claude Code plugin's database (`~/.claude/plugins/data/openltm-OpenLtm/openltm.db`) unless the core package already has its own. This is the same resolution `ltm memory` and the adapters use. To be explicit from a plain shell, pass `--db` or set `LTM_DB_PATH`.
 
 **Interval.** `--interval-minutes` > `LTM_JANITOR_INTERVAL_MINUTES` > the `ltm.janitor.intervalMinutes` setting (when > 0) > **360 (6h)**. Only `--if-due` consults it.
 

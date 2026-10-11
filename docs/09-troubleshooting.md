@@ -54,6 +54,8 @@ bunx @rohirik/openltm-core memory --help
 
 Or run the full MCP server for any MCP-capable host: `bunx @rohirik/openltm-core mcp-serve`.
 
+Both use the Claude Code plugin's database when it has one (`~/.claude/plugins/data/openltm-OpenLtm/openltm.db`), unless `LTM_DB_PATH` names another — see [Configuration → DB path](04-configuration.md#db-path).
+
 If the `ltm_*` tools are missing **inside** the OpenCode TUI:
 
 1. Check the plugin is registered: `jq '.plugin' ~/.config/opencode/opencode.json` should list `@rohirik/opencode-ltm`.

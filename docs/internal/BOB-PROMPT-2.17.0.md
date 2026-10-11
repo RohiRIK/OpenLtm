@@ -1,5 +1,7 @@
 # Prompt for Bob: verify OpenLTM 2.17.0 (round 4) on release PR #39
 
+> **Outcome:** round 4 approved `f52d66b` (comment on PR #39). This prompt is kept as the record of what was verified; HANDOFF §R5 lists the two fixes made afterwards, before the merge.
+
 You are verifying the OpenLTM 2.17.0 release candidate. The release PR already exists: **#39**, which you opened in round 3. Your job is to find what is broken, not to confirm that it works. Work independently. Stop and report only on a blocker you cannot get past.
 
 **This is round 4.** Your round-3 report (REJECT at `29ff90e`) is answered in `docs/internal/HANDOFF-2.17.0.md` §R4:

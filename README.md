@@ -85,11 +85,14 @@ Full detail, including which write paths scrub secrets and which don't: [Securit
 
 | Capability | What it actually does | Where it lives |
 |---|---|---|
-| Recall | FTS5 first, vector KNN as fallback — search by meaning, not exact words | `openltm-core/src/recall/` · `src/vec/index.ts` |
-| Learn | Stores a memory with category, importance, and confidence; scrubs secrets on this path | `openltm-core/src/db.ts:561` |
-| Inject | Renders the top-ranked memories as context at session start | `openltm-core/src/context.ts:49` |
+| Recall | Hybrid: full-text (FTS5) and vector results fused with Reciprocal Rank Fusion, filtered by project, status and privacy — search by meaning, not exact words | `openltm-core/src/db.ts:981` · `openltm-core/src/vec/` |
+| Learn | Stores a memory with category, importance, and confidence; secrets are scrubbed on every write | `openltm-core/src/db.ts:691` |
+| Inject | At session start, the project's goal/decisions/gotchas/progress and a compact `- [id] title` index of top memories | `hooks/src/SessionStart.ts:72` |
+| Prompt recall | Adds up to 5 memories relevant to each prompt you type, never the same one twice in a session | `hooks/lib/promptRecall.ts:146` |
+| Stale flags | A commit through Claude flags the memories anchored to the files it touched | `openltm-core/src/db.ts:411` |
+| Privacy | Memories tagged `private` never leave the machine or reach the model unasked; egress is secret-scrubbed | `openltm-core/src/secretsScrubber.ts` · `openltm-core/src/privacy.ts` |
 | Decay | Ages memories by importance × confidence; `importance: 5` is permanent | `openltm-core/src/janitor/decay.ts` |
-| Graph | Traverses relations between memories and builds a reasoning chain | `openltm-core/src/graph.ts:69` |
+| Graph | Traverses relations between memories and builds a reasoning chain | `openltm-core/src/graph.ts:71` |
 | Visualize | A browser explorer over the live database, with janitor controls | `src/graph-server.ts` · `graph-app/` |
 | Extensions | sqlite-vec and Honker loaded from disk, with a working fallback when absent | `openltm-core/src/extensions.ts:160` |
 | Deduplicate | Queues near-duplicate pairs as pending suggestions; nothing merges until you approve | `openltm-core/src/janitor/dedup.ts` |

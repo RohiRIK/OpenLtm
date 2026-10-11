@@ -4,7 +4,9 @@ OpenLTM — long-term memory for [OpenClaw](https://openclaw.ai) agents.
 
 Stores memories in a **local SQLite database** and shares it with the Claude
 Code, OpenCode, and Pi plugins, so a fact learned in one agent is recalled in
-the others. No cloud, no telemetry, no account.
+the others. By default that is the Claude Code plugin's database
+(`~/.claude/plugins/data/openltm-OpenLtm/openltm.db`) when it exists; `dbPath`
+or `LTM_DB_PATH` choose another. No cloud, no telemetry, no account.
 
 ## Install
 

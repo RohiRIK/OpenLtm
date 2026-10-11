@@ -2,9 +2,23 @@
 
 **For:** QA / test agents.
 **Branch:** `feat/2.17-hardening` (base `main` @ `d35e2cf`, 115 commits, 291 files).
-**Status:** round 4. Round 3 (Bob, at `29ff90e`) passed every local check, but security CI on the release PR (#39) then failed. §R4 answers that and the two minor findings. Rounds 2 and 1 are answered in §R3 and §R2. All automated gates are green in the build container, including an environment that reproduces the reviewer's machine. Not merged, not tagged, not published.
+**Status:** approved. Bob's round 4 approved `f52d66b` (comment on PR #39) with no blocker or major finding. Two fixes followed before the merge (§R5). Rounds 3, 2 and 1 are answered in §R4, §R3 and §R2. All automated gates are green in the build container, including an environment that reproduces the reviewer's machine.
 
 This release combines open PRs #27–#38 with six workstreams (security, hook lifecycle, new hooks, MCP and recall, skills, project identity and storage) into a single release. Your job is to break it.
+
+---
+
+## R5. After the round-4 approval
+
+Round 4 (`f52d66b`) was approved; the owner asked to fix the remaining gaps before merging. Each fix has a check that failed first, and every gate was re-run:
+- **`/openltm:health` activity:** nothing emitted `learn.write` or `recall.hit`, so "Memories learned" and "Recall hits" were always 0 (Bob saw four MCP learns and zero in health). MCP `learn`/`recall`, prompt recall and stale flags now log to `ltm.jsonl`. Smoke checks: MCP and hooks.
+- **Database sharing for OpenCode, OpenClaw, the CLI and `mcp-serve`** (the pre-existing gap in §R4). Without `LTM_DB_PATH` or `CLAUDE_PLUGIN_DATA`, core now:
+  - keeps a database that already exists at its package default;
+  - else shares the Claude Code plugin's;
+  - else creates the default.
+
+  Evidence: three unit tests, and a live check against a plugin Claude Code installed. Core resolved to `plugins/data/openltm-OpenLtm/openltm.db` and read its memory.
+- Docs: README capability table (hybrid recall, prompt recall, stale flags, privacy; stale code references fixed), commands (health sections, `scan --dry-run`), configuration (DB path, `LTM_SERVER_HOST`), hooks (proposal filter), troubleshooting, CONTRIBUTING (QA scripts), adapter READMEs, CHANGELOG (release date 2026-10-11).
 
 ---
 
@@ -90,12 +104,12 @@ bun install --frozen-lockfile        # Bun ≥ 1.3
 | # | Command | Expected |
 |---|---|---|
 | G1 | `bun run typecheck` | no output, exit 0 |
-| G2 | `bun run test` — run it **as is**, in your normal shell (inherited `XDG_CONFIG_HOME`, wrapper CLIs on PATH): no environment workaround | `841 pass, 0 fail` and `real ~/.claude untouched`. Must not touch `$XDG_CONFIG_HOME/opencode`, `~/.config/opencode` or `~/.pi` (the drift guard now watches them) and must never run your `pi` |
+| G2 | `bun run test` — run it **as is**, in your normal shell (inherited `XDG_CONFIG_HOME`, wrapper CLIs on PATH): no environment workaround | `844 pass, 0 fail` and `real ~/.claude untouched`. Must not touch `$XDG_CONFIG_HOME/opencode`, `~/.config/opencode` or `~/.pi` (the drift guard now watches them) and must never run your `pi` |
 | G3 | `bun run verify-version` | `All version references in sync.` (2.17.0 everywhere, CHANGELOG entry present) |
 | G4 | `bun run check:openclaw` | `All 17 OpenClaw package checks passed.` |
 | G5 | `claude plugin validate .` | `Validation passed with warnings`. The one warning (root `CLAUDE.md` is not loaded as plugin context) is expected: that file is for contributors. |
 | G6 | `bun run build:hooks && git diff --exit-code hooks/GitCommit.bundle.mjs` | no diff (committed bundle is fresh; this is what CI's bundle job checks) |
-| G7 | `bun run qa:smoke` | Six `All … smoke checks passed.` lines — MCP, hooks, continuity, semantic, adapters, server (83 checks). Needs port 7331 free; the adapters smoke needs `node` ≥ 22.5. |
+| G7 | `bun run qa:smoke` | Six `All … smoke checks passed.` lines — MCP, hooks, continuity, semantic, adapters, server (85 checks). Needs port 7331 free; the adapters smoke needs `node` ≥ 22.5. |
 | G7b | `cd graph-app && bun install && cd .. && bun run qa:ui` | `32 passed` / `All UI smoke checks passed.` (Playwright in Chromium; set `PLAYWRIGHT_CHROMIUM` if the bundled browser is missing). Ports 7331/7332 free. |
 | G7c | `bun run scripts/qa/prompt-recall-eval.ts` | `precision=95.2%  recall=94.5%` (labelled corpus in `src/__tests__/hooks/fixtures/promptRecallCorpus.ts`) |
 | G8 | `cd packages/adapter-pi && bun run build && grep -c bun:sqlite dist/index.js` | build ok, count `0` (Pi runs on Node). Repeat in `packages/adapter-openclaw`. |

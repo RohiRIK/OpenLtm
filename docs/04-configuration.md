@@ -94,11 +94,14 @@ All four env vars are read at process start. The extension layer degrades gracef
 
 ## DB path
 
-Three ways to set it (priority order):
+Resolved in this order:
 
 1. **`LTM_DB_PATH` env var** — set in your shell profile for a permanent override
-2. **`CLAUDE_PLUGIN_DATA`** — set automatically by the plugin system on marketplace installs; the DB is `$CLAUDE_PLUGIN_DATA/openltm.db`
-3. **Default fallback** — `data/openltm.db` in a dev checkout
+2. **`CLAUDE_PLUGIN_DATA`** — set automatically by Claude Code for the plugin; the DB is `$CLAUDE_PLUGIN_DATA/openltm.db`
+3. **No host-supplied path** (the `ltm` CLI, OpenCode, OpenClaw, a standalone `mcp-serve`):
+   - a database that already exists at the package default (`data/openltm.db` next to the core package, or in a dev checkout) stays in use;
+   - otherwise the Claude Code plugin's database is shared, if it exists: `~/.claude/plugins/data/openltm-OpenLtm/openltm.db`, following `CLAUDE_CONFIG_DIR`;
+   - otherwise the package default is created.
 
 The hooks and the MCP server resolve it the same way, so an `LTM_DB_PATH` you export applies to both (before 2.17 the plugin's MCP server ignored it and used `$CLAUDE_PLUGIN_DATA/openltm.db`).
 
@@ -163,7 +166,7 @@ To adopt the new name, register the path explicitly with `/openltm:project`.
 }
 ```
 
-The graph API runs on `apiPort`, the Next.js UI on `uiPort`.
+The graph API runs on `apiPort`, the Next.js UI on `uiPort`. Both bind `127.0.0.1`; the API has no authentication. `LTM_SERVER_HOST` binds another address and prints a warning — see [Troubleshooting](09-troubleshooting.md#the-graph-api-returns-403-or-415-or-is-unreachable-from-another-machine) before using it.
 
 ## Sync (experimental)
 

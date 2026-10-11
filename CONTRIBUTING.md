@@ -40,6 +40,12 @@ The project is a Bun workspace. The storage engine lives in `packages/openltm-co
 | `bun run check:published` | Compare npm's published versions against the repo; fails only if npm holds a version the repo does not (`--strict` to also fail on lag) |
 | `bun run check:monthly` | Run the monthly maintenance sweep: tests, typecheck, version sync, bun audit, and optional local scanners (`--json` for a machine-readable summary) |
 | `bun run bump` | Bump the version across every required file |
+| `bun run qa:smoke` | End-to-end smoke: the MCP server over stdio, every hook as a subprocess, default-database continuity, the semantic path against a stub embeddings server, the built adapters under Node/Bun, and the graph server's network guards |
+| `bun run qa:ui` | The graph UI in Chromium via Playwright, against a seeded sandbox DB (set `PLAYWRIGHT_CHROMIUM` if the bundled browser is missing) |
+| `bun run test:e2e` | The graph-app Playwright suite on its own |
+| `bun run scripts/qa/prompt-recall-eval.ts` | Prompt-recall precision/recall on the labelled corpus |
+| `bun scripts/mcp-probe.ts` | Start the plugin's MCP server the way Claude Code does and report why it would fail to connect |
+| `bun scripts/unwire-legacy-hooks.ts [--check]` | List or remove OpenLTM hooks left in `~/.claude/settings.json` (backs the file up first) |
 
 ---
 
@@ -70,7 +76,7 @@ bun run typecheck
 
 Tests never touch your real `~/.claude`: a `bunfig.toml` preload refuses to run unless `HOME` is a temp dir. For a single file use `bun run test:isolated <path>` or `HOME=$(mktemp -d) bun test <path>`.
 
-Both must pass before a PR is reviewable. E2E tests for the graph app live under `graph-app/` and run with `bun run test:e2e`.
+Both must pass before a PR is reviewable. For changes to hooks, the MCP server, adapters or the graph app, also run `bun run qa:smoke` and `bun run qa:ui`; they exercise the real processes, not mocks. E2E tests for the graph app live under `graph-app/` and run with `bun run test:e2e`.
 
 ---
 

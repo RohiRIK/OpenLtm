@@ -1,6 +1,6 @@
 # Changelog
 
-## [2.17.0] — 2026-10-09
+## [2.17.0] — 2026-10-11
 
 Hardening and "recall everywhere". Consolidates open PRs #27–#38 with six parallel workstreams into one release.
 
@@ -85,6 +85,11 @@ The first independent verification rejected the candidate; these are its finding
 - **`/openltm:health`** read an empty in-memory database ("no such table: settings") and the wrong log dir, because the model's shell has no `CLAUDE_PLUGIN_DATA`. Commands now use the path Claude Code substitutes into them.
 - **`/openltm:admin scan --dry-run` wrote changes.** The flag was never read. The scan also imported a file that had moved, and opened no real database. All three are fixed.
 - **Session proposals** no longer include failures of read-only probes (`ls`, `lsof`, `curl`…) or one-off scripts (`bun --eval`, `sqlite3`…), and drop the `Exit code N` prefix.
+
+### Fixed before release
+After the round-4 approval.
+- **`/openltm:health` never counted learns or recalls.** Nothing emitted the events behind its "Memories learned" and "Recall hits" rows. MCP `learn` and `recall`, prompt recall and commit stale flags now log to `ltm.jsonl`, and health shows all four.
+- **OpenCode, OpenClaw, the `ltm` CLI and a standalone `mcp-serve` now share Claude Code's database by default.** Without `LTM_DB_PATH`, they used a database inside the core package. Now they use the Claude Code plugin's database when it exists. A database they already created stays in use, so nobody's memories move.
 
 ### Removed
 - Skills `ContinuousLearning`, `session-context`, `Learned`, `LtmServer`; committed session logs; `r2-split-harness/`, `scripts/tmp_*`, `verify_split*.ts`.

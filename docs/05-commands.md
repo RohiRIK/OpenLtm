@@ -59,14 +59,15 @@ If no subcommand is given, the command prints its own usage.
 
 ## `/openltm:health` — diagnostics
 
-No subcommand. Runs the full health suite:
+No subcommand. It reads the plugin's own data dir and database; Claude Code substitutes the path into the command, so no environment variable is needed:
 
-- Plugin versions (compared across `package.json` and `.claude-plugin/plugin.json`)
-- Bun runtime detection
-- DB connectivity
-- Hook registration health
-- Stale file detection
-- Live memory decay summary (active vs at-risk memories)
+- **Project health scores** — ranked per project while the graph server runs (`/openltm:server start`); weights below.
+- **Activity (last 24 h)** — from `<plugin data>/logs/ltm.jsonl`: sessions started and evaluated, context updates, compactions, memories learned, recall hits, prompt recalls, stale flags from commits, and the last errors.
+- **Log health** — size and age of `ltm.jsonl` and the legacy `~/.claude/logs/hooks.log`.
+- **Janitor status** — last run, next run, and active / deprecated / archived / at-risk counts, read-only from the plugin's database.
+- **Duplicate hooks** — OpenLTM hooks still in `~/.claude/settings.json` from an older install; they fire next to the plugin's. It offers `scripts/unwire-legacy-hooks.ts`, which backs the file up and removes only those entries.
+
+If the MCP tools are missing altogether, see [Troubleshooting](09-troubleshooting.md#mcp-tools-are-unavailable) (`scripts/mcp-probe.ts`).
 
 ```
 /openltm:health
@@ -88,7 +89,7 @@ Score breakdown when the graph server is running:
 | Subcommand | What it does |
 |------------|-------------|
 | `migrate [status\|up\|down\|reset\|--legacy]` | Schema migration control + legacy DB detection. `reset` requires confirmation. |
-| `scan [--project X] [--dry-run]` | Scan memories for leaked secrets, redact in-place. `--dry-run` is safe. |
+| `scan [--project X] [--dry-run]` | Scan memories for leaked secrets, redact in-place. `--dry-run` only reports (before 2.17 the flag was ignored and the scan wrote). |
 | `audit [--memory-id N] [--op <op>] [--session <id>] [--since <iso>] [--limit N]` | Query the memory write audit log. |
 
 ### Examples
