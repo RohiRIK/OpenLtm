@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.17.2] — 2026-10-11
+
+### Added
+- **Hermes llama.cpp embeddings.** Explicit `embedder: "llamacpp"` uses llama-server's local `/health` and `/v1/embeddings` endpoints, matching core's existing llama.cpp provider. JSON `llamacpp_url` / `embedding_model` options override `LTM_LLAMA_CPP_URL` / `LTM_EMBED_MODEL`; defaults are loopback port 8080 and BGE-M3. Stored vectors retain the actual dimension and selected model identity in either embedding layout. No cloud fallback; HTTP failures and malformed, empty, nonfinite or non-float32-storable vectors preserve FTS recall and are never cached.
+- Real HTTP-contract regression tests cover configuration wiring, failure recovery, caching and model identity after core's embedding-table migration. Existing provider defaults are unchanged.
+
 ## [2.17.1] — 2026-10-11
 
 Fixes from the 2.17.0 install on a real machine: the marketplace plugin now installs its own packages, and Claude Code can share one memory with the Hermes plugin.

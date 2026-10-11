@@ -4,6 +4,7 @@ Supports:
 - Gemini (models/gemini-embedding-2, 768 dims) — Rohi's configured provider
 - OpenAI (text-embedding-3-small, 1536 dims)
 - Ollama (nomic-embed-text, 768 dims)
+- llama.cpp (bge-m3, 1024 dims by default; server vector determines dimensions)
 
 Graceful fallback: if no provider is available, vector search is disabled
 and FTS5 handles all recall.
@@ -13,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import struct
 from typing import Optional
 
@@ -171,14 +173,45 @@ class OllamaProvider(EmbeddingProvider):
             return None
 
 
+class LlamaCppProvider(EmbeddingProvider):
+    """Local llama-server's OpenAI-compatible embedding endpoint."""
+
+    def __init__(self, base_url: str = "http://127.0.0.1:8080", model: str = "bge-m3"):
+        super().__init__("llamacpp", model, 1024)
+        self._base_url = base_url.rstrip("/")
+
+    def _embed_impl(self, text: str) -> Optional[list[float]]:
+        try:
+            import urllib.request
+            req = urllib.request.Request(
+                f"{self._base_url}/v1/embeddings",
+                data=json.dumps({"model": self.model, "input": text}).encode(),
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                vector = json.loads(resp.read())["data"][0]["embedding"]
+            if not isinstance(vector, list) or not vector:
+                return None
+            if any(type(x) not in (int, float) or not math.isfinite(x) for x in vector):
+                return None
+            # DB vectors are float32: reject values that cannot be stored safely.
+            struct.pack(f"<{len(vector)}f", *vector)
+            self.dims = len(vector)
+            return vector
+        except Exception as e:
+            logger.debug("llama.cpp embedding failed: %s", e)
+            return None
+
+
 # ─── Discovery ───────────────────────────────────────────────────────────────
 
-def detect_provider(embedder: str = "ollama") -> Optional[EmbeddingProvider]:
+def detect_provider(embedder: str = "ollama", config: Optional[dict] = None) -> Optional[EmbeddingProvider]:
     """Build the embedding backend chosen in openltm.json (``embedder``).
 
     Cloud backends are never picked up from ambient API keys: ``gemini`` /
     ``openai`` must be selected explicitly (and their key must be set),
-    ``ollama`` (default) probes the local server, ``none`` disables vectors.
+    ``ollama`` (default) and explicit ``llamacpp`` probe their local servers;
+    ``none`` disables vectors. llama.cpp options in config override environment.
     """
     import os
 
@@ -195,6 +228,19 @@ def detect_provider(embedder: str = "ollama") -> Optional[EmbeddingProvider]:
             return OpenAIProvider(key)
         logger.warning("embedder=openai but OPENAI_API_KEY is not set — vector search disabled")
         return None
+
+    if embedder == "llamacpp":
+        try:
+            import urllib.request
+            options = config or {}
+            base_url = options.get("llamacpp_url") or os.environ.get("LTM_LLAMA_CPP_URL") or "http://127.0.0.1:8080"
+            model = options.get("embedding_model") or os.environ.get("LTM_EMBED_MODEL") or "bge-m3"
+            req = urllib.request.Request(f"{base_url.rstrip('/')}/health")
+            with urllib.request.urlopen(req, timeout=2):
+                return LlamaCppProvider(base_url, model)
+        except Exception:
+            logger.info("llama.cpp not reachable — vector search disabled")
+            return None
 
     if embedder == "ollama":
         try:

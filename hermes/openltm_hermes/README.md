@@ -9,7 +9,7 @@ A Hermes memory provider plugin that wraps [OpenLTM](https://github.com/RohiRIK/
 ## Features
 
 - **FTS5 full-text search** — fast text recall, built into SQLite
-- **Vector embeddings** — semantic search via OpenAI/Ollama/Gemini (optional)
+- **Vector embeddings** — semantic search via llama.cpp/Ollama/OpenAI/Gemini (optional)
 - **Memory categories** — preference, architecture, gotcha, pattern, workflow, constraint
 - **Importance-weighted decay** — importance 5 = permanent; 1-4 fade over time
 - **Deduplication** — same insight reinforced, not duplicated
@@ -50,7 +50,41 @@ A Hermes memory provider plugin that wraps [OpenLTM](https://github.com/RohiRIK/
 
 4. Vector search uses local Ollama by default. To use Gemini or OpenAI embeddings instead
    (memory text is sent to that API), pick it explicitly with `hermes memory setup openltm`
-   (`embedder: gemini|openai|ollama|none` in `~/.hermes/openltm.json`).
+   (`embedder: gemini|openai|ollama|llamacpp|none` in `~/.hermes/openltm.json`).
+
+### Local llama.cpp embeddings (2.17.2+)
+
+Run a dedicated embedding model with llama-server, not a chat model:
+
+```bash
+llama-server --model /path/to/bge-m3-Q8_0.gguf --embedding --pooling cls --alias bge-m3 --host 127.0.0.1 --port 8080
+```
+
+Merge these fields into your profile's `openltm.json`, preserving other settings:
+
+```json
+{
+  "embedder": "llamacpp",
+  "llamacpp_url": "http://127.0.0.1:8080",
+  "embedding_model": "bge-m3"
+}
+```
+
+Restart Hermes after changing the provider. The plugin probes `GET /health` and
+requests `POST /v1/embeddings` with `{model, input}`. No cloud key is needed and
+failure never selects a cloud provider. Unavailable servers and invalid vectors
+fall back to full-text recall; failed embeddings are not cached.
+
+JSON URL/model options take precedence over `LTM_LLAMA_CPP_URL` and
+`LTM_EMBED_MODEL`. Defaults are `http://127.0.0.1:8080` and `bge-m3` (1024
+dimensions); valid server vectors determine the actual stored dimension.
+
+When Claude Code shares the database, use `LTM_EMBED_PROVIDER=llamacpp`, the same
+`LTM_LLAMA_CPP_URL`, and the same `LTM_EMBED_MODEL`. Use a model key identifying
+the actual model served. Do not label BGE-M3 vectors `nomic-embed-text`: vectors
+from different models are not interchangeable. Existing vectors are not
+automatically re-embedded by this plugin change. Keep the server loopback-bound
+unless you have an authenticated, trusted network deployment.
 
 ## How it works
 

@@ -305,7 +305,8 @@ class OpenLtmpMemoryProvider(MemoryProvider):
         # Load the embedding provider selected in openltm.json (default: local Ollama)
         try:
             from ._providers import detect_provider
-            self._embedder = detect_provider(_load_config(hermes_home).get("embedder") or "ollama")
+            config = _load_config(hermes_home)
+            self._embedder = detect_provider(config.get("embedder") or "ollama", config)
         except Exception as e:
             logger.debug("Embedding provider not available: %s", e)
 
