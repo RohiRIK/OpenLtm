@@ -13,7 +13,7 @@ import { homedir } from "node:os";
 import { existsSync, readdirSync } from "node:fs";
 import { findCoreCli } from "./find-core.js";
 // Relative import so esbuild inlines the Node-safe resolver into dist (core itself is external).
-import { dataDirFor, getClaudePluginDataDir, getLegacyClaudeDir, legacyLastSegment, loadProjectRegistry, resolveProjectName } from "../../openltm-core/src/project.js";
+import { dataDirFor, getClaudePluginDataDir, getLegacyClaudeDir, legacyLastSegment, loadProjectRegistry, resolveProjectName, sharedDbPath } from "../../openltm-core/src/project.js";
 
 // ── Fork-bomb prevention ──────────────────────────────────────────────────────
 
@@ -91,7 +91,7 @@ export function findMcpServer(): McpServerLocation | null {
   if (!core) return null;
   const dbPath = explicitDb
     ?? (process.env["CLAUDE_PLUGIN_DATA"] ? join(process.env["CLAUDE_PLUGIN_DATA"]!, "openltm.db") : null)
-    ?? join(dirname(core.script), "..", "..", "..", "..", "data", "openltm.db");
+    ?? sharedDbPath(join(dirname(core.script), "..", "..", "..", "..", "data", "openltm.db"));
   return { ...core, dbPath };
 }
 

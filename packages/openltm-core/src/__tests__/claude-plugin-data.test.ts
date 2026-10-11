@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getClaudePluginDataDir } from "../project.js";
+import { getClaudePluginDataDir, sharedDbPath } from "../project.js";
 
 let root: string;
 let savedConfigDir: string | undefined;
@@ -38,5 +38,24 @@ describe("getClaudePluginDataDir", () => {
   it("follows CLAUDE_CONFIG_DIR like Claude Code does", () => {
     process.env["CLAUDE_CONFIG_DIR"] = join(root, "alt");
     expect(getClaudePluginDataDir()).toBe(join(root, "alt", "plugins", "data", "openltm-OpenLtm"));
+  });
+});
+
+describe("sharedDbPath (no LTM_DB_PATH, no CLAUDE_PLUGIN_DATA)", () => {
+  it("shares the Claude Code plugin's database when there is none of its own yet", () => {
+    process.env["CLAUDE_CONFIG_DIR"] = root;
+    withDb(root, "openltm-OpenLtm");
+    expect(sharedDbPath(join(root, "own", "openltm.db"))).toBe(join(root, "plugins", "data", "openltm-OpenLtm", "openltm.db"));
+  });
+  it("keeps a database that already exists at its own default, so nothing moves", () => {
+    process.env["CLAUDE_CONFIG_DIR"] = root;
+    withDb(root, "openltm-OpenLtm");
+    mkdirSync(join(root, "own"), { recursive: true });
+    writeFileSync(join(root, "own", "openltm.db"), "");
+    expect(sharedDbPath(join(root, "own", "openltm.db"))).toBe(join(root, "own", "openltm.db"));
+  });
+  it("uses its own default when Claude Code has no database", () => {
+    process.env["CLAUDE_CONFIG_DIR"] = root;
+    expect(sharedDbPath(join(root, "own", "openltm.db"))).toBe(join(root, "own", "openltm.db"));
   });
 });

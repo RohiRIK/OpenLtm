@@ -52,7 +52,7 @@ export {
   readRegistryFile, loadProjectRegistry, migrateLegacyRegistry,
   migrateLegacyContextFiles, hasContextFiles, isSafeProjectDirName, CONTEXT_FILES,
   projectHasData, getHomeDir, getLegacyClaudeDir, getClaudeTranscriptsDir, getLegacyRegistryPath,
-  getClaudePluginDataDir, CLAUDE_PLUGIN_DATA_NAMES,
+  getClaudePluginDataDir, CLAUDE_PLUGIN_DATA_NAMES, sharedDbPath,
 } from "./project.js";
 export type {
   ProjectRegistry, ProjectDataProbe, ProjectNameSource, ResolveProjectNameOptions,

@@ -12,7 +12,7 @@
  */
 import { dirname, join } from "path";
 import { existsSync } from "fs";
-import { getLegacyClaudeDir } from "./project.js";
+import { getLegacyClaudeDir, sharedDbPath } from "./project.js";
 
 /** An env value, unless empty or an unexpanded `${…}` placeholder from a host config. */
 function envPath(name: string): string | undefined {
@@ -25,7 +25,7 @@ export function getDbPath(): string {
   if (explicit) return explicit;
   const pluginData = envPath("CLAUDE_PLUGIN_DATA");
   if (pluginData) return join(pluginData, "openltm.db");
-  return join(import.meta.dir, "..", "..", "..", "data", "openltm.db");
+  return sharedDbPath(join(import.meta.dir, "..", "..", "..", "data", "openltm.db"));
 }
 
 /**

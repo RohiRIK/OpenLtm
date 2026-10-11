@@ -19,7 +19,7 @@ import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { findCoreCli } from "./find-core.js";
 // Relative on purpose: esbuild inlines this Node-safe module into dist/index.js,
 // whereas the `@rohirik/openltm-core` package entry is Bun-only and external.
-import { dataDirFor, legacyLastSegment, loadProjectRegistry, resolveProjectName } from "../../openltm-core/src/project.js";
+import { dataDirFor, legacyLastSegment, loadProjectRegistry, resolveProjectName, sharedDbPath } from "../../openltm-core/src/project.js";
 import { Type } from "typebox";
 
 const BRIDGE_DEPTH_ENV = "LTM_BRIDGE_DEPTH";
@@ -276,7 +276,7 @@ export default definePluginEntry({
       if (explicit) return explicit;
       if (process.env["CLAUDE_PLUGIN_DATA"]) return join(process.env["CLAUDE_PLUGIN_DATA"], "openltm.db");
       const core = findCoreCli(import.meta.url);
-      return core ? join(dirname(core.script), "..", "..", "..", "..", "data", "openltm.db") : null;
+      return core ? sharedDbPath(join(dirname(core.script), "..", "..", "..", "..", "data", "openltm.db")) : null;
     };
 
     // Shared resolver (registry → repo root → cwd basename), resolved once per

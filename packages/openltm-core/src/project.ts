@@ -65,6 +65,19 @@ export function getClaudePluginDataDir(claudeDir: string = process.env["CLAUDE_C
 }
 
 /**
+ * The database when no host names one (no LTM_DB_PATH, no CLAUDE_PLUGIN_DATA):
+ * the CLI, OpenCode, OpenClaw's bridge, a standalone `mcp-serve`. A database
+ * that already exists at `fallback` stays in use, so nobody's memories move;
+ * otherwise the installed Claude Code plugin's is shared when it has one;
+ * otherwise `fallback`.
+ */
+export function sharedDbPath(fallback: string): string {
+  if (existsSync(fallback)) return fallback;
+  const plugin = join(getClaudePluginDataDir(), "openltm.db");
+  return existsSync(plugin) ? plugin : fallback;
+}
+
+/**
  * `~/.claude/projects` — Claude Code's transcript directory. OpenLTM kept its
  * registry and context files here originally; it is now read-only for OpenLTM
  * (legacy migration source + transcripts).
