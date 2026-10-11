@@ -24,6 +24,14 @@ if [ -z "$PLUGIN_ROOT" ] || [ ! -f "$BUNFIG" ]; then
   BUNFIG=/dev/null
 fi
 
+# settings.json "env" values never pass through a shell: expand a leading ~/
+# so LTM_DB_PATH="~/…" doesn't name a directory "~" in the project.
+case "${LTM_DB_PATH:-}" in
+  "~") LTM_DB_PATH=$HOME; export LTM_DB_PATH ;;
+  "~/"*) LTM_DB_PATH="$HOME/${LTM_DB_PATH#"~/"}"; export LTM_DB_PATH ;;
+esac
+
+BUN=""
 for candidate in \
   "/opt/homebrew/bin/bun" \
   "/usr/local/bin/bun" \
@@ -32,7 +40,8 @@ for candidate in \
   "$HOME/.asdf/shims/bun"
 do
   if [ -x "$candidate" ]; then
-    exec "$candidate" --no-env-file --config="$BUNFIG" run "$@"
+    BUN=$candidate
+    break
   fi
 done
 
@@ -40,17 +49,34 @@ done
 # Profiles are the user's code, not ours: `set -u` would abort this hook on any
 # unset variable they read, and anything they print would land in the hook's
 # stdout (which SessionStart injects into the session). Relax and silence them.
-set +u
-[ -f "$HOME/.zprofile" ]      && . "$HOME/.zprofile" >/dev/null 2>&1
-[ -f "$HOME/.bash_profile" ]  && . "$HOME/.bash_profile" >/dev/null 2>&1
-[ -f "$HOME/.profile" ]       && . "$HOME/.profile" >/dev/null 2>&1
-
-BUN=$(command -v bun 2>/dev/null)
-if [ -n "$BUN" ]; then
-  exec "$BUN" --no-env-file --config="$BUNFIG" run "$@"
+if [ -z "$BUN" ]; then
+  set +u
+  [ -f "$HOME/.zprofile" ]      && . "$HOME/.zprofile" >/dev/null 2>&1
+  [ -f "$HOME/.bash_profile" ]  && . "$HOME/.bash_profile" >/dev/null 2>&1
+  [ -f "$HOME/.profile" ]       && . "$HOME/.profile" >/dev/null 2>&1
+  BUN=$(command -v bun 2>/dev/null)
 fi
 
 # ── Not found ─────────────────────────────────────────────────────────────────
-echo "LTM hook error: bun not found. Install bun or ensure it is in one of:" >&2
-echo "  /opt/homebrew/bin/bun  /usr/local/bin/bun  ~/.bun/bin/bun  ~/.volta/bin/bun  ~/.asdf/shims/bun" >&2
-exit 127
+if [ -z "$BUN" ]; then
+  echo "LTM hook error: bun not found. Install bun or ensure it is in one of:" >&2
+  echo "  /opt/homebrew/bin/bun  /usr/local/bin/bun  ~/.bun/bin/bun  ~/.volta/bin/bun  ~/.asdf/shims/bun" >&2
+  exit 127
+fi
+
+# ── Packages ──────────────────────────────────────────────────────────────────
+# Claude Code skips installing the plugin's packages (its bun.lock lists more
+# than one workspace), so install them on first use — see scripts/ensure-deps.ts.
+# SessionStart waits for the install; other hooks give it a moment, then skip
+# this run quietly rather than crash.
+if [ -n "$PLUGIN_ROOT" ] && [ -f "$PLUGIN_ROOT/scripts/ensure-deps.ts" ] && {
+  [ ! -f "$PLUGIN_ROOT/node_modules/@rohirik/openltm-core/package.json" ] || [ -d "$PLUGIN_ROOT/.deps-install.lock" ]
+}; then
+  case "${1:-}" in
+    */SessionStart.ts) WAIT_MS=12000 ;;
+    *) WAIT_MS=2000 ;;
+  esac
+  "$BUN" --no-env-file --config="$BUNFIG" "$PLUGIN_ROOT/scripts/ensure-deps.ts" "$PLUGIN_ROOT" --wait-ms "$WAIT_MS" || exit 0
+fi
+
+exec "$BUN" --no-env-file --config="$BUNFIG" run "$@"

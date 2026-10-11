@@ -55,3 +55,7 @@ packages/*/reports/
 
 # adapter-under-Node test builds (src/__tests__/adapters-under-node.test.ts)
 packages/*/.node-test/
+
+# Plugin self-install of its packages (scripts/ensure-deps.ts)
+.deps-install.lock/
+deps-install.log

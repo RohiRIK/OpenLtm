@@ -137,24 +137,39 @@ export function rebuildVecIndex(db: Database, opts?: { model?: string; dim?: num
 }
 
 /**
- * One-time backfill for DBs that have embeddings but an empty/absent vec index
- * (e.g. created before vec was wired in). Rebuilds the index only when it holds
- * zero rows yet memory_embeddings has rows at the active dim. Cheap no-op on
- * subsequent boots because vec0 shadow tables persist in the DB file. Returns
- * the number of rows indexed, 0 when nothing to do, or -1 when unavailable.
+ * Bring the index up to date with memory_embeddings at the active dim. An empty
+ * index on a DB that has embeddings (one created before vec was wired in) is
+ * rebuilt; otherwise rows another writer added without touching the index —
+ * the Hermes plugin on a shared DB has no vec extension — are inserted. Cheap
+ * no-op when nothing is missing. Returns the number of rows indexed, 0 when
+ * nothing to do, or -1 when unavailable.
  */
-export function backfillVecIndexIfEmpty(db: Database): number {
+export function syncVecIndex(db: Database): number {
   if (!getCapabilities().vec) return -1;
   try {
     const dim = getActiveEmbedDim(db);
     if (!ensureVecTable(db, dim)) return -1;
     const indexed = db.query<{ n: number }, []>(`SELECT COUNT(*) AS n FROM ${VEC_TABLE}`).get();
-    if ((indexed?.n ?? 0) > 0) return 0;
-    const stored = db
-      .query<{ n: number }, [number]>(`SELECT COUNT(*) AS n FROM memory_embeddings WHERE dim=?`)
-      .get(dim);
-    if ((stored?.n ?? 0) === 0) return 0;
-    return rebuildVecIndex(db, { dim });
+    if ((indexed?.n ?? 0) === 0) {
+      const stored = db
+        .query<{ n: number }, [number]>(`SELECT COUNT(*) AS n FROM memory_embeddings WHERE dim=?`)
+        .get(dim);
+      if ((stored?.n ?? 0) === 0) return 0;
+      return rebuildVecIndex(db, { dim });
+    }
+    const missing = db
+      .query<{ memory_id: number; embedding: Buffer }, [number]>(
+        `SELECT memory_id, embedding FROM memory_embeddings
+          WHERE dim=? AND memory_id NOT IN (SELECT rowid FROM ${VEC_TABLE})`,
+      )
+      .all(dim);
+    if (missing.length === 0) return 0;
+    db.transaction(() => {
+      for (const r of missing) {
+        db.run(`INSERT INTO ${VEC_TABLE}(rowid, embedding) VALUES (?, ?)`, [r.memory_id, r.embedding]);
+      }
+    })();
+    return missing.length;
   } catch {
     return -1;
   }

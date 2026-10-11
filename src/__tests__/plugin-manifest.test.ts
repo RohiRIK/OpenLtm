@@ -37,6 +37,26 @@ describe("normalizePluginEnv (src/pluginEnv.ts)", () => {
     expect(run({ LTM_DB_PATH: "/x/openltm.db" }).LTM_DB_PATH).toBe("/x/openltm.db");
   });
 
+  it("expands a leading ~/ in LTM_DB_PATH (settings.json env is not shell-expanded)", async () => {
+    const { normalizePluginEnv } = await import("../pluginEnv.js");
+    const { homedir } = await import("os");
+    const e: NodeJS.ProcessEnv = { LTM_DB_PATH: "~/.hermes/openltm.db" };
+    normalizePluginEnv(e);
+    expect(e.LTM_DB_PATH).toBe(join(homedir(), ".hermes", "openltm.db"));
+  });
+
+  it("core getDbPath expands a leading ~/ in LTM_DB_PATH", async () => {
+    const saved = process.env.LTM_DB_PATH;
+    try {
+      process.env.LTM_DB_PATH = "~/.hermes/openltm.db";
+      const { getDbPath } = await import("../../packages/openltm-core/src/paths.js");
+      const { homedir } = await import("os");
+      expect(getDbPath()).toBe(join(homedir(), ".hermes", "openltm.db"));
+    } finally {
+      if (saved === undefined) delete process.env.LTM_DB_PATH; else process.env.LTM_DB_PATH = saved;
+    }
+  });
+
   it("core getDbPath never returns a path built from an unexpanded placeholder", async () => {
     const saved = { db: process.env.LTM_DB_PATH, data: process.env.CLAUDE_PLUGIN_DATA };
     try {

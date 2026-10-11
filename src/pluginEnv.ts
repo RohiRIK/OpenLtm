@@ -11,6 +11,8 @@
  * plugin.json therefore passes it as LTM_PLUGIN_DATA. A value that still holds
  * `${` was never expanded and must not become a directory named "${...}".
  */
+import { homedir } from "os";
+import { join } from "path";
 
 /** The value, or undefined when it is empty or an unexpanded `${…}` placeholder. */
 export function expandedOrUndefined(value: string | undefined): string | undefined {
@@ -22,5 +24,8 @@ export function normalizePluginEnv(env: NodeJS.ProcessEnv = process.env): void {
   const pluginData = expandedOrUndefined(env["CLAUDE_PLUGIN_DATA"]) ?? expandedOrUndefined(env["LTM_PLUGIN_DATA"]);
   if (pluginData) env["CLAUDE_PLUGIN_DATA"] = pluginData;
   else delete env["CLAUDE_PLUGIN_DATA"];
-  if (!expandedOrUndefined(env["LTM_DB_PATH"])) delete env["LTM_DB_PATH"];
+  const dbPath = expandedOrUndefined(env["LTM_DB_PATH"]);
+  // settings.json "env" values never pass through a shell: expand a leading ~/.
+  if (dbPath === "~" || dbPath?.startsWith("~/")) env["LTM_DB_PATH"] = join(homedir(), dbPath.slice(1));
+  else if (!dbPath) delete env["LTM_DB_PATH"];
 }

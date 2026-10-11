@@ -26,6 +26,24 @@ describe("run-hook.sh", () => {
     }
   });
 
+  it("expands a leading ~/ in LTM_DB_PATH (settings.json env is not shell-expanded)", () => {
+    const project = mkdtempSync(join(tmpdir(), "ltm-runhook-tilde-"));
+    try {
+      const probe = join(project, "probe.ts");
+      writeFileSync(probe, "console.log(process.env.LTM_DB_PATH);\n");
+      const r = Bun.spawnSync(["sh", RUN_HOOK, probe], {
+        cwd: project,
+        env: { ...process.env, LTM_DB_PATH: "~/.hermes/openltm.db" },
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      expect(r.exitCode).toBe(0);
+      expect(r.stdout.toString().trim()).toBe(join(process.env.HOME!, ".hermes", "openltm.db"));
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
   it("pins Bun to the plugin bunfig: a hostile project bunfig.toml preload does not run", () => {
     const project = mkdtempSync(join(tmpdir(), "ltm-runhook-bunfig-"));
     try {

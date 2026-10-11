@@ -37,7 +37,7 @@ claude plugin marketplace add https://github.com/RohiRIK/OpenLtm
 claude plugin install openltm
 ```
 
-Restart Claude Code. Seven Claude Code hooks auto-wire, seven commands load, four skills and two agents activate, and the database creates or migrates itself. The git post-commit hook (for git-learn) is installed but only activated when you turn on `ltm.gitLearnEnabled`.
+Restart Claude Code. Seven Claude Code hooks auto-wire, seven commands load, four skills and two agents activate, and the database creates or migrates itself. On first start the plugin installs its packages (`bun install` in the plugin directory, a few seconds): Claude Code skips that step for OpenLTM's monorepo lockfile, so `claude plugin list` notes the packages "were not installed" until then — see [Troubleshooting](09-troubleshooting.md#cannot-find-module-rohirikopenltm-core--the-packages-it-lists-were-not-installed). The git post-commit hook (for git-learn) is installed but only activated when you turn on `ltm.gitLearnEnabled`.
 
 To update later:
 

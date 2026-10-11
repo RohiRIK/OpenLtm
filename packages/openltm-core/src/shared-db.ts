@@ -10,7 +10,7 @@ import { getDbPath, getSchemaPath } from "./paths.js";
 import { runPendingMigrations } from "./migrations.js";
 import { writeQueue } from "./lib/writeQueue.js";
 import { ensureCustomSqlite, loadExtensions, getCapabilities } from "./extensions.js";
-import { backfillVecIndexIfEmpty } from "./vec/index.js";
+import { syncVecIndex } from "./vec/index.js";
 import type { LtmCoreConfig } from "./adapterTypes.js";
 
 export let DB_PATH = getDbPath();
@@ -40,9 +40,10 @@ export async function initDb(opts?: { dbPath?: string; schemaPath?: string }): P
   db.exec(readFileSync(SCHEMA_PATH, "utf-8"));
   // Then run versioned migrations (idempotent — skips already-applied versions)
   await runPendingMigrations(db);
-  // One-time vec0 index backfill for DBs that predate vec wiring. No-op when
-  // vec is unavailable or the index is already populated.
-  if (getCapabilities().vec) backfillVecIndexIfEmpty(db);
+  // Index embeddings the vec0 index is missing: a DB that predates vec wiring,
+  // or vectors the Hermes plugin wrote to a shared DB. No-op when vec is
+  // unavailable or nothing is missing.
+  if (getCapabilities().vec) syncVecIndex(db);
   return db;
 }
 

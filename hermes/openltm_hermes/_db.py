@@ -216,6 +216,13 @@ def connect(db_path: Path) -> sqlite3.Connection:
 def init_schema(conn: sqlite3.Connection) -> None:
     """Create tables, indexes, FTS, and triggers if they don't exist."""
     conn.executescript(SCHEMA_SQL)
+    # run_janitor() materializes decay_score. CREATE TABLE IF NOT EXISTS never
+    # adds a column to an existing table, so add it here (same definition as
+    # OpenLtm core's migration 011, which then finds it present on a shared DB).
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(memories)").fetchall()}
+    if "decay_score" not in cols:
+        conn.execute("ALTER TABLE memories ADD COLUMN decay_score REAL NOT NULL DEFAULT 1.0")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_memories_decay_score ON memories (decay_score DESC)")
     # FTS and triggers may fail if already exist — run individually
     for sql in FTS_SQL.split(";"):
         sql = sql.strip()
@@ -289,7 +296,8 @@ def learn(
             scrubbed_content = scrub_secrets_for_embedding(content)
             new_vec = embedder.embed(scrubbed_content)
             if new_vec:
-                sims = vector_search(conn, new_vec, limit=1, project=project, category=category)
+                sims = vector_search(conn, new_vec, limit=1, project=project, category=category,
+                                     model=getattr(embedder, "model", None))
                 if sims:
                     top_sim = sims[0].get("similarity", 0.0)
                     if top_sim >= SIMILARITY_REINFORCE:
@@ -329,7 +337,7 @@ def learn(
         conn.commit()
         return {"action": "error", "id": 0, "confirm_count": 0}
 
-    # Store embedding inline if embedder available (so future dedup/recall works)
+    # Store the embedding if an embedder is available (so future dedup/recall works)
     if embedder is not None:
         try:
             # Scrub secrets before embedding
@@ -337,7 +345,7 @@ def learn(
             vec = embedder.embed(scrubbed_content)
             if vec:
                 from ._providers import embedding_to_blob
-                store_embedding(conn, memory_id, embedding_to_blob(vec))
+                store_embedding(conn, memory_id, embedding_to_blob(vec), getattr(embedder, "model", None))
         except Exception as e:
             logger.debug("OpenLTM learn embedding failed: %s", e)
 
@@ -758,10 +766,8 @@ def _find_semantic_duplicates(conn: sqlite3.Connection, threshold: float) -> lis
     import math
     import struct
 
-    rows = conn.execute(
-        "SELECT id, embedding FROM memories WHERE status = 'active' AND embedding IS NOT NULL"
-    ).fetchall()
-    vecs: list[tuple[int, list[float], float]] = []
+    rows = _stored_vectors(conn, "m.status = 'active'", [])
+    vecs: list[tuple[int, list[float], float, str | None]] = []
     for r in rows:
         blob = r["embedding"]
         if not blob or len(blob) < 4:
@@ -770,14 +776,14 @@ def _find_semantic_duplicates(conn: sqlite3.Connection, threshold: float) -> lis
         v = list(struct.unpack(f"<{dims}f", blob[:dims * 4]))
         norm = math.sqrt(sum(x * x for x in v))
         if norm:
-            vecs.append((r["id"], v, norm))
+            vecs.append((r["id"], v, norm, r["model"]))
 
     pairs = []
     for i in range(len(vecs)):
-        id1, v1, n1 = vecs[i]
+        id1, v1, n1, m1 = vecs[i]
         for j in range(i + 1, len(vecs)):
-            id2, v2, n2 = vecs[j]
-            if len(v1) != len(v2):
+            id2, v2, n2, m2 = vecs[j]
+            if len(v1) != len(v2) or not (_same_model(m1, m2) or _same_model(m2, m1)):
                 continue
             sim = sum(a * b for a, b in zip(v1, v2)) / (n1 * n2)
             if sim >= threshold:
@@ -834,9 +840,54 @@ def run_janitor(conn: sqlite3.Connection, *, dedup_similarity: float = SIMILARIT
 
 # ─── Vector Search ───────────────────────────────────────────────────────────
 
-def store_embedding(conn: sqlite3.Connection, memory_id: int, embedding_blob: bytes) -> None:
-    """Store an embedding vector for a memory."""
-    conn.execute("UPDATE memories SET embedding = ? WHERE id = ?", (embedding_blob, memory_id))
+def _embeddings_inline(conn: sqlite3.Connection) -> bool:
+    """True while vectors live in ``memories.embedding`` (a Hermes-created DB).
+
+    Once OpenLtm core opens the same DB, its migration 010 moves them to the
+    ``memory_embeddings`` side table (memory_id, embedding, model, dim) and drops
+    the column. Checked on every call: core can migrate the DB while this
+    connection is open.
+    """
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(memories)").fetchall()}
+    return "embedding" in cols
+
+
+def _same_model(stored: str | None, model: str | None) -> bool:
+    """Vectors from different models are not comparable. ``unknown`` marks vectors
+    core's migration 010 moved out of ``memories.embedding`` (written by this plugin)."""
+    return model is None or stored in (None, "unknown", model)
+
+
+def _stored_vectors(conn: sqlite3.Connection, where: str, params: list[Any]) -> list[sqlite3.Row]:
+    """Active-memory rows with their stored vector as ``embedding`` and its ``model``
+    (None in the inline layout), for either storage layout."""
+    if _embeddings_inline(conn):
+        sql = f"""SELECT m.id, m.content, m.title, m.category, m.importance, m.project_scope,
+                         m.confirm_count, m.embedding, NULL AS model
+                  FROM memories m WHERE m.embedding IS NOT NULL AND {where}"""
+    else:
+        sql = f"""SELECT m.id, m.content, m.title, m.category, m.importance, m.project_scope,
+                         m.confirm_count, e.embedding, e.model
+                  FROM memories m JOIN memory_embeddings e ON e.memory_id = m.id
+                  WHERE {where}"""
+    return conn.execute(sql, params).fetchall()
+
+
+def store_embedding(
+    conn: sqlite3.Connection, memory_id: int, embedding_blob: bytes, model: str | None = None,
+) -> None:
+    """Store an embedding vector for a memory, in whichever layout the DB uses."""
+    if _embeddings_inline(conn):
+        conn.execute("UPDATE memories SET embedding = ? WHERE id = ?", (embedding_blob, memory_id))
+    else:
+        conn.execute(
+            """INSERT INTO memory_embeddings (memory_id, embedding, model, dim, created_at)
+               VALUES (?, ?, ?, ?, datetime('now'))
+               ON CONFLICT(memory_id) DO UPDATE SET
+                 embedding = excluded.embedding, model = excluded.model,
+                 dim = excluded.dim, created_at = excluded.created_at""",
+            (memory_id, embedding_blob, model or "unknown", len(embedding_blob) // 4),
+        )
     conn.commit()
 
 
@@ -847,27 +898,25 @@ def vector_search(
     limit: int = 10,
     project: str | None = None,
     category: str | None = None,
+    model: str | None = None,
 ) -> list[dict]:
     """Find memories by cosine similarity to query embedding.
     Loads all embeddings and computes similarity in Python.
-    Acceptable for <10K memories."""
+    Acceptable for <10K memories. Only vectors with the query's dimension (and,
+    when ``model`` is given, from that model) are compared."""
     import math
     import struct
 
-    conditions = ["status = 'active'", "embedding IS NOT NULL"]
+    conditions = ["m.status = 'active'"]
     params: list[Any] = []
     if project:
-        conditions.append("project_scope = ?")
+        conditions.append("m.project_scope = ?")
         params.append(project)
     if category:
-        conditions.append("category = ?")
+        conditions.append("m.category = ?")
         params.append(category)
 
-    where = " AND ".join(conditions)
-    rows = conn.execute(
-        f"SELECT id, content, title, category, importance, embedding, project_scope FROM memories WHERE {where}",
-        params,
-    ).fetchall()
+    rows = _stored_vectors(conn, " AND ".join(conditions), params)
 
     scored = []
     q_norm = math.sqrt(sum(x * x for x in query_embedding)) if query_embedding else 0
@@ -876,7 +925,7 @@ def vector_search(
 
     for row in rows:
         blob = row["embedding"]
-        if not blob or len(blob) < 4:
+        if not blob or len(blob) // 4 != len(query_embedding) or not _same_model(row["model"], model):
             continue
         dims = len(blob) // 4
         vec = list(struct.unpack(f"<{dims}f", blob[:dims * 4]))
@@ -893,6 +942,7 @@ def vector_search(
     for sim, row in scored[:limit]:
         mem = dict(row)
         mem.pop("embedding", None)
+        mem.pop("model", None)
         mem["similarity"] = round(sim, 4)
         results.append(mem)
     return results
@@ -906,6 +956,7 @@ def hybrid_search(
     project: str | None = None,
     category: str | None = None,
     limit: int = 10,
+    model: str | None = None,
 ) -> list[dict]:
     """Hybrid search: FTS5 + semantic vector, merged by a weighted score.
 
@@ -930,7 +981,7 @@ def hybrid_search(
     # the caller should pass the embedding of the scrubbed query.
     # For now, we'll use the passed embedding but the scrubbing happens at the caller.
     vec_results = vector_search(
-        conn, query_embedding, limit=limit * 2, project=project, category=category,
+        conn, query_embedding, limit=limit * 2, project=project, category=category, model=model,
     )
     if not vec_results:
         return fts_results

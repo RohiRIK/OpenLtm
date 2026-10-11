@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.17.1] — 2026-10-11
+
+Fixes from the 2.17.0 install on a real machine: the marketplace plugin now installs its own packages, and Claude Code can share one memory with the Hermes plugin.
+
+### Fixed
+- **Fresh marketplace installs failed to start.** Claude Code installs a plugin's packages only when its `bun.lock` lists the plugin as the only workspace; OpenLTM's monorepo lockfile doesn't, so `claude plugin list` noted "The packages it lists were not installed" and every hook and the MCP server crashed with `Cannot find module '@rohirik/openltm-core'`. The first hook or MCP start now runs `bun install --frozen-lockfile` in the plugin directory (`scripts/ensure-deps.ts`). It runs detached under a lock, so a hook timeout can't kill it mid-way and concurrent launchers don't install twice, and it logs to `<plugin data>/deps-install.log`. SessionStart and the MCP server wait for it; other hooks skip their run until it finishes. Measured on an empty bun cache: 3.3 s, MCP handshake at 3.5 s.
+- **Core could not open a database the Hermes plugin created.** The Hermes schema already has columns core's migrations add, but not every index and table they add, so migration 007 stopped with `duplicate column name: workspace_id … index "idx_memories_workspace" does not exist` (011 likewise on a DB built from `hermes/schema.sql`). A failed migration is now reconciled statement by statement in one transaction: DDL whose column, table, index or trigger provably exists is skipped, everything else runs, and a destructive statement (`DROP`, `DELETE`, `ALTER … DROP/RENAME`) or any error rolls it back and records nothing. This replaces the gate that refused any migration mixing a present column with missing objects or a backfill. Statements are now split trigger-aware (a `CREATE TRIGGER … END;` body stays one statement).
+- **The Hermes plugin's vector search broke once core had migrated its DB.** Core's migration 010 moves vectors from `memories.embedding` to `memory_embeddings`; the plugin now reads and writes whichever layout the DB has, stamps the model and dimension it writes, and compares only vectors of the query's dimension and model (vectors moved by 010, stamped `unknown`, still match).
+- **The Hermes janitor failed on a fresh Hermes DB** (`no such column: decay_score`): `init_schema()` now adds the column.
+- **Vectors written by the Hermes plugin were invisible to core's vector index.** At startup core now indexes `memory_embeddings` rows the sqlite-vec index is missing, not only an empty index.
+- **`LTM_DB_PATH="~/…"` in `~/.claude/settings.json` created a directory named `~`.** Values there don't pass through a shell; the hooks, the MCP server and core now expand a leading `~/`.
+
+### Docs
+- [Hermes Integration](docs/10-hermes-plugin.md) no longer claims the core runner migrates the Hermes DB; it documents sharing one memory with Claude Code through `LTM_DB_PATH`, the backup to take first, matching the embedding model (`LTM_EMBED_PROVIDER=ollama`), and that the Hermes plugin must be updated first.
+- Troubleshooting covers the "packages were not installed" note; Installation and Configuration mention the first-start install and `~/` expansion.
+
 ## [2.17.0] — 2026-10-11
 
 Hardening and "recall everywhere". Consolidates open PRs #27–#38 with six parallel workstreams into one release.

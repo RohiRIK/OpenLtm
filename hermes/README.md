@@ -85,7 +85,9 @@ The plugin stores everything in a single local SQLite database:
 
 There is no server, no network dependency, and no separate DB — the plugin is a
 direct-SQLite provider. `memory.provider: openltm` in `~/.hermes/config.yaml`
-points Hermes at it.
+points Hermes at it. Claude Code and the other OpenLTM hosts can share this DB
+through `LTM_DB_PATH` (2.17.1+): see
+[Hermes Integration → Sharing one memory with Claude Code](../docs/10-hermes-plugin.md#sharing-one-memory-with-claude-code-2171).
 
 ## Update flow
 
@@ -98,8 +100,9 @@ points Hermes at it.
 Restart the Hermes gateway afterwards (the plugin is only loaded at startup).
 
 > The live plugin dir is a generated/installed copy — never edit it directly; edit
-> this repo and reinstall. The migration history lives in OpenLtm's `migrations/`
-> (canonical, 001–025) and is applied by the OpenLtm core runner, not by this plugin.
+> this repo and reinstall. The plugin creates its own schema (`init_schema()`) and
+> runs no migrations. OpenLtm's `migrations/` run only when OpenLtm core opens the
+> DB, which happens when another host shares it.
 
 ## Tests
 
