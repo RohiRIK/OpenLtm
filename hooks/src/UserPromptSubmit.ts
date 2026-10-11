@@ -51,6 +51,9 @@ async function main(): Promise<void> {
   recordInjectedIds(sessionId, hits.map(h => h.id));
   process.stdout.write(formatPromptRecall(hits));
   logEvent("UserPromptSubmit", EVENTS.PROMPT_RECALL, { project: project ?? undefined, count: hits.length });
+  // The structured log /openltm:health reads; imported here so it never delays the injection.
+  const { emitEvent } = await import("../../packages/openltm-core/src/lib/jsonlLogger.js");
+  emitEvent({ hook: "UserPromptSubmit", event: EVENTS.PROMPT_RECALL, project: project ?? undefined, count: hits.length, ts: new Date().toISOString() });
 }
 
 await safeRun("UserPromptSubmit", main);

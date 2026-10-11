@@ -92,6 +92,9 @@ try {
   const ptu = hook("PostToolUse.ts", { cwd: repo, session_id: "s1", tool_name: "Bash", tool_input: { command: "git commit -m parser" }, tool_response: { stdout: "", stderr: "", interrupted: false } });
   const stale = new Database(dbPath, { readonly: true }).query<{ n: number }, [number]>("SELECT COUNT(*) n FROM memories WHERE id=? AND stale_flagged_at IS NOT NULL").get(anchored)!.n;
   check("PostToolUse flags the anchored memory stale after git commit", ptu.code === 0 && ptu.out === "" && stale === 1, ptu.out);
+  const logged = existsSync(join(data, "logs", "ltm.jsonl"))
+    ? readFileSync(join(data, "logs", "ltm.jsonl"), "utf-8").trim().split("\n").map((l) => JSON.parse(l).event as string) : [];
+  check("prompt recall and stale flags are logged for /openltm:health", logged.includes("recall.prompt") && logged.includes("memory.stale_flagged"), logged);
 
   // ── Stop (UpdateContext): one row per session ─────────────────────────────
   const t1 = transcript("t1", [user("hi"), edit("/repo/a.ts"), user("ok")]);

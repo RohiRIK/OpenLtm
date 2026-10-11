@@ -24,6 +24,7 @@ import { traverseGraph, buildReasoningContext } from "../graph.js";
 import { categorise } from "../recall/categorise.js";
 import { scrubForEgress } from "../secretsScrubber.js";
 import { hasPrivateTag, notPrivateSql } from "../privacy.js";
+import { emitEvent } from "../lib/jsonlLogger.js";
 
 // ─── Options ─────────────────────────────────────────────────────────────────
 
@@ -170,6 +171,8 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
     },
     async ({ query, project, limit, category, verbose, since, until, sort_by, workspace_id, agent_id, includeProvenance, includePrivate }) => {
       const results = await recall({ query, project, limit, category, since, until, sort_by, workspace_id, agent_id, includeProvenance, includePrivate });
+      // /openltm:health counts these ("Recall hits").
+      if (results.length > 0) emitEvent({ hook: "MCP", event: "recall.hit", project, count: results.length, ts: new Date().toISOString() });
       return jsonResult(verbose ? scrubMemoryPayload(results) : compact(results));
     },
   );
@@ -243,6 +246,7 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
         actor: "mcp:ltm_learn",
       });
 
+      emitEvent({ hook: "MCP", event: "learn.write", project: scope, detail: result.action, ts: new Date().toISOString() });
       notify(`memory_stored: id=${result.id} category=${resolvedCategory}${categoriseSource ? ` (auto:${categoriseSource})` : ""} importance=${importance ?? 3} action=${result.action}`);
 
       // project_scope tells the model where it landed: null = cross-project (global),

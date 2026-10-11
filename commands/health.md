@@ -52,6 +52,8 @@ const LABELS = {
   'compact.pre':       'Compactions',
   'recall.hit':        'Recall hits',
   'learn.write':       'Memories learned',
+  'recall.prompt':     'Prompt recalls',
+  'memory.stale_flagged': 'Stale flags (commits)',
   'wizard.complete':   'Wizard completions',
   'git.commit':        'Git commits tracked',
   'server.notify':     'Server notifies',

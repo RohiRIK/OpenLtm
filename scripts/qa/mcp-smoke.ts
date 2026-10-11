@@ -93,8 +93,11 @@ try {
     check("get returns the full memory", json(got).ok === true && json(got).memory.content.includes("RRF"), got.content[0]?.text);
   }
 
+  const events = () => existsSync(join(data, "logs", "ltm.jsonl"))
+    ? readFileSync(join(data, "logs", "ltm.jsonl"), "utf-8").trim().split("\n").map((l) => JSON.parse(l).event as string) : [];
   const priv = await call("learn", { content: "Smoke private note: the staging bastion host is named kestrel", tags: ["private"], category: "workflow" });
   const privId = json(priv).id as number;
+  check("recall and learn are logged for /openltm:health (recall.hit, learn.write)", events().includes("recall.hit") && events().includes("learn.write"), events());
   const privRecall = json(await call("recall", { query: "staging bastion host kestrel" })) as Array<{ id: number }>;
   check("private memory hidden from recall by default", !privRecall.some((m) => m.id === privId), privRecall);
   const privGet = await call("get", { id: privId });

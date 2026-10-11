@@ -74,6 +74,8 @@ async function main(): Promise<void> {
     const { logEvent } = await import("../lib/hookLogger.js");
     const { EVENTS } = await import("../lib/eventNames.js");
     logEvent("PostToolUse", EVENTS.STALE_FLAGGED, { project, count: res.flagged, detail: `commit ${sha.slice(0, 12)}` });
+    const { emitEvent } = await import("@rohirik/openltm-core");
+    emitEvent({ hook: "PostToolUse", event: EVENTS.STALE_FLAGGED, project, count: res.flagged, detail: `commit ${sha.slice(0, 12)}`, ts: new Date().toISOString() });
   }
 }
 
