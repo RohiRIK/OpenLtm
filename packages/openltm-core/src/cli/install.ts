@@ -14,6 +14,8 @@ import { detectAgents } from "./detect.js";
 import type { CliInstallOptions, CliInstallResult, InstallStep, InstallResult } from "./types.js";
 import { InstallTarget } from "./types.js";
 import { INSTALL_TARGETS } from "./targets.js";
+import { claudeDbPath } from "./claude.js";
+import os from "os";
 
 // ── Known targets set (legacy validation) ────────────────────────────────────
 
@@ -80,6 +82,8 @@ export interface CliRunOpts {
   homedir?: string;
   /** When true, suppress @clack output (used in tests). */
   silent?: boolean;
+  /** Pi CLI to run instead of the one on PATH (tests, scripted installs). */
+  piCmd?: string;
 }
 
 export interface CliRunResult {
@@ -126,7 +130,7 @@ export async function runInstallCli(opts: CliRunOpts): Promise<CliRunResult> {
     if (!targets[target.id]) continue;
     const s = silent ? null : clack.spinner();
     if (s) s.start(`Installing into ${target.label}…`);
-    const r = await target.install({ homedir, dryRun });
+    const r = await target.install({ homedir, dryRun, piCmd: opts.piCmd });
     results.push(r);
     if (s) {
       if (r.status === "installed") {
@@ -142,7 +146,7 @@ export async function runInstallCli(opts: CliRunOpts): Promise<CliRunResult> {
   const hasErrors = results.some((r) => r.status === "error");
 
   if (!silent) {
-    clack.outro("Done. Shared DB: ~/.claude/plugins/data/OpenLtm-openltm/openltm.db");
+    clack.outro(`Done. Shared DB: ${claudeDbPath(homedir ?? os.homedir())}`);
   }
 
   return { exitCode: hasErrors ? 1 : 0, results };

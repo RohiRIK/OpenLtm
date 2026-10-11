@@ -1,8 +1,10 @@
 ---
-description: "USE WHEN running schema migrations, scanning memories for secrets, or managing the LTM graph visualization server. Groups migrate | scan | server."
-argument-hint: "<migrate|scan|server> [args]"
-allowed-tools: ["Bash", "Skill"]
+description: "USE WHEN running schema migrations, scanning memories for secrets, or querying the memory audit log. Groups migrate | scan | audit. (The graph server moved to /openltm:server.)"
+argument-hint: "<migrate|scan|audit> [args]"
+allowed-tools: ["Bash", "mcp__plugin_openltm_memory__admin_audit"]
 ---
+
+Arguments: `$ARGUMENTS`
 
 Parse the first word of the arguments as `<subcommand>`. Pass remaining words as `<args>`.
 
@@ -13,7 +15,6 @@ Usage: /openltm:admin <subcommand>
 
   migrate [status|up|down|reset|--legacy]   — schema migrations + legacy DB detection
   scan    [--project X] [--dry-run]         — scan memories for secrets and redact
-  server  [start|stop|status]               — LTM graph visualization server (port 7332)
   audit   [--memory-id N] [--op <op>] [--session <id>] [--since <iso>] [--limit N]
                                             — query the memory write audit log
 ```
@@ -41,7 +42,7 @@ For `reset`: ask user to confirm with "yes" before running.
 After schema migration check, also detect legacy DB:
 
 ```bash
-[ -f "$HOME/.claude/memory/openltm.db" ] && [ ! -f "$CLAUDE_PLUGIN_DATA/openltm.db" ] && echo "⚠ Legacy DB found at ~/.claude/memory/openltm.db. Run /openltm:admin migrate --legacy to migrate it."
+[ -f "$HOME/.claude/memory/openltm.db" ] && [ ! -f "${CLAUDE_PLUGIN_DATA}/openltm.db" ] && echo "⚠ Legacy DB found at ~/.claude/memory/openltm.db. Run /openltm:admin migrate --legacy to migrate it."
 ```
 
 When `--legacy` is the argument:
@@ -60,11 +61,15 @@ bun "${CLAUDE_PLUGIN_ROOT}/scripts/migrate-db.ts"
 bun --eval "
 import { Database } from 'bun:sqlite';
 await (async () => {
-  const { scrubSecrets } = await import(process.env.CLAUDE_PLUGIN_ROOT + '/src/secretsScrubber.ts');
-  const args = process.argv.slice(2);
+  const { scrubSecrets } = await import('${CLAUDE_PLUGIN_ROOT}/packages/openltm-core/src/secretsScrubber.ts');
+  // bun --eval: argv[0] is bun; the rest are this command's arguments.
+  const args = process.argv.slice(1);
   const dryRun = args.includes('--dry-run');
-  const project = args[args.indexOf('--project') + 1] ?? null;
-  const db = new Database(process.env.LTM_DB_PATH);
+  const p = args.indexOf('--project');
+  const project = p >= 0 ? args[p + 1] ?? null : null;
+  const dbPath = process.env.LTM_DB_PATH || '${CLAUDE_PLUGIN_DATA}/openltm.db';
+  if (!(await import('fs')).existsSync(dbPath)) { console.log('No database at ' + dbPath); return; }
+  const db = new Database(dbPath);
   const where = project ? \"WHERE status='active' AND project_scope=?\" : \"WHERE status='active'\";
   const rows = db.query('SELECT id, content FROM memories ' + where).all(...(project ? [project] : []));
   let scanned = 0, redacted = 0;
@@ -82,7 +87,7 @@ await (async () => {
   const typeStr = Object.entries(typeCounts).map(([k,v]) => k+'('+v+')').join(', ');
   console.log('Scanned ' + scanned + ', redacted ' + redacted + (typeStr ? ' ('+typeStr+')' : '') + (dryRun ? ' [dry-run]' : ''));
 })();
-" -- $@
+" -- $ARGUMENTS
 ```
 
 `--dry-run` is safe to run anytime.
@@ -115,14 +120,8 @@ For before/after snapshots, add `--verbose` (maps to `verbose: true` in the MCP 
 
 ---
 
-## server
+## server (moved)
 
-Route to the **LtmServer** skill:
+The graph visualizer is now its own command. If the subcommand is `server`, do not start anything here — tell the user:
 
-| Arg | Workflow |
-|-----|----------|
-| `start` or no args | `skills/LtmServer/Workflows/Start.md` |
-| `stop` | `skills/LtmServer/Workflows/Stop.md` |
-| `status` | inline PID check from `skills/LtmServer/SKILL.md` |
-
-UI runs on port **7332** (Next.js frontend). API runs on port **7331** (Bun backend). PID at `~/.claude/tmp/ltm-server.pid`.
+> The graph server moved to `/openltm:server <start|stop|status>`.

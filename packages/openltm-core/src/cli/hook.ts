@@ -3,9 +3,13 @@
  *
  * For bunx installs we support a portable SessionStart prefill directly from
  * openltm-core so users still get an "already pre-filled" experience without
- * the full Claude plugin checkout. Other hook events are safe no-ops.
+ * the full Claude plugin checkout. SessionEnd fires a detached
+ * `ltm janitor run --if-due` so hook hosts curate the DB without graph-server
+ * (opt out: LTM_JANITOR_ON_SESSION_END=0). Other hook events are safe no-ops.
  */
 import { buildPrefillContext, deriveProjectFromCwd, PREFILL_DEFAULTS } from "../prefill.js";
+import { spawnJanitorDetached } from "./janitor.js";
+import { waitForInit } from "../shared-db.js";
 
 function parseHookCwd(raw: string): string {
   if (!raw.trim()) return "";
@@ -25,10 +29,14 @@ export async function buildHookOutput(name: string, rawInput: string): Promise<s
     case "SessionStart": {
       const cwd = parseHookCwd(rawInput);
       if (!cwd) return "";
+      // A first-time user has no DB yet: create and fully migrate it before
+      // querying (otherwise "no such column: workspace_id" on the first session).
+      await waitForInit();
       const project = deriveProjectFromCwd(cwd);
       if (!project) return "";
       return buildPrefillContext({ project, ...PREFILL_DEFAULTS });
     }
+    case "SessionEnd":
     case "PreCompact":
     case "PostEditCheck":
       return "";
@@ -58,6 +66,12 @@ async function readStdin(): Promise<string> {
  */
 export async function runHook(name: string): Promise<void> {
   const raw = await readStdin();
+  if (name === "SessionEnd") {
+    // Fire-and-forget; the child is detached, throttled by --if-due, and
+    // single-instance via the janitor lock. Never blocks or fails the hook.
+    spawnJanitorDetached();
+    return;
+  }
   const output = await buildHookOutput(name, raw);
   if (output) process.stdout.write(output);
 }

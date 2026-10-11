@@ -1,13 +1,9 @@
 import type { Hooks } from "@opencode-ai/plugin";
 import { buildPrefillContext, deriveProjectFromCwd, recall, PREFILL_DEFAULTS } from "@rohirik/openltm-core";
 
-function projectName(path: string): string {
-  // Use last path segment as project scope (matching Claude Code convention)
-  return deriveProjectFromCwd(path) || path;
-}
-
-export function buildSessionHooks(opts: { dbPath: string; project: string }): Pick<Hooks, "experimental.chat.system.transform" | "experimental.session.compacting"> {
-  const project = projectName(opts.project);
+export function buildSessionHooks(opts: { dbPath: string; project: string; legacyName?: string }): Pick<Hooks, "experimental.chat.system.transform" | "experimental.session.compacting"> {
+  // Same resolver as every other host (registry → repo root → folder name).
+  const project = deriveProjectFromCwd(opts.project, opts.legacyName) || opts.project;
 
   return {
     "experimental.chat.system.transform": async (_ctx, output) => {

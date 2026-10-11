@@ -20,6 +20,8 @@ export default function ProjectMemoriesPage() {
   const [detail, setDetail] = useState<ProjectDetail | null>(null);
   const [selected, setSelected] = useState<GraphNode | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Bumped when the inspector edits or deletes a memory, so the list refetches.
+  const [reloadKey, setReloadKey] = useState(0);
   const [activeView, setActiveView] = useState<ViewMode>("table");
   const [categoryFilter, setCategoryFilter] = useState<string | "All">("All");
 
@@ -31,7 +33,7 @@ export default function ProjectMemoriesPage() {
     return () => {
       alive = false;
     };
-  }, [projectName]);
+  }, [projectName, reloadKey]);
 
   const allCategories = useMemo(() => {
     if (!detail) return ["All"];
@@ -134,7 +136,7 @@ export default function ProjectMemoriesPage() {
 
       {selected && (
         <div className="w-[400px] shrink-0 border-l border-[var(--border)] bg-[var(--bg-primary)] z-20 h-full">
-          <Sidebar node={selected} onClose={() => setSelected(null)} />
+          <Sidebar node={selected} onClose={() => setSelected(null)} onUpdated={() => setReloadKey((k) => k + 1)} />
         </div>
       )}
     </div>

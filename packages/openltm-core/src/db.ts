@@ -6,12 +6,13 @@ import type { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import { normalizeKey } from "./dedup.js";
-import { isNearDuplicate } from "./similarity.js";
+import { differsMeaningfully, isNearDuplicate, jaccardSimilarity } from "./similarity.js";
+import { filterPrivateMemories, hasPrivateTag, notPrivateSql } from "./privacy.js";
 import { normalizeAnchorPaths } from "./anchors.js";
 import { getDb, DB_PATH, configure as configureDb } from "./shared-db.js";
 import { enqueueEmbedding } from "./queue/index.js";
 import { notifyLtm, notifyMemoryAdded } from "./events/index.js";
-import { scrubSecrets } from "./secretsScrubber.js";
+import { scrubOrRefuse } from "./secretsScrubber.js";
 import { insertProvenance, insertAudit, snapshotMemory, listProvenanceBatch } from "./dao/provenanceAudit.js";
 import type { ProvenanceSourceType } from "./dao/types.js";
 import type { LtmCoreConfig } from "./adapterTypes.js";
@@ -105,9 +106,17 @@ export interface LearnResult {
   action: "created" | "reinforced";
   id: number;
   confirm_count: number;
+  /** How an existing memory was matched (absent on clean create). */
+  matched_by?: "exact" | "containment" | "jaccard";
+  /** Similarity score in [0,1] when matched_by is jaccard/containment. */
+  score?: number;
+  /** Id of the near-duplicate candidate (reinforced or noted on create). */
+  matched_id?: number;
 }
 
 export interface RecallInput {
+  /** Opt-in: include memories tagged `private` (default false). */
+  includePrivate?: boolean;
   since?: string;
   until?: string;
   sort_by?: "relevance" | "created" | "last_recalled" | "recall_count";
@@ -117,10 +126,19 @@ export interface RecallInput {
   category?: MemoryCategory;
   project?: string;
   limit?: number;
+  /** Only memories in this workspace (or with no workspace) are returned. */
   workspace_id?: string;
+  /** Only memories written by this agent (or with no agent) are returned. */
   agent_id?: string;
   /** When true, each result includes a `provenance` array. Off by default to preserve latency. */
   includeProvenance?: boolean;
+  /**
+   * Hybrid ranking: run the embedding search alongside FTS and fuse both with
+   * Reciprocal Rank Fusion. Default true. Pass false on a hot path to force
+   * FTS-only (no provider round-trip). Also off when `ltm.semanticFallback`
+   * is false or the embeddings provider is "disabled".
+   */
+  semantic?: boolean;
 }
 
 
@@ -146,25 +164,82 @@ function oneLineForLog(text: string): string {
   return line.length > 80 ? `${line.slice(0, 77)}…` : line;
 }
 
+/** Conservative near-dup thresholds (#16). Strong → reinforce; ambiguous → note only. */
+const JACCARD_REINFORCE = 0.85;
+const JACCARD_AMBIGUOUS = 0.55;
+
+interface NearDupHit {
+  memory: Memory;
+  matched_by: "containment" | "jaccard";
+  score: number;
+  /** True only for strong matches — safe to reinforce silently. */
+  reinforce: boolean;
+}
+
 /**
- * findNearDuplicate — locate an existing memory that says the same thing.
- * Scoped to the same project scope (a global memory never absorbs a scoped one)
- * and only considers recently active rows to keep the probe cheap.
+ * findNearDuplicate — FTS candidate shortlist + containment/Jaccard tiers.
+ * Scoped to the same project scope. Never silently merges ambiguous paraphrases.
  */
 function findNearDuplicate(
   db: Database,
   content: string,
   projectScope: string | null,
   dedupKey: string,
-): Memory | null {
-  const rows = db.query<Memory, [string, string | null, string | null]>(
-    `SELECT * FROM memories
-      WHERE status='active' AND dedup_key<>?
-        AND (project_scope IS ? OR project_scope = ?)
-      ORDER BY decay_score DESC, id DESC
-      LIMIT 100`
-  ).all(dedupKey, projectScope, projectScope);
-  return rows.find((row) => isNearDuplicate(row.content, content)) ?? null;
+): NearDupHit | null {
+  let candidates: Memory[] = [];
+
+  // Tier 0 — FTS shortlist (cheap index probe)
+  try {
+    const ftsQuery = content
+      .trim()
+      .split(/\s+/)
+      .filter((t) => t.length > 2)
+      .slice(0, 12)
+      .map((t) => `"${t.replace(/"/g, '""')}"`)
+      .join(" OR ");
+    if (ftsQuery) {
+      // Filter inside the probe: the 10 best matches among the rows that can
+      // actually be duplicates (same scope, active), not across every project.
+      candidates = db.query<Memory, [string, string, string | null, string | null]>(
+        `SELECT m.* FROM memories_fts f JOIN memories m ON m.id = f.rowid
+          WHERE memories_fts MATCH ? AND m.status='active' AND m.dedup_key<>?
+            AND (m.project_scope IS ? OR m.project_scope = ?)
+          ORDER BY f.rank LIMIT 10`,
+      ).all(ftsQuery, dedupKey, projectScope, projectScope);
+    }
+  } catch {
+    // FTS unavailable / bad query — fall through to decay shortlist
+  }
+
+  if (candidates.length === 0) {
+    candidates = db.query<Memory, [string, string | null, string | null]>(
+      `SELECT * FROM memories
+        WHERE status='active' AND dedup_key<>?
+          AND (project_scope IS ? OR project_scope = ?)
+        ORDER BY decay_score DESC, id DESC
+        LIMIT 40`,
+    ).all(dedupKey, projectScope, projectScope);
+  }
+
+  // Tier 1 — token containment (existing conservative rule)
+  for (const row of candidates) {
+    if (isNearDuplicate(row.content, content)) {
+      return { memory: row, matched_by: "containment", score: 1, reinforce: true };
+    }
+  }
+
+  // Tier 2 — Jaccard; reinforce only at strong threshold
+  let best: NearDupHit | null = null;
+  for (const row of candidates) {
+    const score = jaccardSimilarity(row.content, content);
+    if (score < JACCARD_AMBIGUOUS) continue;
+    // A strong score is not enough when the difference is a marker, number, or
+    // polarity word ("plan A" vs "plan B") — record it as ambiguous instead.
+    const reinforce = score >= JACCARD_REINFORCE && !differsMeaningfully(row.content, content);
+    const hit: NearDupHit = { memory: row, matched_by: "jaccard", score, reinforce };
+    if (!best || score > best.score) best = hit;
+  }
+  return best;
 }
 
 function upsertTag(db: Database, name: string): number {
@@ -329,7 +404,9 @@ export interface FlagStaleResult {
  * Flag active memories anchored to any of `paths` as stale — the code they
  * reference changed. Never deletes (audit trail preserved) and never touches
  * importance=5 (permanent). Matches anchors in the same project scope or global
- * (NULL-scoped) anchors. Idempotent: re-flagging refreshes stale_flagged_at.
+ * (NULL-scoped) anchors. A memory is flagged once until revalidated: later
+ * commits to the same files (an amend, the next edit) keep the first
+ * invalidating commit as the reason and add no audit rows.
  */
 export function flagStaleByPaths(
   paths: string[],
@@ -348,6 +425,7 @@ export function flagStaleByPaths(
          JOIN memory_files mf ON mf.memory_id = m.id
         WHERE m.status = 'active'
           AND m.importance <> 5
+          AND m.stale_flagged_at IS NULL
           AND mf.path IN (${placeholders})
           AND (mf.project_scope IS ? OR mf.project_scope IS NULL)`,
     )
@@ -448,7 +526,54 @@ export const RANK_WEIGHTS = {
   recallFrequency: 0.25,
   stalePenalty: 0.8,
   duplicatePenalty: 0.5,
+  /**
+   * Query relevance (fused RRF score, see `fuseRecallRankings`). RRF scores are
+   * flat — rank 1 vs rank 2 of one retriever differ by ~1.6% — so the weight is
+   * large: near the top one rank ≈ 0.3 points, i.e. project scope ≈ 3 ranks,
+   * while a hit from both retrievers (+20) outranks a single-retriever hit.
+   */
+  relevance: 20,
 } as const;
+
+/** Reciprocal Rank Fusion constant (Cormack et al. 2009). */
+export const RRF_K = 60;
+
+/** One retriever's hits, best first. `score` is only used to give exact ties a shared rank. */
+export type RankedList = ReadonlyArray<{ id: number; score?: number }>;
+
+/**
+ * reciprocalRankFusion — fuse ranked lists: score(d) = Σ 1 / (k + rank(d)),
+ * with 1-based ranks. Entries with an equal `score` share a rank (competition
+ * ranking) so exact ties fuse identically; a repeated id within one list only
+ * counts its best rank. Pure function.
+ */
+export function reciprocalRankFusion(lists: readonly RankedList[], k: number = RRF_K): Map<number, number> {
+  const fused = new Map<number, number>();
+  for (const list of lists) {
+    const seen = new Set<number>();
+    let rank = 0;
+    let prevScore: number | undefined;
+    list.forEach((entry, i) => {
+      if (i === 0 || entry.score === undefined || entry.score !== prevScore) rank = i + 1;
+      prevScore = entry.score;
+      if (seen.has(entry.id)) return;
+      seen.add(entry.id);
+      fused.set(entry.id, (fused.get(entry.id) ?? 0) + 1 / (k + rank));
+    });
+  }
+  return fused;
+}
+
+/**
+ * fuseRecallRankings — RRF-fuse retriever lists into a relevance map scaled so
+ * 1.0 means "ranked first by one retriever" (2.0 = first by both). This is the
+ * `relevance` input to rankRecallResults.
+ */
+export function fuseRecallRankings(lists: readonly RankedList[], k: number = RRF_K): Map<number, number> {
+  const fused = reciprocalRankFusion(lists, k);
+  for (const [id, score] of fused) fused.set(id, score * (k + 1));
+  return fused;
+}
 
 /** Penalty applied to the k-th occurrence of a near-duplicate cluster. */
 const DUPLICATE_DECAY_FACTOR = 0.4;
@@ -462,6 +587,9 @@ const DUPLICATE_DECAY_FACTOR = 0.4;
  *   - stale (code-invalidated) memories are demoted but still returned
  *   - near-duplicate clusters are demoted progressively, never dropped
  *   - ties break on ascending id so identical inputs give identical output
+ *   - with `relevance` (a query recall), the fused query relevance leads and
+ *     the decay term is normalised to [0,1] (decay_score / 5) so priors nudge
+ *     near-ties instead of overriding the match
  */
 export function rankRecallResults(
   candidates: Memory[],
@@ -470,6 +598,8 @@ export function rankRecallResults(
     project?: string;
     defaultSort?: boolean;
     sortBy?: "relevance" | "created" | "last_recalled" | "recall_count";
+    /** id → fused query relevance (fuseRecallRankings). Absent ids score 0. */
+    relevance?: ReadonlyMap<number, number>;
   },
 ): Memory[] {
   const rows = [...candidates];
@@ -491,14 +621,18 @@ export function rankRecallResults(
       .slice(0, opts.limit);
   }
 
+  const relevanceMap = opts.relevance;
   const scored = rows.map((memory) => {
     const decay = memory.decay_score ?? computeDecayScore(memory);
     const importance = memory.importance / 5;
     const projectScope = opts.project && memory.project_scope === opts.project ? 1 : 0;
     const recallFrequency = Math.min(1, Math.log2((memory.recall_count ?? 0) + 1) / 4);
     const stale = memory.stale_flagged_at ? RANK_WEIGHTS.stalePenalty : 0;
+    const relevance = relevanceMap ? (relevanceMap.get(memory.id) ?? 0) * RANK_WEIGHTS.relevance : 0;
+    const decayTerm = relevanceMap ? Math.min(1, decay / 5) : decay;
     const score =
-      decay * RANK_WEIGHTS.decay +
+      relevance +
+      decayTerm * RANK_WEIGHTS.decay +
       importance * RANK_WEIGHTS.importance +
       projectScope * RANK_WEIGHTS.projectScope +
       recallFrequency * RANK_WEIGHTS.recallFrequency -
@@ -558,7 +692,7 @@ export function learn(input: LearnInput): LearnResult {
   const db = getDb();
 
   // Scrub secrets before any DB write or dedup check
-  const { scrubbed, redactions } = scrubSecrets(input.content);
+  const { scrubbed, redactions } = scrubOrRefuse(input.content);
   if (redactions.length > 0) {
     process.stderr.write(`[learn] Scrubbed ${redactions.length} secret(s): ${redactions.join(", ")}\n`);
   }
@@ -579,13 +713,17 @@ export function learn(input: LearnInput): LearnResult {
   const dedupKey = normalizeKey(content);
   const skipExport = input.skipExport ?? false;
 
-  const existing = db.query<Memory, [string]>(`SELECT * FROM memories WHERE dedup_key=?`).get(dedupKey)
-    // Near-duplicate reinforcement: same knowledge, different wording.
-    ?? findNearDuplicate(db, content, input.project_scope ?? null, dedupKey);
+  const exact = db.query<Memory, [string]>(`SELECT * FROM memories WHERE dedup_key=?`).get(dedupKey);
+  const near = exact ? null : findNearDuplicate(db, content, input.project_scope ?? null, dedupKey);
+  // Reinforce only exact or strong near-dup; ambiguous near-dup creates + annotates.
+  const reinforceTarget: Memory | null =
+    exact ?? (near?.reinforce ? near.memory : null);
+  const nearNote = near && !near.reinforce ? near : null;
 
   const actor = input.actor ?? "mcp:ltm_learn";
 
-  if (existing) {
+  if (reinforceTarget) {
+    const existing = reinforceTarget;
     const beforeSnap = snapshotMemory(db, existing.id);
     db.run(
       `UPDATE memories SET confirm_count=confirm_count+1, last_confirmed_at=datetime('now'),
@@ -613,14 +751,21 @@ export function learn(input: LearnInput): LearnResult {
     const updated = db.query<{ confirm_count: number }, [number]>(
       `SELECT confirm_count FROM memories WHERE id=?`
     ).get(existing.id);
-    return { action: "reinforced", id: existing.id, confirm_count: updated?.confirm_count ?? existing.confirm_count + 1 };
+    return {
+      action: "reinforced",
+      id: existing.id,
+      confirm_count: updated?.confirm_count ?? existing.confirm_count + 1,
+      matched_by: exact ? "exact" : near!.matched_by,
+      score: exact ? 1 : near!.score,
+      matched_id: existing.id,
+    };
   }
 
   const title = input.title?.trim().slice(0, 60) || deriveTitle(content);
 
   const result = db.run(
-    `INSERT INTO memories (content, title, category, importance, confidence, source, project_scope, dedup_key, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO memories (content, title, category, importance, confidence, source, project_scope, dedup_key, created_by, workspace_id, agent_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       content,
       title,
@@ -631,6 +776,8 @@ export function learn(input: LearnInput): LearnResult {
       input.project_scope ?? null,
       dedupKey,
       actor,
+      input.workspace_id ?? null,
+      input.agent_id ?? null,
     ]
   );
 
@@ -668,11 +815,15 @@ export function learn(input: LearnInput): LearnResult {
   // exit). When no queue is available, embed inline as before. Auto-relate runs
   // inline regardless: it embeds the query text fresh and compares against other
   // memories' stored vectors, so it does not depend on this memory's own row.
-  const enqueuedJobId = enqueueEmbedding(newId);
-  import("./embeddings.js").then(async ({ embedMemory, getSimilarMemories, classifyRelation }) => {
-    if (enqueuedJobId === null) await embedMemory(db, newId);
-    await autoDetectRelations(newId, content, getSimilarMemories, classifyRelation);
-  }).catch(err => process.stderr.write(`[learn] Background task failed for memory ${newId}: ${err}\n`));
+  // A private-tagged memory is never sent to the embedding/LLM provider, so it
+  // gets neither a vector nor auto-relations (both embed its content).
+  if (!hasPrivateTag(input.tags)) {
+    const enqueuedJobId = enqueueEmbedding(newId);
+    import("./embeddings.js").then(async ({ embedMemory, getSimilarMemories, classifyRelation }) => {
+      if (enqueuedJobId === null) await embedMemory(db, newId);
+      await autoDetectRelations(newId, content, getSimilarMemories, classifyRelation);
+    }).catch(err => process.stderr.write(`[learn] Background task failed for memory ${newId}: ${err}\n`));
+  }
 
   // Push a cross-process liveness event so any graph-app listener refreshes
   // without waiting on the file-watcher. No-op when Honker is unavailable.
@@ -681,54 +832,226 @@ export function learn(input: LearnInput): LearnResult {
   // unless the ltm.crossProcessSync flag is on AND Honker is available.
   notifyMemoryAdded({ id: newId, project_scope: input.project_scope ?? null });
 
-  return { action: "created", id: newId, confirm_count: 1 };
+  return {
+    action: "created",
+    id: newId,
+    confirm_count: 1,
+    ...(nearNote
+      ? { matched_by: nearNote.matched_by, score: nearNote.score, matched_id: nearNote.memory.id }
+      : {}),
+  };
 }
 
+// ── Recall query building + hybrid retrieval ─────────────────────────────────
+
+/**
+ * Words that carry no retrieval signal in a natural-language query ("how do we
+ * handle …"). OR-ing them into the FTS query fills the result set with
+ * incidental matches, so they are dropped before the MATCH is built.
+ * Directional/temporal words (up, down, before, after, …) are kept on purpose:
+ * they are meaningful in technical text ("down migration", "after deploy").
+ */
+const RECALL_STOPWORDS: ReadonlySet<string> = new Set([
+  "a", "about", "all", "also", "am", "an", "and", "any", "are", "as", "at",
+  "be", "because", "been", "being", "both", "but", "by",
+  "can", "could", "did", "do", "does", "doing", "each", "else", "etc",
+  "for", "from", "had", "has", "have", "having", "he", "her", "here", "hers", "him", "his",
+  "how", "hows", "how's", "i", "i'm", "if", "in", "into", "is", "it", "it's", "its", "itself",
+  "just", "let", "lets", "let's", "me", "my", "myself", "no", "nor", "not", "now",
+  "of", "on", "once", "or", "our", "ours", "ourselves", "please", "she", "should", "so", "some", "such",
+  "than", "that", "that's", "the", "their", "theirs", "them", "then", "there", "there's", "these", "they", "this", "those", "to", "too",
+  "us", "very", "was", "we", "we're", "were", "what", "whats", "what's", "when", "where", "which", "while",
+  "who", "whom", "why", "will", "with", "would", "you", "your", "yours", "yourself",
+]);
+
+const WORD_EDGE_RE = /^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu;
+const PLAIN_WORD_RE = /^[\p{L}\p{N}]+$/u;
+
+function quoteFts(term: string): string {
+  return `"${term.replace(/"/g, '""')}"`;
+}
+
+/**
+ * One FTS5 term for a kept query word. Plain words of 4+ chars become a prefix
+ * match with a light plural fold, so "migrations" also finds "migration" and
+ * "handle" finds "handles"/"handler". Anything else stays an exact phrase.
+ */
+function ftsTerm(word: string): string {
+  if (!PLAIN_WORD_RE.test(word) || word.length < 4) return quoteFts(word);
+  const stem = word.length > 4 && word.endsWith("s") && !word.endsWith("ss") ? word.slice(0, -1) : word;
+  return `${quoteFts(stem)}*`;
+}
+
+/**
+ * buildFtsQuery — turn a natural-language query into an FTS5 MATCH expression.
+ * Drops stopwords and tokens shorter than 2 chars, de-duplicates, quotes every
+ * term (no reserved-word errors) and ORs them. When nothing survives the
+ * filter (e.g. "how do we"), falls back to the original tokens. Returns null
+ * when the query holds no searchable token at all.
+ */
+export function buildFtsQuery(query: string): string | null {
+  const tokens = query.trim().split(/\s+/).filter(Boolean);
+  const kept: string[] = [];
+  for (const token of tokens) {
+    const word = token.toLowerCase().replace(WORD_EDGE_RE, "");
+    if (word.length < 2 || RECALL_STOPWORDS.has(word) || kept.includes(word)) continue;
+    kept.push(word);
+  }
+  if (kept.length > 0) return kept.map(ftsTerm).join(" OR ");
+  const fallback = tokens.filter((t) => /[\p{L}\p{N}]/u.test(t));
+  return fallback.length > 0 ? fallback.map(quoteFts).join(" OR ") : null;
+}
+
+/** Embedding search used by hybrid recall: hits best-first, similarity in [0,1]. */
+export type RecallSemanticSearch = (query: string, topN: number, project?: string) => Promise<Array<{ id: number; similarity: number }>>;
+
+/** Minimum cosine similarity for a semantic hit to join the candidate set. */
+const SEMANTIC_MIN_SIMILARITY = 0.5;
+/** A slow provider must not stall recall: past this budget, recall is FTS-only. */
+const SEMANTIC_TIMEOUT_MS = 2_000;
+
+let semanticSearchOverride: RecallSemanticSearch | null = null;
+
+/** Test seam: replace the embedding search recall() uses (null restores the provider). */
+export function _setRecallSemanticSearchForTesting(fn: RecallSemanticSearch | null): void {
+  semanticSearchOverride = fn;
+}
+
+/** The embedding search to run, or null when hybrid recall is off for this call. */
+async function resolveSemanticSearch(enabled: boolean | undefined): Promise<RecallSemanticSearch | null> {
+  if (enabled === false) return null;
+  const { readConfigSync } = await import("./config.js");
+  const cfg = readConfigSync();
+  if (cfg.ltm?.semanticFallback === false) return null;
+  if (semanticSearchOverride) return semanticSearchOverride;
+  const { explicitEmbedProvider } = await import("./providers/embeddingProvider.js");
+  if ((explicitEmbedProvider() ?? cfg.embeddings?.provider) === "disabled") return null;
+  const { getSimilarMemories } = await import("./embeddings.js");
+  return (query, topN, project) => getSimilarMemories(query, topN, SEMANTIC_MIN_SIMILARITY, { project });
+}
+
+/** Run the semantic retriever. Never rejects: any failure or timeout yields []. */
+async function semanticHits(query: string, topN: number, enabled: boolean | undefined, project?: string): Promise<Array<{ id: number; similarity: number }>> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const search = await resolveSemanticSearch(enabled);
+    if (!search) return [];
+    const timeout = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), SEMANTIC_TIMEOUT_MS);
+      (timer as { unref?: () => void }).unref?.();
+    });
+    const hits = await Promise.race([search(query, topN, project), timeout]);
+    if (hits === null) {
+      process.stderr.write(`[recall] Semantic search exceeded ${SEMANTIC_TIMEOUT_MS}ms — FTS only\n`);
+      return [];
+    }
+    return [...hits].sort((a, b) => b.similarity - a.similarity);
+  } catch (err) {
+    process.stderr.write(`[recall] Semantic search failed — FTS only: ${err}\n`);
+    return [];
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+const RECALL_COLUMNS = `id, content, category, importance, confidence, source, project_scope, dedup_key,
+              created_at, last_confirmed_at, last_used_at, confirm_count, status,
+              first_recalled_at, last_recalled_at, recall_count, superseded_by, superseded_at,
+              workspace_id, agent_id, decay_score, stale_flagged_at, stale_reason, title`;
+
+/** SQL ORDER BY for a recall without a query (no relevance signal to rank on). */
+function recallSqlOrder(sortBy: RecallInput["sort_by"]): string {
+  switch (sortBy) {
+    case "created": return "ORDER BY created_at DESC, id ASC";
+    case "last_recalled": return "ORDER BY last_recalled_at DESC, id ASC";
+    case "recall_count": return "ORDER BY recall_count DESC, id ASC";
+    default: return "ORDER BY decay_score DESC";
+  }
+}
+
+/**
+ * recall — ranked long-term memories.
+ *
+ * With a query, retrieval is hybrid: FTS5 (stopwords dropped, BM25 order) and,
+ * unless disabled, an embedding search run alongside it. Both lists are fused
+ * with Reciprocal Rank Fusion (k=60); the fused relevance then leads the
+ * Recall v2 score (importance, decay, project scope, staleness, near-dupes).
+ * If the embedding search is off, fails or times out, recall is FTS-only.
+ */
 export async function recall(input: RecallInput = {}): Promise<MemoryWithRelations[]> {
   const db = getDb();
   const limit = input.limit ?? 10;
 
+  // Row filters, applied both inside the FTS probe (so its top-50 is drawn from
+  // the rows this recall can return, not from every project and status) and to
+  // the final selection.
+  const filters: string[] = [];
+  const filterParams: (string | number | null)[] = [];
+  if (input.category) {
+    filters.push("category=?");
+    filterParams.push(input.category);
+  }
+  if (input.project) {
+    filters.push("(project_scope IS NULL OR project_scope=?)");
+    filterParams.push(input.project);
+  }
+  // Workspace / agent isolation: rows written for this workspace (agent) plus
+  // unscoped rows, mirroring how project scope treats globals.
+  if (input.workspace_id) {
+    filters.push("(workspace_id IS NULL OR workspace_id=?)");
+    filterParams.push(input.workspace_id);
+  }
+  if (input.agent_id) {
+    filters.push("(agent_id IS NULL OR agent_id=?)");
+    filterParams.push(input.agent_id);
+  }
+  filters.push("status = 'active'");
+  // Exclude private-tagged memories in SQL (not after ranking), so they never take
+  // a result slot from the limit and never get recall_count/last_recalled bumps.
+  if (input.includePrivate !== true) {
+    filters.push(notPrivateSql());
+  }
+  if (input.since) {
+    filters.push("(created_at > ? OR last_recalled_at > ?)");
+    filterParams.push(input.since, input.since);
+  }
+  if (input.until) {
+    filters.push("(created_at < ? OR last_recalled_at < ?)");
+    filterParams.push(input.until, input.until);
+  }
+  const filterSql = filters.join(" AND ");
+
   let ids: Set<number> | null = null;
-  const ftsRanks = new Map<number, number>();      // id → normalized [0,1]
+  let relevance: Map<number, number> | null = null;
+  const ftsRanks = new Map<number, number>();      // id → BM25 relative to the best hit, (0,1]
   const semanticScores = new Map<number, number>(); // id → cosine similarity [0,1]
 
   if (input.query) {
-    // Sanitize for FTS5: quote each token (prevents reserved-word errors) and join with OR
-    const ftsQuery = input.query
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean)
-      .map(t => `"${t.replace(/"/g, '""')}"`)
-      .join(" OR ");
-    const ftsResults = db.query<{ rowid: number; rank: number }, [string]>(
-      `SELECT rowid, rank FROM memories_fts WHERE memories_fts MATCH ? ORDER BY rank LIMIT 50`
-    ).all(ftsQuery);
-    ids = new Set<number>();
+    // Start the embedding round-trip first so it overlaps the (synchronous) FTS query.
+    const semanticPromise = semanticHits(input.query, Math.max(limit * 2, 20), input.semantic, input.project);
+
+    const ftsQuery = buildFtsQuery(input.query);
+    const ftsResults = ftsQuery
+      ? db.query<{ rowid: number; rank: number }, (string | number | null)[]>(
+          `SELECT rowid, rank FROM memories_fts
+            WHERE memories_fts MATCH ? AND rowid IN (SELECT id FROM memories WHERE ${filterSql})
+            ORDER BY rank LIMIT 50`
+        ).all(ftsQuery, ...filterParams)
+      : [];
+    // FTS5 rank is BM25 negated: more negative = better, best hit first.
+    const bestRank = ftsResults[0]?.rank ?? 0;
     for (const r of ftsResults) {
-      ids.add(r.rowid);
-      // FTS5 BM25 rank is a negative number (closer to 0 = better).
-      // Math.exp maps it to (0, 1] where 1 is a perfect match.
-      ftsRanks.set(r.rowid, Math.exp(r.rank));
+      ftsRanks.set(r.rowid, bestRank < 0 ? r.rank / bestRank : 1);
     }
 
-    // Semantic fallback: if FTS5 returned fewer results than requested, augment with vector search
-    if (ids.size < limit) {
-      const { readConfigSync } = await import("./config.js");
-      const cfg = readConfigSync();
-      const semanticEnabled = cfg.ltm?.semanticFallback !== false; // default true
-      if (semanticEnabled) {
-        try {
-          const { getSimilarMemories } = await import("./embeddings.js");
-          const semantic = await getSimilarMemories(input.query, limit * 2, 0.5);
-          for (const m of semantic) {
-            ids.add(m.id);
-            semanticScores.set(m.id, m.similarity);
-          }
-        } catch (err) {
-          process.stderr.write(`[recall] Semantic fallback failed: ${err}\n`);
-        }
-      }
-    }
+    const semantic = await semanticPromise;
+    for (const m of semantic) semanticScores.set(m.id, m.similarity);
+
+    relevance = fuseRecallRankings([
+      ftsResults.map((r) => ({ id: r.rowid, score: r.rank })),
+      semantic.map((m) => ({ id: m.id, score: m.similarity })),
+    ]);
+    ids = new Set(relevance.keys());
   }
 
   if (input.tags && input.tags.length > 0) {
@@ -757,62 +1080,34 @@ export async function recall(input: RecallInput = {}): Promise<MemoryWithRelatio
     conditions.push(`id IN (${placeholders})`);
     params.push(...ids);
   }
-
-  if (input.category) {
-    conditions.push("category=?");
-    params.push(input.category);
-  }
-
-  if (input.project) {
-    conditions.push("(project_scope IS NULL OR project_scope=?)");
-    params.push(input.project);
-  }
-
-  if (input.workspace_id) {
-    conditions.push("(workspace_id IS NULL OR workspace_id=?)");
-    params.push(input.workspace_id);
-  }
-  if (input.agent_id) {
-    conditions.push("(agent_id IS NULL OR agent_id=?)");
-    params.push(input.agent_id);
-  }
-
-  conditions.push("status = 'active'");
-
-  if (input.since) {
-    conditions.push("(created_at > ? OR last_recalled_at > ?)");
-    params.push(input.since, input.since);
-  }
-  if (input.until) {
-    conditions.push("(created_at < ? OR last_recalled_at < ?)");
-    params.push(input.until, input.until);
-  }
+  conditions.push(...filters);
+  params.push(...filterParams);
 
   const where = `WHERE ${conditions.join(" AND ")}`;
   // Explicit columns — excludes embedding blob (~260 KB/row) from hot recall path.
   // Use getById(id, { withEmbedding: true }) when the blob is needed.
-  // default sort (no query): ORDER BY decay_score DESC pushed to SQL → O(log N)
-  const defaultSqlSort = (!input.sort_by || input.sort_by === "relevance") && ids === null;
-  const orderBy = defaultSqlSort ? "ORDER BY decay_score DESC" : "";
-  // Recall v2 ranking inputs need project scope + staleness, so both are
-  // selected up front even on the default sort path.
-  const rankSql = defaultSqlSort
-    ? `SELECT id, content, category, importance, confidence, source, project_scope, dedup_key,
-              created_at, last_confirmed_at, last_used_at, confirm_count, status,
-              first_recalled_at, last_recalled_at, recall_count, superseded_by, superseded_at,
-              workspace_id, agent_id, decay_score, stale_flagged_at, stale_reason
-         FROM memories ${where} ORDER BY decay_score DESC LIMIT ${limit * 3}`
-    : `SELECT id, content, category, importance, confidence, source, project_scope, dedup_key,
-              created_at, last_confirmed_at, last_used_at, confirm_count, status,
-              first_recalled_at, last_recalled_at, recall_count, superseded_by, superseded_at,
-              workspace_id, agent_id, decay_score, stale_flagged_at, stale_reason
-         FROM memories ${where} ${orderBy} LIMIT ${limit * 3}`;
-  const candidateRows = db.query<Memory, typeof params>(rankSql).all(...params);
+  let candidateRows: Memory[];
+  if (relevance) {
+    // Query recall: every fused hit that passes the filters (≤ 50 FTS + the
+    // semantic list), cut to the limit*3 most relevant before the O(n²)
+    // near-duplicate pass in rankRecallResults.
+    const fused = relevance;
+    candidateRows = db.query<Memory, typeof params>(`SELECT ${RECALL_COLUMNS} FROM memories ${where}`).all(...params)
+      .sort((a, b) => (fused.get(b.id) ?? 0) - (fused.get(a.id) ?? 0) || a.id - b.id)
+      .slice(0, limit * 3);
+  } else {
+    // No query: SQL picks the limit*3 strongest rows for the requested sort
+    // (decay_score DESC by default, an O(log N) index scan).
+    candidateRows = db.query<Memory, typeof params>(
+      `SELECT ${RECALL_COLUMNS} FROM memories ${where} ${recallSqlOrder(input.sort_by)} LIMIT ${limit * 3}`
+    ).all(...params);
+  }
   const sorted = rankRecallResults(candidateRows, {
     limit,
     project: input.project,
-    defaultSort: defaultSqlSort,
+    defaultSort: !relevance && (!input.sort_by || input.sort_by === "relevance"),
     sortBy: input.sort_by,
+    relevance: relevance ?? undefined,
   });
   if (sorted.length > 0) {
     const placeholders = sorted.map(() => "?").join(",");
@@ -824,7 +1119,8 @@ export async function recall(input: RecallInput = {}): Promise<MemoryWithRelatio
       sorted.map(m => m.id),
     );
   }
-  const enriched = sorted.map(m => enrichMemory(db, m));
+  let enriched = sorted.map(m => enrichMemory(db, m));
+  enriched = filterPrivateMemories(enriched, input.includePrivate === true);
   if (input.includeProvenance) {
     const provMap = listProvenanceBatch(db, enriched.map(m => m.id));
     for (const m of enriched) {
@@ -868,6 +1164,19 @@ export function relate(input: {
   );
 }
 
+/**
+ * Fetch a single active memory by id (for progressive MCP get-after-index).
+ * Returns null when missing or not active.
+ */
+export function getMemoryById(id: number): MemoryWithRelations | null {
+  const db = getDb();
+  const row = db.query<Memory, [number]>(
+    `SELECT * FROM memories WHERE id=? AND status='active'`
+  ).get(id);
+  if (!row) return null;
+  return enrichMemory(db, row);
+}
+
 export function forget(input: { id: number; reason?: string; skipExport?: boolean; actor?: string; sessionId?: string }): void {
   const db = getDb();
   const snap = snapshotMemory(db, input.id);
@@ -892,27 +1201,33 @@ export function getSimilarMemories(
   const { projectScope, limit = 15, minImportance = 2 } = opts;
   const { blobToVec, cosineSimilarity } = require("./embeddings.js") as typeof import("./embeddings.js");
 
-  let query: string;
-  let params: (string | number)[];
-
-  if (projectScope) {
-    query = `SELECT * FROM memories WHERE project_scope=? AND importance>=? AND embedding IS NOT NULL AND status='active' LIMIT ${limit * 3}`;
-    params = [projectScope, minImportance];
-  } else {
-    query = `SELECT * FROM memories WHERE project_scope IS NULL AND importance>=? AND embedding IS NOT NULL AND status='active' LIMIT ${limit * 3}`;
-    params = [minImportance];
-  }
-
-  const rows = db.query<Memory & { embedding: Buffer }, typeof params>(query).all(...params);
+  // Vectors live in memory_embeddings since migration 010 (memories.embedding was
+  // dropped). Only vectors with the query's dimension are comparable.
+  const scopeSql = projectScope ? "m.project_scope = ?" : "m.project_scope IS NULL";
+  const params: (string | number)[] = projectScope
+    ? [projectScope, minImportance, queryVec.length]
+    : [minImportance, queryVec.length];
+  const rows = db.query<Memory & { vec_blob: Buffer }, typeof params>(
+    `SELECT m.*, e.embedding AS vec_blob FROM memories m
+       JOIN memory_embeddings e ON e.memory_id = m.id
+      WHERE ${scopeSql} AND m.importance >= ? AND m.status = 'active' AND e.dim = ?`,
+  ).all(...params);
 
   const scored = rows.map(row => {
-    const { embedding, ...mem } = row as Memory & { embedding: Buffer };
-    const sim = cosineSimilarity(queryVec, blobToVec(embedding));
-    return { mem, sim };
+    const { vec_blob, ...mem } = row as Memory & { vec_blob: Buffer };
+    const sim = cosineSimilarity(queryVec, blobToVec(vec_blob));
+    return { mem: mem as Memory, sim };
   });
 
   scored.sort((a, b) => b.sim - a.sim);
-  return scored.slice(0, limit).map(s => s.mem);
+  const picked: Memory[] = [];
+  for (const s of scored) {
+    const enriched = enrichMemory(db, s.mem);
+    if (filterPrivateMemories([enriched], false).length === 0) continue;
+    picked.push(s.mem);
+    if (picked.length >= limit) break;
+  }
+  return picked;
 }
 
 export function getContextMerge(project: string): { globals: Memory[]; scoped: Memory[] } {
@@ -925,7 +1240,7 @@ export function getContextMerge(project: string): { globals: Memory[]; scoped: M
   const SLIM = `id, content, category, importance, confidence, source, project_scope, dedup_key,
                created_at, last_confirmed_at, last_used_at, confirm_count, status,
                first_recalled_at, last_recalled_at, recall_count, superseded_by, superseded_at,
-               workspace_id, agent_id`;
+               workspace_id, agent_id, title`;
   const globals = sortByDecay(db.query<Memory, []>(
     `SELECT ${SLIM} FROM memories WHERE importance >= 4 AND project_scope IS NULL AND status = 'active'`
   ).all());
@@ -934,10 +1249,14 @@ export function getContextMerge(project: string): { globals: Memory[]; scoped: M
     `SELECT ${SLIM} FROM memories WHERE project_scope=? AND importance >= 3 AND status = 'active' LIMIT 15`
   ).all(project));
 
-  const allIds = [...globals, ...scoped].map(m => m.id);
+  const gEnriched = globals.map(m => enrichMemory(db, m));
+  const sEnriched = scoped.map(m => enrichMemory(db, m));
+  const gVis = filterPrivateMemories(gEnriched, false);
+  const sVis = filterPrivateMemories(sEnriched, false);
+  const allIds = [...gVis, ...sVis].map(m => m.id);
   updateLastUsed(allIds);
 
-  return { globals, scoped };
+  return { globals: gVis, scoped: sVis };
 }
 
 /**
@@ -982,6 +1301,10 @@ export function exportMarkdown(): void {
 
   // Batch-fetch all tags in one query to avoid N+1
   const tagsByMemory = getTagsBatch(db, rows.map(r => r.id));
+  const visibleRows = rows.filter((m) => {
+    const tags = tagsByMemory.get(m.id) ?? [];
+    return filterPrivateMemories([{ tags }], false).length > 0;
+  });
 
   const timestamp = new Date().toISOString().replace("T", " ").replace(/\..+/, "");
   const lines: string[] = [
@@ -994,7 +1317,7 @@ export function exportMarkdown(): void {
   ];
 
   const byCategory = new Map<string, Memory[]>();
-  for (const m of rows) {
+  for (const m of visibleRows) {
     if (!byCategory.has(m.category)) byCategory.set(m.category, []);
     byCategory.get(m.category)!.push(m);
   }
@@ -1026,10 +1349,17 @@ export function exportGraphJson(): void {
   if (!existsSync(DOCS_DIR)) mkdirSync(DOCS_DIR, { recursive: true });
 
   const memories = db.query<Memory, []>(`SELECT * FROM memories`).all();
-  const relations = db.query<MemoryRelation, []>(`SELECT * FROM memory_relations`).all();
+  const tagsByMemory = getTagsBatch(db, memories.map(m => m.id));
+  const visible = memories.filter((m) => {
+    const tags = tagsByMemory.get(m.id) ?? [];
+    return filterPrivateMemories([{ tags }], false).length > 0;
+  });
+  const visibleIds = new Set(visible.map(m => m.id));
+  const relations = db.query<MemoryRelation, []>(`SELECT * FROM memory_relations`).all()
+    .filter(r => visibleIds.has(r.source_memory_id) && visibleIds.has(r.target_memory_id));
 
   writeFileSync(join(DOCS_DIR, "memory-graph.json"), JSON.stringify({
-    nodes: memories.map(m => ({
+    nodes: visible.map(m => ({
       id: m.id,
       label: m.content.substring(0, 60),
       category: m.category,

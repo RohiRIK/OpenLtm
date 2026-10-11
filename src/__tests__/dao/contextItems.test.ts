@@ -96,6 +96,59 @@ describe("appendProgress", () => {
     const rows = listByProject(TRIM_PROJ, "progress");
     expect(rows.length).toBeLessThanOrEqual(20);
   });
+
+  it("keeps one row per session: repeated calls update it in place", async () => {
+    const SESS_PROJ = "dao-session-upsert-test";
+    for (let s = 1; s <= 5; s++) {
+      appendProgress(SESS_PROJ, `earlier session ${s}`, `sess-earlier-${s}`);
+    }
+    for (let turn = 1; turn <= 25; turn++) {
+      appendProgress(SESS_PROJ, `current session turn ${turn}`, "sess-current");
+    }
+    await drain();
+
+    const rows = listByProject(SESS_PROJ, "progress");
+    expect(rows).toHaveLength(6);
+    for (let s = 1; s <= 5; s++) {
+      const row = rows.find(r => r.session_id === `sess-earlier-${s}`);
+      expect(row?.content).toBe(`earlier session ${s}`);
+    }
+    const current = rows.filter(r => r.session_id === "sess-current");
+    expect(current).toHaveLength(1);
+    expect(current[0]!.content).toBe("current session turn 25");
+  });
+
+  it("caps at 20 sessions, not 20 calls", async () => {
+    const CAP_PROJ = "dao-session-cap-test";
+    for (let s = 1; s <= 25; s++) {
+      appendProgress(CAP_PROJ, `session ${s}`, `cap-sess-${s}`);
+    }
+    await drain();
+    const rows = listByProject(CAP_PROJ, "progress");
+    expect(rows).toHaveLength(20);
+    const kept = new Set(rows.map(r => r.session_id));
+    for (let s = 6; s <= 25; s++) expect(kept.has(`cap-sess-${s}`)).toBe(true);
+  });
+
+  it("collapses legacy duplicate rows for a session into one", async () => {
+    const DUP_PROJ = "dao-session-dup-test";
+    for (let i = 0; i < 3; i++) appendProgress(DUP_PROJ, `legacy ${i}`);
+    await drain();
+    // Simulate pre-upsert data: several rows sharing one session_id.
+    const { getDb } = await import("@rohirik/openltm-core");
+    getDb().run(`UPDATE context_items SET session_id='sess-dup' WHERE project_name=? AND type='progress'`, [DUP_PROJ]);
+
+    await appendProgress(DUP_PROJ, "latest", "sess-dup");
+    const rows = listByProject(DUP_PROJ, "progress");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.content).toBe("latest");
+  });
+
+  it("returns a promise that resolves after the write", async () => {
+    await appendProgress("dao-await-test", "awaited write", "sess-await");
+    const rows = listByProject("dao-await-test", "progress");
+    expect(rows.map(r => r.content)).toEqual(["awaited write"]);
+  });
 });
 
 describe("upsertGoal", () => {

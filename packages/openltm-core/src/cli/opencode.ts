@@ -13,6 +13,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, cpSync, readdirSync
 import { join, dirname } from "path";
 import os from "os";
 import type { InstallResult } from "./types.js";
+import { configHomeFor } from "./configHome.js";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -53,27 +54,25 @@ function getOpenCodeSourceDir(): string {
 // ── Path resolution ───────────────────────────────────────────────────────────
 
 /**
- * Resolve the OpenCode config file path using the standard priority order:
- *   1. $XDG_CONFIG_HOME/opencode/opencode.json
- *   2. ~/.config/opencode/opencode.json
- *   3. ~/Library/Application Support/opencode/opencode.json (darwin only)
- *
- * Returns the first path that exists. If none exist, returns the default
- * creation path for the current platform.
+ * OpenCode config directories for `homedir`, in OpenCode's priority order:
+ *   1. $XDG_CONFIG_HOME/opencode — only when `homedir` is the process home
+ *      (configHomeFor); for any other home it is <homedir>/.config/opencode
+ *   2. <homedir>/.config/opencode
+ *   3. <homedir>/Library/Application Support/opencode (darwin only)
+ */
+export function openCodeConfigDirs(homedir: string): string[] {
+  const dirs = [join(configHomeFor(homedir), "opencode"), join(homedir, ".config", "opencode")];
+  if (process.platform === "darwin") dirs.push(join(homedir, "Library", "Application Support", "opencode"));
+  return [...new Set(dirs)];
+}
+
+/**
+ * Resolve the OpenCode config file: the first `opencode.json` that exists in
+ * openCodeConfigDirs(homedir), else the default creation path for the platform.
  */
 function resolveConfigPath(homedir: string): { path: string; exists: boolean } {
-  const candidates: string[] = [];
-
-  const xdg = process.env["XDG_CONFIG_HOME"];
-  if (xdg) candidates.push(join(xdg, "opencode", "opencode.json"));
-
-  candidates.push(join(homedir, ".config", "opencode", "opencode.json"));
-
-  if (process.platform === "darwin") {
-    candidates.push(join(homedir, "Library", "Application Support", "opencode", "opencode.json"));
-  }
-
-  for (const p of candidates) {
+  for (const dir of openCodeConfigDirs(homedir)) {
+    const p = join(dir, "opencode.json");
     if (existsSync(p)) return { path: p, exists: true };
   }
 

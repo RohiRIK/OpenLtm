@@ -1,87 +1,134 @@
 #!/usr/bin/env bun
+/**
+ * SessionStart.ts — restore project context + LTM memories into a new context window.
+ *
+ * Source-aware (hook input `source`, matcher "" fires on all four):
+ *   startup  fresh session: reset tool counter, auto-onboard once, new-project prompts
+ *   clear    /clear: reset tool counter, new-project prompts, no onboarding
+ *   resume   --resume/--continue: inject, but no onboarding or prompts
+ *   compact  after compaction: lead with the PreCompact snapshot, no prompts
+ */
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "fs";
 import { join } from "path";
-import { resolveProject, registerPath, PROJECTS_DIR, CLAUDE_DIR, getDbPath } from "../lib/resolveProject.js";
-import { readStdin, parseHookInput, trimToLines, readFileSafe, safeRun } from "../lib/hookUtils.js";
+import { spawnSync } from "child_process";
+import { resolveProject, registerPath, CLAUDE_DIR, getDbPath } from "../lib/resolveProject.js";
+import { readStdin, parseHookInput, safeRun } from "../lib/hookUtils.js";
 import { logHook, logEvent } from "../lib/hookLogger.js";
 import { EVENTS } from "../lib/eventNames.js";
-import { spawnSync } from "child_process";
-import { getContextMerge, getSimilarMemories, getContextMergeWithGraph, computeDecayScore,
+import { trimSummary } from "../lib/summaryTrim.js";
+import { recordInjectedIds } from "../lib/promptRecall.js";
+import { applyInjectTopN } from "../lib/injectTopN.js";
+import { findLtmHooksInUserSettings, userSettingsPath } from "../lib/settingsHooks.js";
+import { getContextMerge, getSimilarMemories, getContextMergeWithGraph,
          embedText, getDb, listMemoryIdsMissingEmbedding, exportContextMarkdown,
-         runPendingMigrations, getRecentConflicts, emitEvent } from "@rohirik/openltm-core";
+         waitForInit, getRecentConflicts, listStagedConflicts, emitEvent, listPendingProposals,
+         scrubForEgress } from "@rohirik/openltm-core";
 import { readConfigSync } from "../../src/config.js";
+import type { Config } from "../../src/config.js";
+
+type Source = "startup" | "resume" | "clear" | "compact";
+type Cfg = Partial<Config>;
 
 const TMP_DIR      = join(CLAUDE_DIR, "tmp");
 const COUNTER_FILE = join(TMP_DIR, "session-tool-count.txt");
 const DB_PATH      = getDbPath();
-const MAX_INJECT_LINES = 60;
-const MAX_LTM_LINES    = 30;
+// hooks/src/SessionStart.ts → plugin root (dev clones have no CLAUDE_PLUGIN_ROOT)
+const PLUGIN_ROOT  = process.env.CLAUDE_PLUGIN_ROOT ?? join(import.meta.dir, "..", "..");
+const MAX_INJECT_LINES   = 60;
 const MAX_CONFLICT_LINES = 5;
-const MAX_AGE_MS       = 30 * 24 * 60 * 60 * 1000;
-const LTM_REMINDER     = "⚡ LTM MCP live — use mcp__plugin_openltm_memory__recall before tasks, mcp__plugin_openltm_memory__learn after discoveries.\n";
-const LTM_REPO_SLUG    = "RohiRIK/OpenLtm";
-const LTM_DIRECTIVE   = "⚡ LTM Active — Before starting work: call `recall` with task keywords. Check `context` for project state. After decisions: call `learn` to store them.\n\n";
+const MAX_GRAPH_LINES    = 10;
+const DEFAULT_INJECT_TOP_N = 15;
+const INDEX_LABEL_CHARS = 80;
+const MAX_AGE_MS         = 30 * 24 * 60 * 60 * 1000;
+const ONBOARD_TIMEOUT_MS = 10_000; // stays inside the 15s SessionStart hook timeout
+const LTM_REMINDER     = "⚡ LTM MCP live — recall before tasks, get <id> for full memory from the index, learn after discoveries.\n";
+const LTM_DIRECTIVE    = "⚡ LTM Active — Before starting work: call `recall` with task keywords; use `get` on an index id for full body. Check `context` for project state. After decisions: call `learn`.\n\n";
 
-function defaultName(cwd: string): string {
-  const last = cwd.replace(/\/$/, "").split("/").pop() ?? "";
-  return last.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+function parseSource(value: unknown): Source {
+  // Older Claude Code builds omit `source`; treat that as a fresh startup.
+  return value === "resume" || value === "clear" || value === "compact" ? value : "startup";
 }
 
-async function buildLtmSection(project: string, sessionContext?: string): Promise<string> {
-  if (!existsSync(DB_PATH)) return "";
+
+function injectTopNFrom(cfg: Cfg): number {
+  const n = cfg.ltm?.injectTopN;
+  return typeof n === "number" && Number.isFinite(n) && n > 0 ? Math.min(50, Math.floor(n)) : DEFAULT_INJECT_TOP_N;
+}
+
+type IndexMemory = { id: number; content: string; title?: string };
+
+function uniqueById<T extends { id: number }>(items: T[]): T[] {
+  const seen = new Set<number>();
+  return items.filter((m) => !seen.has(m.id) && (seen.add(m.id), true));
+}
+
+/** Compact index line: id + title (or a snippet), secret-scrubbed — full body via MCP `get`. */
+function indexLine(m: IndexMemory): string {
+  const title = typeof m.title === "string" ? m.title.trim() : "";
+  const label = scrubForEgress(title || m.content).replace(/\s*\n\s*/g, " ").trim();
+  return `- [${m.id}] ${label.length > INDEX_LABEL_CHARS ? label.slice(0, INDEX_LABEL_CHARS) + "…" : label}`;
+}
+
+async function buildLtmSection(
+  project: string,
+  sessionContext: string | undefined,
+  topN: number,
+  graphReasoning = false,
+): Promise<{ text: string; ids: number[] }> {
+  const none = { text: "", ids: [] };
+  if (!existsSync(DB_PATH)) return none;
   try {
-    let globals: Array<{ id: number; content: string }>;
-    let scoped: Array<{ id: number; content: string; importance: number }>;
-    let graphInsights: string | undefined;
+    const queryVec = sessionContext ? await embedText(scrubForEgress(sessionContext)) : null;
+    const merged = graphReasoning ? await getContextMergeWithGraph(project) : getContextMerge(project);
 
-    const queryVec = sessionContext ? await embedText(sessionContext) : null;
+    let globals: IndexMemory[] = merged.globals;
+    let scoped: IndexMemory[] = merged.scoped;
     if (queryVec) {
+      // Semantic matches lead; the decay-ranked merge fills the rest, so memories
+      // without an embedding (learned while the provider was down) still appear.
       const db = getDb();
-      globals = getSimilarMemories(db, queryVec, { minImportance: 4, limit: 16 });
-      scoped  = getSimilarMemories(db, queryVec, { projectScope: project, minImportance: 2, limit: 15 });
-      process.stderr.write(`[SessionStart] Semantic LTM: ${globals.length} globals, ${scoped.length} scoped\n`);
-    } else {
-      const merged = getContextMerge(project) as { globals: Array<{ id: number; content: string }>; scoped: Array<{ id: number; content: string; importance: number }> };
-      globals = merged.globals;
-      scoped  = merged.scoped;
+      const semGlobals = getSimilarMemories(db, queryVec, { minImportance: 4, limit: Math.ceil(topN / 3) });
+      const semScoped  = getSimilarMemories(db, queryVec, { projectScope: project, minImportance: 2, limit: topN });
+      process.stderr.write(`[SessionStart] Semantic LTM: ${semGlobals.length} globals, ${semScoped.length} scoped\n`);
+      globals = uniqueById([...semGlobals, ...globals]);
+      scoped  = uniqueById([...semScoped, ...scoped]);
     }
+    // injectTopN caps the whole index; globals get at most a third so they can't crowd out project memories.
+    ({ globals, scoped } = applyInjectTopN(globals, scoped, topN));
+    const graphInsights = (merged as { graphInsights?: string }).graphInsights;
 
-    const cfg = readConfigSync();
-    if (cfg?.ltm?.graphReasoning) {
-      const withGraph = await getContextMergeWithGraph(project);
-      graphInsights = withGraph.graphInsights;
-    }
+    if (globals.length === 0 && scoped.length === 0) return none;
 
-    if (globals.length === 0 && scoped.length === 0) return "";
-
-    const lines: string[] = ["LTM:", ""];
-    if (globals.length > 0) { lines.push("globals:"); for (const m of globals) lines.push(`- [${m.id}] ${m.content}`); lines.push(""); }
-    if (scoped.length > 0) { lines.push("project:"); for (const m of scoped) lines.push(`- [${m.id}] ${m.content}`); lines.push(""); }
-    if (graphInsights) { lines.push(graphInsights); lines.push(""); }
-
-    const allLines = lines.join("\n").split("\n");
-    if (allLines.length > MAX_LTM_LINES) return allLines.slice(0, MAX_LTM_LINES).join("\n") + "\n… (truncated)\n";
-    return lines.join("\n");
+    const lines: string[] = ["LTM index (use MCP get <id> for full memory):", ""];
+    if (globals.length > 0) lines.push("globals:", ...globals.map(indexLine), "");
+    if (scoped.length > 0)  lines.push("project:", ...scoped.map(indexLine), "");
+    if (graphInsights) lines.push(...scrubForEgress(graphInsights).split("\n").slice(0, MAX_GRAPH_LINES), "");
+    return { text: lines.join("\n"), ids: [...globals, ...scoped].map(m => m.id) };
   } catch (err) {
     process.stderr.write(`[SessionStart:buildLtmSection] ${err}\n`);
-    return "";
+    return none;
   }
 }
 
 function buildConflictSection(project: string): string {
   if (!existsSync(DB_PATH)) return "";
   try {
-    const db = getDb();
-    const conflicts = getRecentConflicts(db, project, MAX_CONFLICT_LINES);
+    const applied = getRecentConflicts(getDb(), project, MAX_CONFLICT_LINES);
+    const staged = listStagedConflicts(MAX_CONFLICT_LINES, project);
+    if (applied.length === 0 && staged.length === 0) return "";
 
-    if (conflicts.length === 0) return "";
-
-    const lines: string[] = ["⚠️ Memory Conflicts Detected", ""];
-    for (const c of conflicts) {
-      lines.push(`- [${c.olderId}] superseded by [${c.newerId}]`);
+    const lines: string[] = ["⚠️ Memory Conflicts", ""];
+    if (staged.length > 0) {
+      lines.push("Pending review (ltm conflict accept|reject <stagingId>):");
+      for (const s of staged) {
+        const term = s.term ? scrubForEgress(s.term) : "";
+        lines.push(`- staging #${s.id}: [${s.olderId}] vs [${s.newerId}]${term ? ` (${term})` : ""}`);
+      }
+      lines.push("");
     }
-    if (conflicts.length >= MAX_CONFLICT_LINES) {
-      lines.push(`… and ${conflicts.length - MAX_CONFLICT_LINES + 1} more conflicts`);
+    if (applied.length > 0) {
+      lines.push("Recently applied:");
+      for (const c of applied) lines.push(`- [${c.olderId}] superseded by [${c.newerId}]`);
     }
     return lines.join("\n");
   } catch (err) {
@@ -92,10 +139,9 @@ function buildConflictSection(project: string): string {
 
 const BACKFILL_HINT_FILE = join(TMP_DIR, "ltm-backfill-hint.flag");
 
-function buildBackfillHint(): string {
+function buildBackfillHint(cfg: Cfg): string {
   if (!existsSync(DB_PATH)) return "";
   try {
-    const cfg = readConfigSync();
     if (!cfg.embeddings || cfg.embeddings.provider === "disabled") return "";
 
     const today = new Date().toISOString().slice(0, 10);
@@ -103,9 +149,7 @@ function buildBackfillHint(): string {
       if (readFileSync(BACKFILL_HINT_FILE, "utf-8").trim() === today) return "";
     } catch { /* file absent — first run today */ }
 
-    const db = getDb();
-    const missing = listMemoryIdsMissingEmbedding(db, 1);
-    if (missing.length === 0) return "";
+    if (listMemoryIdsMissingEmbedding(getDb(), 1).length === 0) return "";
 
     writeFileSync(BACKFILL_HINT_FILE, today);
     return `\n💡 Embedding backfill: ${cfg.embeddings.provider} provider is configured but some memories lack embeddings. Run \`/openltm:admin backfill\` to enable semantic recall.\n`;
@@ -114,36 +158,70 @@ function buildBackfillHint(): string {
   }
 }
 
-function refreshMarketplaceClone(): void {
-  const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
-  if (!pluginRoot) return;
-  spawnSync("git", ["fetch", "--quiet"], { cwd: pluginRoot, stdio: "ignore", timeout: 5000 });
+/**
+ * Running as the plugin (CLAUDE_PLUGIN_DATA is only set for plugin hooks) while
+ * settings.json still wires OpenLTM hooks from a dev install, an older version
+ * or bunx: every hook fires twice, the extra copy running other code against
+ * another DB. Say so every session until it is fixed.
+ */
+function buildDuplicateHooksNotice(): string {
+  if (!process.env.CLAUDE_PLUGIN_DATA) return "";
+  try {
+    const found = findLtmHooksInUserSettings();
+    if (found.length === 0) return "";
+    return `⚠️ ${found.length} OpenLTM hook entr${found.length === 1 ? "y is" : "ies are"} also wired in ${userSettingsPath()} ` +
+      `(e.g. ${found[0]!.event}) — they fire alongside this plugin's hooks. ` +
+      `Remove them: bun "${PLUGIN_ROOT}/scripts/unwire-legacy-hooks.ts"\n`;
+  } catch {
+    return "";
+  }
 }
 
-function patchMarketplaceSource(): void {
-  const knownPath = join(CLAUDE_DIR, "plugins", "known_marketplaces.json");
+/** EvaluateSession queues proposals in ${CLAUDE_PLUGIN_DATA}/proposals; surface them so they get reviewed. */
+function buildProposalsNotice(): string {
   try {
-    const data = JSON.parse(readFileSync(knownPath, "utf-8")) as Record<string, unknown>;
-    const ltm = data["ltm"] as Record<string, unknown> | undefined;
-    const src = ltm?.["source"] as Record<string, unknown> | undefined;
-    if (src?.["source"] === "git" && String(src?.["url"] ?? "").includes(LTM_REPO_SLUG)) {
-      data["ltm"] = { ...ltm, source: { source: "github", repo: LTM_REPO_SLUG } };
-      writeFileSync(knownPath, JSON.stringify(data, null, 2));
-    }
-  } catch {}
+    const n = listPendingProposals().length;
+    return n > 0 ? `💡 ${n} memory proposal(s) pending — review with /openltm:memory propose review\n` : "";
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * First-ever startup: run onboard.ts non-interactively (fire-once via onboarded.flag).
+ * Returns null when not applicable, else whether the flag now exists.
+ */
+function autoOnboard(cwd: string): "done" | "failed" | null {
+  const pluginData = process.env.CLAUDE_PLUGIN_DATA;
+  // onboard.ts treats a missing CLAUDE_PLUGIN_DATA as critical (not a plugin
+  // install), so a spawn could only fail — and would retry every session.
+  if (!pluginData) return null;
+  const flag = join(pluginData, "onboarded.flag");
+  if (existsSync(flag)) return null;
+  const script = join(PLUGIN_ROOT, "src", "onboard.ts");
+  if (existsSync(script)) {
+    // process.execPath, not "bun": hooks run with a stripped PATH (see bin/run-hook.sh).
+    spawnSync(process.execPath, ["run", script, "--non-interactive"],
+      { cwd, stdio: "pipe", timeout: ONBOARD_TIMEOUT_MS });
+  }
+  return existsSync(flag) ? "done" : "failed";
 }
 
 async function main(): Promise<void> {
-  refreshMarketplaceClone();
-  patchMarketplaceSource();
+  const cfg: Cfg = readConfigSync();
 
-  try { const results = await runPendingMigrations(); if (results.length > 0) process.stderr.write(`[SessionStart] Applied ${results.length} migration(s)\n`); }
+  // Full init (schema.sql, then migrations) before anything reads the DB or
+  // onboarding spawns. A bare runPendingMigrations() skips schema.sql and fails
+  // on a brand-new DB, leaving later queries racing an unmigrated schema.
+  try { await waitForInit(); }
   catch (e) { process.stderr.write(`[SessionStart] Migration warning: ${e}\n`); }
 
-  const raw = await readStdin();
-  const parsed = parseHookInput(raw);
+  const parsed = parseHookInput(await readStdin());
+  const source = parseSource(parsed?.input.source);
+  const sessionId = typeof parsed?.input.session_id === "string" ? parsed.input.session_id : undefined;
   if (!existsSync(TMP_DIR)) mkdirSync(TMP_DIR, { recursive: true });
-  writeFileSync(COUNTER_FILE, "0");
+  // The tool counter spans one conversation: resume/compact continue it.
+  if (source === "startup" || source === "clear") writeFileSync(COUNTER_FILE, "0");
 
   if (!parsed) {
     process.stderr.write("[SessionStart] No cwd in input, skipping context injection\n");
@@ -151,93 +229,84 @@ async function main(): Promise<void> {
     return;
   }
   const { cwd } = parsed;
-  const { name, projectDir, isNew, registeredPath } = resolveProject(cwd);
+  const promptsAllowed = source === "startup" || source === "clear";
 
-  // P5-0.5: auto-onboard on first SessionStart (global flag, fire-once)
-  const pluginData = process.env.CLAUDE_PLUGIN_DATA ?? join(CLAUDE_DIR, "plugins", "data", "OpenLtm-openltm");
-  const onboardedFlagPath = join(pluginData, "onboarded.flag");
-  if (!existsSync(onboardedFlagPath)) {
-    const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
-    if (pluginRoot) {
-      spawnSync("bun", ["run", join(pluginRoot, "src", "onboard.ts"), "--non-interactive"],
-        { stdio: "pipe", timeout: 30_000 });
-    }
-    const displayName = isNew ? defaultName(cwd) : name;
-    process.stdout.write(`LTM: auto-onboarded "${displayName}" — run /openltm:onboard to customize\n`);
-  }
-
+  const first = resolveProject(cwd);
+  const { isNew } = first;
   if (isNew) {
-    const suggested = defaultName(cwd);
-    registerPath(cwd, suggested);
-    mkdirSync(join(PROJECTS_DIR, suggested), { recursive: true });
-    process.stdout.write(
-      `**Context not restored:** fresh_project\n\n` +
-      `# New Project Detected\n\nNo context files found for: \`${cwd}\`\n\n` +
-      `I've registered this project as **"${suggested}"**.\n` +
-      `Should I create the 4 context files now? (yes/no)\n`,
-    );
-    return;
+    // Register the resolved name (repo root, not the subfolder the session started in).
+    registerPath(cwd, first.name);
+    mkdirSync(first.projectDir, { recursive: true });
   }
+  const onboard = source === "startup" ? autoOnboard(cwd) : null;
+  // Resolve after registration/onboarding so every message shows the final name.
+  const { name, projectDir, registeredPath } = resolveProject(cwd);
 
-  if (existsSync(DB_PATH)) { try { exportContextMarkdown(name); } catch (_) {} } // silent: export failure doesn't block context injection
+  let output = "";
+  if (onboard === "done") output += `LTM: auto-onboarded "${name}" — run /openltm:onboard to customize\n`;
+  if (onboard === "failed") output += `LTM: auto-onboarding did not complete — run /openltm:onboard to set up\n`;
 
   const summaryPath = join(projectDir, "context-summary.md");
-  if (!existsSync(summaryPath)) {
-    const contextFiles = ["context-goals.md", "context-decisions.md", "context-progress.md", "context-gotchas.md"];
-    if (!contextFiles.some(f => existsSync(join(projectDir, f)))) {
-      process.stdout.write(
-        `**Context not restored:** fresh_project\n\n` +
-        `# Project Registered — No Context Files Yet\n\nProject **"${name}"** has no context files.\nShould I create them now? (yes/no)\n`,
-      );
-    } else {
-      process.stdout.write(`**Context not restored:** fresh_project\n`);
-    }
-    return;
+  // On compact, PreCompact just wrote the snapshot — re-exporting from the DB would overwrite it.
+  if (!isNew && existsSync(DB_PATH) && !(source === "compact" && existsSync(summaryPath))) {
+    try { exportContextMarkdown(name); } catch { /* export failure doesn't block context injection */ }
   }
 
-  if (Date.now() - statSync(summaryPath).mtimeMs > MAX_AGE_MS) {
+  let summaryText = "";
+  let notRestored = "";
+  if (isNew || !existsSync(summaryPath)) {
+    notRestored = "fresh_project";
+  } else if (Date.now() - statSync(summaryPath).mtimeMs > MAX_AGE_MS) {
     process.stderr.write(`[SessionStart] Context for "${name}" is older than 30 days — skipping\n`);
-    process.stdout.write(`**Context not restored:** stale_context\n`);
-    return;
+    notRestored = "stale_context";
+  } else {
+    // Legacy/file-built summaries were never scrubbed on write — scrub before injecting.
+    summaryText = scrubForEgress(readFileSync(summaryPath, "utf-8"));
   }
 
-  const summaryText = readFileSync(summaryPath, "utf-8");
-  const injected = trimToLines(summaryText, MAX_INJECT_LINES);
   const sessionContext = summaryText.slice(0, 500).trim() || undefined;
+  const injectTopN = injectTopNFrom(cfg);
+  const ltm = await buildLtmSection(name, sessionContext, injectTopN, cfg.ltm?.graphReasoning === true);
 
-  let useDirective = true;
-  try { const cfg = readConfigSync(); useDirective = cfg?.ltm?.autoRecall !== false; } catch (_) {} // silent: missing/malformed config falls back to default (autoRecall=true)
+  if (summaryText) {
+    const injected = trimSummary(summaryText, MAX_INJECT_LINES);
+    const ctxLines = injected.split("\n").filter(Boolean).length;
+    const label = source === "compact" ? "compaction snapshot" : "restored";
+    output += `## LTM Session: ${name.slice(0, 24)} | ${label}: ${ctxLines} ctx items, ${ltm.ids.length} top memories\n\n${injected}`;
+  } else {
+    output += `**Context not restored:** ${notRestored}\n`;
+    if (promptsAllowed && isNew) {
+      output += `\n# New Project Detected\n\nNo context files found for: \`${cwd}\`\n\n` +
+        `I've registered this project as **"${name}"**.\nShould I create the 4 context files now? (yes/no)\n`;
+    } else if (promptsAllowed && notRestored === "fresh_project") {
+      const contextFiles = ["context-goals.md", "context-decisions.md", "context-progress.md", "context-gotchas.md"];
+      if (!contextFiles.some(f => existsSync(join(projectDir, f)))) {
+        output += `\n# Project Registered — No Context Files Yet\n\nProject **"${name}"** has no context files.\nShould I create them now? (yes/no)\n`;
+      }
+    }
+  }
 
-  // Override injectTopN from project settings if set
-  const injectTopN = readConfigSync().ltm?.injectTopN ?? 15;
-  const ltmSection = await buildLtmSection(name, sessionContext);
-  const directive = useDirective ? LTM_DIRECTIVE : "";
-  const conflictSection = buildConflictSection(name);
-  const backfillHint = buildBackfillHint();
-
-  // Count memories for panel header
-  const memoryCount = ltmSection
-    ? ltmSection.split("\n").filter(l => l.startsWith("- [")).length
-    : 0;
-  const ctxLines = trimToLines(summaryText, MAX_INJECT_LINES).split("\n").filter(Boolean).length;
-  const slug = name.slice(0, 24);
-  const statusLine = `## LTM Session: ${slug} | restored: ${ctxLines} ctx items, ${memoryCount} top memories\n`;
-
-  // Build output: status line + injected + directive + ltmSection + conflicts + reminder + backfill hint
-  let output = statusLine + "\n" + injected;
-  if (ltmSection) {
-    output += `\n\n${directive}${ltmSection}`;
+  const directive = cfg.ltm?.autoRecall !== false ? LTM_DIRECTIVE : "";
+  if (ltm.text) {
+    output += `\n\n${directive}${ltm.text}`;
+    const conflictSection = buildConflictSection(name);
     if (conflictSection) output += `\n${conflictSection}`;
     output += `\n${LTM_REMINDER}`;
   } else {
     output += `\n${directive}${LTM_REMINDER}`;
   }
-  if (backfillHint) output += backfillHint;
+  output += buildProposalsNotice();
+  output += buildDuplicateHooksNotice();
+  output += buildBackfillHint(cfg);
 
   process.stdout.write(output);
-  logHook("SessionStart", "info", `Injected context for "${name}" (${registeredPath ? "registry" : "slug fallback"})`);
-  logEvent("SessionStart", EVENTS.SESSION_START, { project: name });
-  emitEvent({ hook: "SessionStart", event: EVENTS.SESSION_START, project: name, count: memoryCount, ts: new Date().toISOString() });
+  // A new context window (anything but resume) starts UserPromptSubmit's dedupe
+  // afresh. The index only shows titles, so its ids are NOT marked as injected:
+  // prompt recall must still be able to bring a matching memory's body in.
+  if (source !== "resume") recordInjectedIds(sessionId, [], { reset: true });
+  logHook("SessionStart", "info", `Injected context for "${name}" (${source}, ${registeredPath ? "registry" : "slug fallback"})`);
+  logEvent("SessionStart", EVENTS.SESSION_START, { project: name, count: ltm.ids.length, detail: source });
+  emitEvent({ hook: "SessionStart", event: EVENTS.SESSION_START, project: name, count: ltm.ids.length, ts: new Date().toISOString() });
 }
 
 safeRun("SessionStart", main).then(result => {

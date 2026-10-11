@@ -1,16 +1,11 @@
 #!/usr/bin/env bun
 /**
- * config.ts — Loader and validator for ~/.claude/config.json
+ * config.ts — Loader and validator for the LTM config.json.
+ * Location: core getConfigPath() — LTM_CONFIG_PATH → <dataDir>/config.json → legacy ~/.claude/config.json
  */
-import { join } from "path";
-import { homedir } from "os";
 import { existsSync, readFileSync } from "fs";
+import { getConfigPath } from "@rohirik/openltm-core";
 import { getDbPath } from "./paths.js";
-
-// Lazy-computed config path
-function getConfigPath(): string {
-  return join(homedir(), ".claude", "config.json");
-}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -37,6 +32,10 @@ export interface LtmConfig {
   /** Flag memories stale when a commit touches their anchored files (runs inside the git-learn extract path). */
   gitInvalidateEnabled: boolean;
   autoRecall: boolean;
+  /** UserPromptSubmit hook: FTS-only recall of memories relevant to each prompt (also gated by autoRecall). */
+  promptRecall: boolean;
+  /** Max memories the UserPromptSubmit hook injects per prompt. */
+  promptRecallLimit: number;
 }
 
 export interface ServerConfig {
@@ -78,6 +77,8 @@ const DEFAULTS: Config = {
     gitLearnIgnorePatterns: [],
     gitInvalidateEnabled: true,
     autoRecall: true,
+    promptRecall: true,
+    promptRecallLimit: 5,
   },
   server: {
     apiPort: 7331,
@@ -162,6 +163,8 @@ export async function loadConfig(): Promise<Config> {
       gitLearnIgnorePatterns: ltm.gitLearnIgnorePatterns ?? DEFAULTS.ltm.gitLearnIgnorePatterns,
       gitInvalidateEnabled: ltm.gitInvalidateEnabled ?? DEFAULTS.ltm.gitInvalidateEnabled,
       autoRecall: ltm.autoRecall ?? DEFAULTS.ltm.autoRecall,
+      promptRecall: ltm.promptRecall ?? DEFAULTS.ltm.promptRecall,
+      promptRecallLimit: ltm.promptRecallLimit ?? DEFAULTS.ltm.promptRecallLimit,
     },
     server: { apiPort: server.apiPort ?? DEFAULTS.server.apiPort, uiPort: server.uiPort ?? DEFAULTS.server.uiPort },
     sync: { enabled: sync.enabled ?? DEFAULTS.sync.enabled, provider: sync.provider ?? DEFAULTS.sync.provider },

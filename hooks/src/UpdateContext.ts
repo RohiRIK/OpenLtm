@@ -1,120 +1,89 @@
 #!/usr/bin/env bun
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "fs";
+/**
+ * UpdateContext — Stop hook. Claude Code fires Stop after EVERY assistant turn,
+ * so this keeps one progress line per session up to date (an upsert keyed on
+ * session_id) rather than appending a line per turn. It writes nothing to
+ * stdout: Claude Code parses a Stop hook's stdout as hook output.
+ */
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
-import { resolveProject, PROJECTS_DIR, CLAUDE_DIR, getDbPath } from "../lib/resolveProject.js";
-import { readStdinPassthrough, parseHookInput, readFileSafe, appendLine, trimToLines, safeRun } from "../lib/hookUtils.js";
+import { resolveProject, getDbPath } from "../lib/resolveProject.js";
+import { readStdin, parseHookInput, readFileSafe, safeRun } from "../lib/hookUtils.js";
 import { logHook, logEvent } from "../lib/hookLogger.js";
 import { EVENTS } from "../lib/eventNames.js";
-import { appendProgress, addDecision, addGotcha, emitEvent } from "@rohirik/openltm-core";
+import { appendProgress, emitEvent } from "@rohirik/openltm-core";
 
-const TOOL_NAMES = new Set(["Write", "Edit", "MultiEdit"]);
+const EDIT_TOOLS = new Set(["Write", "Edit", "MultiEdit"]);
 const MAX_PROGRESS_LINES = 20;
 const MAX_DISPLAY_FILES = 5;
-const DB_PATH = getDbPath();
+const MIN_TRANSCRIPT_LINES = 3;
 
-function findTranscriptPath(
-  transcriptPath: string | undefined,
-  sessionId: string | undefined
-): string | null {
-  if (transcriptPath && existsSync(transcriptPath)) return transcriptPath;
-
-  const historyFile = join(CLAUDE_DIR, "history.jsonl");
-  if (!existsSync(historyFile)) return null;
-
-  const lines = readFileSync(historyFile, "utf-8").trim().split("\n");
-  let entry: Record<string, unknown> | null = null;
-
-  if (sessionId) {
-    for (let i = lines.length - 1; i >= 0; i--) {
-      try {
-        const parsed = JSON.parse(lines[i] ?? "") as Record<string, unknown>;
-        if (parsed.sessionId === sessionId) { entry = parsed; break; }
-      } catch {}
-    }
-  } else {
-    try { entry = JSON.parse(lines[lines.length - 1] ?? "") as Record<string, unknown>; } catch {}
-  }
-
-  if (!entry?.sessionId || !entry?.project) return null;
-
-  const filename = `${entry.sessionId}.jsonl`;
-  const { projectDir } = resolveProject(entry.project as string);
-  const primary = join(projectDir, filename);
-  if (existsSync(primary)) return primary;
-
-  try {
-    for (const dir of readdirSync(PROJECTS_DIR)) {
-      const candidate = join(PROJECTS_DIR, dir, filename);
-      if (existsSync(candidate)) return candidate;
-    }
-  } catch {}
-
-  return null;
-}
-
-function collectModifiedFiles(messages: Array<Record<string, unknown>>): Set<string> {
+/**
+ * One pass over the transcript JSONL. Only lines mentioning "tool_use" are
+ * JSON-parsed — this runs every turn and transcripts reach tens of MB.
+ */
+function scanTranscript(raw: string): { lineCount: number; files: string[] } {
   const files = new Set<string>();
-  for (const m of messages) {
-    const content = (m.message as Record<string, unknown> | undefined)?.content;
+  let lineCount = 0;
+  for (const line of raw.split("\n")) {
+    if (line.length === 0) continue;
+    lineCount++;
+    if (!line.includes('"tool_use"')) continue;
+    let entry: { message?: { content?: unknown } };
+    try { entry = JSON.parse(line); } catch { continue; }
+    const content = entry?.message?.content;
     if (!Array.isArray(content)) continue;
-    for (const block of content as Array<Record<string, unknown>>) {
-      if (block.type === "tool_use" && TOOL_NAMES.has(block.name as string)) {
-        const input = block.input as Record<string, string> | undefined;
-        const p = input?.file_path || input?.path;
-        if (p) files.add(p);
-      }
+    for (const block of content) {
+      if (block?.type !== "tool_use" || !EDIT_TOOLS.has(block.name)) continue;
+      const path = block.input?.file_path || block.input?.path;
+      if (typeof path === "string" && path) files.add(path);
     }
   }
-  return files;
+  return { lineCount, files: [...files] };
 }
 
-function parseJsonLines(raw: string): Array<Record<string, unknown>> {
-  return raw.trim().split("\n")
-    .map(line => { try { return JSON.parse(line) as Record<string, unknown>; } catch { return null; } })
-    .filter(Boolean) as Array<Record<string, unknown>>;
+function progressLine(files: string[], lineCount: number, sessionTag: string | undefined): string {
+  const today = new Date().toISOString().split("T")[0];
+  const prefix = `✓ [${today}]${sessionTag ? ` [${sessionTag}]` : ""}`;
+  if (files.length === 0) return `${prefix} Session (read-only, ${lineCount} messages)`;
+  const home = homedir();
+  const shown = files.slice(0, MAX_DISPLAY_FILES).map(f => f.replace(home, "~")).join(", ");
+  const more = files.length > MAX_DISPLAY_FILES ? ` (+${files.length - MAX_DISPLAY_FILES} more)` : "";
+  return `${prefix} Modified: ${shown}${more}`;
+}
+
+/** No-DB fallback: same one-line-per-session semantics, in context-progress.md. */
+function writeProgressMarkdown(projectDir: string, line: string, sessionTag: string | undefined): void {
+  if (!existsSync(projectDir)) mkdirSync(projectDir, { recursive: true });
+  const progressFile = join(projectDir, "context-progress.md");
+  const marker = sessionTag ? `[${sessionTag}]` : null;
+  const lines = readFileSafe(progressFile).split("\n")
+    .filter(l => l && !(marker && l.includes(marker)));
+  lines.push(line);
+  writeFileSync(progressFile, lines.slice(-MAX_PROGRESS_LINES).join("\n") + "\n");
 }
 
 async function main(): Promise<void> {
-  const raw = await readStdinPassthrough();
-
-  const parsed = parseHookInput(raw);
+  const parsed = parseHookInput(await readStdin());
   if (!parsed) return;
-
   const { input, cwd } = parsed;
+
+  // Claude Code always passes transcript_path to hooks; nothing to record without it.
+  const transcriptPath = typeof input.transcript_path === "string" ? input.transcript_path : "";
+  if (!transcriptPath || !existsSync(transcriptPath)) return;
+
+  const { lineCount, files } = scanTranscript(readFileSync(transcriptPath, "utf-8"));
+  if (lineCount < MIN_TRANSCRIPT_LINES) return;
+
+  const sessionId = typeof input.session_id === "string" && input.session_id ? input.session_id : undefined;
+  const sessionTag = sessionId?.substring(0, 8);
+  const line = progressLine(files, lineCount, sessionTag);
   const { name, projectDir } = resolveProject(cwd);
-  if (!existsSync(projectDir)) mkdirSync(projectDir, { recursive: true });
 
-  const tPath = findTranscriptPath(
-    input.transcript_path as string | undefined,
-    input.session_id as string | undefined
-  );
-  if (!tPath) return;
-
-  const messages = parseJsonLines(readFileSync(tPath, "utf-8"));
-  if (messages.length < 3) return;
-
-  const sessionTag = input.session_id ? (input.session_id as string).substring(0, 8) : null;
-  const today = new Date().toISOString().split("T")[0];
-  const tagPart = sessionTag ? ` [${sessionTag}]` : "";
-
-  const filesModified = collectModifiedFiles(messages);
-  const sessionLine = filesModified.size > 0
-    ? `✓ [${today}]${tagPart} Modified: ${[...filesModified].slice(0, MAX_DISPLAY_FILES).map(f => f.replace(homedir(), "~")).join(", ")}`
-    : `✓ [${today}]${tagPart} Session (read-only, ${messages.length} messages)`;
-
-  // Write to DB if available, fall back to .md file
-  if (existsSync(DB_PATH)) {
+  if (existsSync(getDbPath())) {
     try {
-      const prefixMatch = sessionLine.match(/^\[(decision|gotcha)\]\s*/i);
-      if (prefixMatch) {
-        const type = prefixMatch[1]!.toLowerCase() as "decision" | "gotcha";
-        const strippedContent = sessionLine.slice(prefixMatch[0].length);
-        if (type === "decision") addDecision(name, strippedContent);
-        else addGotcha(name, strippedContent);
-      } else {
-        appendProgress(name, sessionLine, sessionTag ?? undefined);
-      }
+      await appendProgress(name, line, sessionId);
       logHook("UpdateContext", "info", `context DB updated for ${name}`);
       logEvent("UpdateContext", EVENTS.CONTEXT_UPDATED, { project: name });
       emitEvent({ hook: "UpdateContext", event: EVENTS.CONTEXT_UPDATED, project: name, ts: new Date().toISOString() });
@@ -125,19 +94,7 @@ async function main(): Promise<void> {
     }
   }
 
-  // Fallback: write to markdown file
-  const progressFile = join(projectDir, "context-progress.md");
-  const existing = readFileSafe(progressFile);
-  if (sessionTag && existing.includes(sessionTag)) return;
-
-  appendLine(progressFile, sessionLine);
-
-  const content = readFileSafe(progressFile);
-  const lines = content.split("\n").filter(Boolean);
-  if (lines.length > MAX_PROGRESS_LINES) {
-    writeFileSync(progressFile, trimToLines(content, MAX_PROGRESS_LINES));
-  }
-
+  writeProgressMarkdown(projectDir, line, sessionTag);
   logHook("UpdateContext", "info", `context-progress.md updated for ${name}`);
 }
 

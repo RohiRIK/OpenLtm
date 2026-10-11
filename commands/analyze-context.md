@@ -16,11 +16,11 @@ Pre-task context analysis. Orchestrates context retrieval in the correct order a
 
 **1 — Resolve project name:**
 
-Use the current working directory to identify the project (check `~/.claude/projects/registry.json`). If not registered, note it and continue with available data.
+Use the project name shown in the injected SessionStart block (`## LTM Session: <name>`), or the repository directory name. `context` needs no name — it defaults to the current project; `recall` uses the name as a filter. If unsure, omit `project` on `recall` and search all projects.
 
 **2 — Load project context:**
 
-Call `mcp__plugin_openltm_memory__context(project="<project>")`.
+Call `mcp__plugin_openltm_memory__context()` — `project` defaults to the current project; pass it only to look at a different one.
 
 Returns: `globals` (importance ≥ 4, all projects) + `scoped` (importance ≥ 3, this project only).
 

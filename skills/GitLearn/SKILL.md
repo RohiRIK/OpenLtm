@@ -1,8 +1,8 @@
 ---
 name: GitLearn
-description: "Mines LTM memories from past git commits. Use when onboarding a repo into LTM, backfilling history after enabling gitLearn, or harvesting patterns after a sprint."
-user-invocable: false
-version: 1.3.0
+description: "Mines durable LTM memories from past git commits through the git-learner agent (no API key needed). Use when the user says 'learn from our git history', 'mine the last N commits', 'backfill memories since <date>', 'onboard this repo into LTM', or wants to harvest patterns after a sprint."
+argument-hint: "[--commits N | --since YYYY-MM-DD]"
+version: 1.4.0
 ---
 
 # GitLearn — Retroactive Git Commit Learning
@@ -14,7 +14,7 @@ reads the diffs and stores memories via the `learn` MCP tool, so this path needs
 
 ## Scope
 
-| Invocation arg | Commits processed |
+| Argument or request | Commits processed |
 |----------------|-------------------|
 | *(none)* | last 10 |
 | `--commits N` | last N |
@@ -39,7 +39,7 @@ storage fields), so this skill only has to supply the scope.
 
 ### Step 1 — Resolve scope
 
-Determine the commit range from the invocation arg (default: last 10). Capture the
+Determine the commit range from the arguments or the user's wording (default: last 10). Capture the
 repo root so the subagent runs git in the right directory:
 
 ```bash
@@ -49,7 +49,7 @@ git log --pretty=format:'%H %s' -<N>   # or --since="<date>"
 
 ### Step 2 — Spawn the `git-learner` agent once
 
-Call the Agent tool once with `subagent_type: "git-learner"`. A single agent processes
+Call the Agent tool once with `subagent_type: "openltm:git-learner"` (plugin agents are namespaced by plugin name). A single agent processes
 the whole batch — do not spawn one per commit. The agent's system prompt already holds
 the extraction rubric, so the spawn prompt only supplies a `<scope>` block:
 
@@ -67,9 +67,10 @@ skip, how to map categories, and which fields to store.
 
 ### Step 3 — Report
 
-Relay the subagent's table and total. Memories are stored with
-`source: "git-commit:<hash>"` and file-path tags, queryable via
-`mcp__plugin_openltm_memory__recall`.
+Relay the subagent's table and total. Memories are tagged `git-commit:<hash>` and
+anchored to the changed files (so later commits flag them stale), queryable via
+`mcp__plugin_openltm_memory__recall`. Tool names and categories: the **Ltm** skill
+([../Ltm/SKILL.md](../Ltm/SKILL.md)).
 
 ## Memory Integration
 

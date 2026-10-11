@@ -1,16 +1,11 @@
 #!/usr/bin/env bun
 /**
- * config.ts — Loader and validator for the LTM config.json (path injected by host adapter)
+ * config.ts — Loader and validator for the LTM config.json.
+ * Location: see getConfigPath() in paths.ts (LTM_CONFIG_PATH → <dataDir>/config.json
+ * → legacy ~/.claude/config.json).
  */
-import { join } from "path";
-import { homedir } from "os";
 import { existsSync, readFileSync } from "fs";
-import { getDbPath } from "./paths.js";
-
-// Lazy-computed config path
-function getConfigPath(): string {
-  return join(homedir(), ".claude", "config.json");
-}
+import { getConfigPath, getDbPath } from "./paths.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 

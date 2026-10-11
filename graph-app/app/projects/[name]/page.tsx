@@ -24,6 +24,8 @@ export default function ProjectOverviewPage() {
   const [detail, setDetail] = useState<ProjectDetail | null>(null);
   const [selected, setSelected] = useState<GraphNode | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Bumped when the inspector edits or deletes a memory, so the list refetches.
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -33,7 +35,7 @@ export default function ProjectOverviewPage() {
     return () => {
       alive = false;
     };
-  }, [projectName]);
+  }, [projectName, reloadKey]);
 
   if (error) {
     return (
@@ -124,7 +126,7 @@ export default function ProjectOverviewPage() {
 
       {selected && (
         <div className="w-[400px] shrink-0 border-l border-[var(--border)] bg-[var(--bg-primary)] z-20 h-full">
-          <Sidebar node={selected} onClose={() => setSelected(null)} />
+          <Sidebar node={selected} onClose={() => setSelected(null)} onUpdated={() => setReloadKey((k) => k + 1)} />
         </div>
       )}
     </div>

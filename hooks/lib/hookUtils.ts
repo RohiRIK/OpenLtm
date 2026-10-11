@@ -45,18 +45,6 @@ export async function readStdin(): Promise<string> {
   return result;
 }
 
-/** Read stdin and echo it to stdout (for passthrough hooks like Stop). */
-export async function readStdinPassthrough(): Promise<string> {
-  let result = "";
-  try {
-    for await (const chunk of Bun.stdin.stream()) {
-      result += new TextDecoder().decode(chunk);
-      process.stdout.write(chunk);
-    }
-  } catch {} // silent: same as readStdin — stream may close unexpectedly
-  return result;
-}
-
 /** Parse JSON input and extract cwd. Returns { input, cwd } or null if no cwd. */
 export function parseHookInput(raw: string): { input: Record<string, any>; cwd: string } | null {
   let input: Record<string, any> = {};

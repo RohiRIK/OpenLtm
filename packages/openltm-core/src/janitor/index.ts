@@ -42,6 +42,24 @@ let _lastResult: JanitorRunResult | null = null;
 let _interval: ReturnType<typeof setInterval> | null = null;
 
 /**
+ * Run the janitor under the cross-process file lock the standalone CLI uses
+ * (`<db>.janitor.lock`), so graph-server, its interval, the Honker scheduler,
+ * the SessionEnd trigger and `ltm janitor run` never curate one DB at once.
+ * Returns null when another process holds the lock.
+ */
+export async function runJanitorExclusive(): Promise<JanitorRunResult | null> {
+  const { acquireJanitorLock } = await import("./lock.js");
+  const { getConfiguredDbPath } = await import("../shared-db.js");
+  const lock = acquireJanitorLock(getConfiguredDbPath());
+  if (!lock.acquired) return null;
+  try {
+    return await runJanitor();
+  } finally {
+    lock.release();
+  }
+}
+
+/**
  * Run all janitor tasks in sequence:
  * 1. Embed missing memories (required for dedup)
  * 2. Decay stale memories
@@ -191,7 +209,7 @@ export function startAutoRun(): void {
   const intervalMs = intervalMinutes * 60 * 1000;
   _interval = setInterval(async () => {
     try {
-      await runJanitor();
+      await runJanitorExclusive();
     } catch {
       // Logged in result.errors — don't crash the interval
     }
@@ -209,7 +227,8 @@ export function stopAutoRun(): void {
 // Re-export sub-modules for direct access from server routes
 export { approveMemory, getPendingMemories, rejectMemory } from "./promote.js";
 export { mergeMemories, parseDedupSource } from "./dedup.js";
-export { supersede } from "./supersedes.js";
+export { supersede, stageContradictions, listStagedConflicts, detectContradictions, sanitizeStagingTerm, acceptStagedConflict, rejectStagedConflict, coexistStagedConflict } from "./supersedes.js";
+export type { Contradiction, StagedConflict } from "./supersedes.js";
 export { touchMemory } from "./decay.js";
 export { getEmbeddingProvider, semanticSearch, findSimilarMemories } from "./embeddings.js";
 export { runArchive } from "./archive.js";

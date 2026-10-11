@@ -22,7 +22,7 @@ Usage: /openltm:memory <subcommand>
   relate   — link two memories
               /openltm:memory relate <src-id> <tgt-id> <type>
 
-  propose  — review pending memory proposals from EvaluateSession
+  propose  — review memories proposed at session end
               /openltm:memory propose            — list all pending proposals
               /openltm:memory propose review     — show proposals interactively
               /openltm:memory propose accept <session-id> <index>
@@ -44,7 +44,7 @@ Search LTM memories. Call `mcp__plugin_openltm_memory__recall` with parsed args:
 
 Display each result: ID · content · category · importance ★ · confirmed count · tags · relations.
 
-FTS5 supports `AND`, `OR`, `NOT`, phrase matching (`"bun sqlite"`). Results ranked: relevance → importance → confidence.
+Write the query as natural language — each word is matched separately (full-text, plus semantic search when an embedding provider is configured), so FTS operators like quotes or `NOT` are not interpreted. Results are ranked by relevance, importance, decay, and project scope; stale memories are marked and ranked lower.
 
 ---
 
@@ -55,32 +55,18 @@ Store a memory via `mcp__plugin_openltm_memory__learn`. Parse args:
 | Arg | Field | Default |
 |-----|-------|---------|
 | positional text | `content` | required |
-| `--category X` | `category` | `pattern` |
+| — | `title` | always generate a ≤ 60-char noun phrase |
+| `--category X` | `category` | auto-detected |
 | `--importance N` | `importance` | 3 |
-| `--project X` | `project_scope` | current project |
+| `--project X` | `project` | current project |
 | `--tags t1,t2` | `tags` | — |
-| `--save-context` | also write to `context_items` | off |
+| `--save-context` | also write a project context item | off |
 
 If no args given, review the session for extractable insights. Extract each, classify, then call `learn` for each.
 
 **Dedup:** calling with identical content reinforces — never creates duplicates.
 
-When `--save-context` is present, after `learn`, also resolve project from `~/.claude/projects/registry.json`, map category to context type (architecture/decision → `decision`, gotcha → `gotcha`, goal → `goal` replacing existing, else → `progress`), then:
-
-```bash
-bun --eval "
-import { Database } from 'bun:sqlite';
-const db = new Database(process.env.LTM_DB_PATH);
-const type = '<context_type>';
-const project = '<project>';
-const content = '<content>';
-if (type === 'goal') {
-  db.run(\"DELETE FROM context_items WHERE project_name=? AND type='goal'\", [project]);
-}
-db.run('INSERT INTO context_items (project_name, type, content, created_at) VALUES (?, ?, ?, datetime(\"now\"))', [project, type, content]);
-console.log('ok');
-"
-```
+When `--save-context` is present, after `learn` also call `mcp__plugin_openltm_memory__context_add` with `{ type, content }` (plus `project` if `--project` was given; otherwise it defaults to the current project). Map the category to the context type: `architecture` → `decision`, `gotcha` → `gotcha`, anything else → `progress`. To set the project goal instead, use `/openltm:project init` or `context_add` with `type: "goal"` (it replaces the previous goal).
 
 ---
 
@@ -115,46 +101,32 @@ Report: `Linked [src] → [tgt] (type)`. Duplicates are silently ignored.
 
 ## propose
 
-Review pending memory proposals written by the `EvaluateSession` hook after sessions end.
+Review memories the `SessionEnd` hook proposed from finished sessions. Proposals are never written automatically — they wait here until accepted or rejected. Use the `mcp__plugin_openltm_memory__proposals` tool; never edit the proposal files by hand.
 
-Proposals are stored as JSON files in `${CLAUDE_PLUGIN_DATA}/proposals/<session-id>.json`.
+For a fuller curation pass (proposals plus stale, conflicting, and duplicate memories), use the **MemoryReview** skill.
 
-### propose (no args) / propose review
+### propose (no args) / propose list / propose review
 
-List all pending proposals using:
+Call `mcp__plugin_openltm_memory__proposals` with `{ action: "list" }`.
 
-```bash
-bun --eval "
-import { listPendingProposals } from './src/proposals.js';
-const ps = listPendingProposals();
-if (ps.length === 0) { console.log('No pending proposals.'); process.exit(0); }
-for (const p of ps) {
-  console.log(\`[\${p.sessionId}:\${p.index}] [\${p.category}] ★\${p.importance} \${p.content}\`);
-}
-console.log(\`\nTotal: \${ps.length}\`);
-"
+Display each pending proposal as:
+
+```
+[session-id:index] [category] ★importance  content
 ```
 
-Display each as: `[session-id:index] [category] ★importance content`. Offer to accept or reject each.
+End with `Total: N`, or `No pending proposals.` when the list is empty. For `review`, then walk through them one at a time and ask accept / reject / skip for each.
 
 ### propose accept \<session-id\> \<index\>
 
-```bash
-bun --eval "
-import { acceptProposal } from './src/proposals.js';
-const ok = acceptProposal('<session-id>', <index>);
-console.log(ok ? 'Accepted and stored.' : 'Not found.');
-"
-```
+Call `mcp__plugin_openltm_memory__proposals` with `{ action: "accept", session_id: "<session-id>", index: <index> }`.
+
+The proposal is stored through `learn` (dedup applies — an equivalent memory is reinforced, not duplicated). Report `Accepted [session-id:index]` or `Not found.`
 
 ### propose reject \<session-id\> \<index\>
 
-```bash
-bun --eval "
-import { rejectProposal } from './src/proposals.js';
-const ok = rejectProposal('<session-id>', <index>);
-console.log(ok ? 'Rejected and removed.' : 'Not found.');
-"
-```
+Call `mcp__plugin_openltm_memory__proposals` with `{ action: "reject", session_id: "<session-id>", index: <index> }`.
 
-Rejection removes the proposal without writing to the DB.
+Rejection discards the proposal without writing to the DB. Report `Rejected [session-id:index]` or `Not found.`
+
+Indexes are per session and shift down after an accept or reject in that session. When acting on several proposals from one session, go from the highest index to the lowest, or list again between actions.

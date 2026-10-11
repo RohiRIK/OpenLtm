@@ -27,7 +27,7 @@ Status: 🟢 ≥70 · 🟡 40–69 · 🔴 <40
 | Context coverage (goal/decision/gotcha/progress) | 20% |
 | Session activity (any access ≤14 days) | 20% |
 
-If the server is NOT running, show: `(graph server offline — start with /openltm:admin server)`
+If the server is NOT running, show: `(graph server offline — start with /openltm:server start)`
 
 ---
 
@@ -41,7 +41,7 @@ import { readFileSync, existsSync, statSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 
-const PLUGIN_DATA = process.env.CLAUDE_PLUGIN_DATA ?? join(homedir(), '.claude', 'plugins', 'data', 'OpenLtm-openltm');
+const PLUGIN_DATA = '${CLAUDE_PLUGIN_DATA}' || process.env.CLAUDE_PLUGIN_DATA;
 const JSONL_LOG = join(PLUGIN_DATA, 'logs', 'ltm.jsonl');
 const HOOKS_LOG = join(homedir(), '.claude', 'logs', 'hooks.log');
 
@@ -52,6 +52,8 @@ const LABELS = {
   'compact.pre':       'Compactions',
   'recall.hit':        'Recall hits',
   'learn.write':       'Memories learned',
+  'recall.prompt':     'Prompt recalls',
+  'memory.stale_flagged': 'Stale flags (commits)',
   'wizard.complete':   'Wizard completions',
   'git.commit':        'Git commits tracked',
   'server.notify':     'Server notifies',
@@ -123,7 +125,7 @@ import { existsSync, statSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 
-const PLUGIN_DATA = process.env.CLAUDE_PLUGIN_DATA ?? join(homedir(), '.claude', 'plugins', 'data', 'OpenLtm-openltm');
+const PLUGIN_DATA = '${CLAUDE_PLUGIN_DATA}' || process.env.CLAUDE_PLUGIN_DATA;
 const JSONL_LOG = join(PLUGIN_DATA, 'logs', 'ltm.jsonl');
 const HOOKS_LOG = join(homedir(), '.claude', 'logs', 'hooks.log');
 
@@ -162,7 +164,11 @@ Always run, regardless of graph server status:
 ```bash
 bun --eval "
 import { Database } from 'bun:sqlite';
-const db = new Database(process.env.LTM_DB_PATH);
+import { existsSync } from 'fs';
+import { join } from 'path';
+const DB_PATH = process.env.LTM_DB_PATH || join('${CLAUDE_PLUGIN_DATA}' || process.env.CLAUDE_PLUGIN_DATA, 'openltm.db');
+if (!existsSync(DB_PATH)) { console.log('Janitor Status: no database at ' + DB_PATH + ' yet'); process.exit(0); }
+const db = new Database(DB_PATH, { readonly: true });
 const get = k => db.query('SELECT value FROM settings WHERE key=?').get(k)?.value ?? '';
 const lastRunAt  = get('ltm.janitor.lastRunAt');
 const refreshed  = get('ltm.janitor.lastDecayRefreshed');
@@ -197,3 +203,15 @@ console.log('Active: ' + active + '  |  Deprecated: ' + dep + '  |  Archived (al
 console.log('At-risk (decay_score < 0.25): ' + atRisk + ' memories');
 "
 ```
+
+---
+
+## Duplicate hooks
+
+```bash
+bun "${CLAUDE_PLUGIN_ROOT}/scripts/unwire-legacy-hooks.ts" --check
+```
+
+Exit 0: no OpenLTM hooks in `~/.claude/settings.json` — show `🟢 hooks come from the plugin only`.
+Exit 3: it lists entries from a dev install, an older version or the bunx installer — they fire alongside the plugin's hooks. Show them as 🔴 and offer to run the same command without `--check` (it backs the file up first, then removes only OpenLTM entries); restart Claude Code afterwards.
+

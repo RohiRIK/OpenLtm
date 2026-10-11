@@ -1,12 +1,18 @@
 /**
  * secretsScrubber.ts — Redact secrets from LTM memory content before DB writes.
- * Called from learn() in db.ts. Must never throw.
+ *
+ * Fail-closed: on any scrub error, return a placeholder — never the original
+ * text. Callers must use scrubOrRefuse() (or scrubSecrets()) before INSERT/UPDATE
+ * of durable content so secrets cannot land in SQLite via a write bypass.
  */
 
 export interface ScrubResult {
   scrubbed: string;
   redactions: string[]; // deduplicated pattern IDs found
 }
+
+/** Stored when scrub itself fails — never the original caller text. */
+export const SCRUB_FAILED_PLACEHOLDER = "[REDACTED:scrub-failed]";
 
 interface Pattern {
   id: string;
@@ -83,8 +89,21 @@ const PATTERNS: Pattern[] = [
   },
 ];
 
+/** Test-only: force scrubSecrets into its catch path. */
+let forceThrowForTesting = false;
+
+/** @internal — used by scrub-writes tests to exercise fail-closed catch. */
+export function _forceScrubThrowForTesting(value: boolean): void {
+  forceThrowForTesting = value;
+}
+
+/**
+ * Redact known secret patterns. Fail-closed: on any error returns
+ * SCRUB_FAILED_PLACEHOLDER, never the original text.
+ */
 export function scrubSecrets(text: string): ScrubResult {
   try {
+    if (forceThrowForTesting) throw new Error("scrub forced throw (test)");
     if (!text) return { scrubbed: text, redactions: [] };
 
     let scrubbed = text;
@@ -99,7 +118,35 @@ export function scrubSecrets(text: string): ScrubResult {
 
     return { scrubbed, redactions: [...found] };
   } catch {
-    // Never throw — return original text on any error
-    return { scrubbed: text, redactions: [] };
+    // Fail-closed — never return original text into a durable write path.
+    return { scrubbed: SCRUB_FAILED_PLACEHOLDER, redactions: ["scrub-failed"] };
   }
+}
+
+/**
+ * Shared write-path helper. All durable content INSERT/UPDATE sites should call
+ * this (or scrubSecrets — same fail-closed contract) before persisting text.
+ */
+export function scrubOrRefuse(text: string): ScrubResult {
+  return scrubSecrets(text);
+}
+
+/**
+ * Scrub text before it leaves the process (hooks, MCP, LLM/embed providers).
+ *
+ * Egress fail-closed (different shape from store):
+ * - On success: redacted text (secrets replaced)
+ * - On scrub failure: SCRUB_FAILED_PLACEHOLDER stub — NEVER the raw original
+ * Callers may omit the item entirely when scrubbed === SCRUB_FAILED_PLACEHOLDER;
+ * they must not send raw text either way.
+ */
+export function scrubForEgress(text: string): string {
+  const { scrubbed, redactions } = scrubOrRefuse(text);
+  if (redactions.includes("scrub-failed")) return SCRUB_FAILED_PLACEHOLDER;
+  return scrubbed;
+}
+
+/** True when egress should prefer omitting the item over showing a stub. */
+export function isEgressScrubFailed(scrubbed: string): boolean {
+  return scrubbed === SCRUB_FAILED_PLACEHOLDER;
 }

@@ -66,13 +66,14 @@ export function startJanitorScheduler(opts?: { cron?: string; owner?: string }):
 
   // Loop 2 — claim janitor-run jobs, run the janitor, notify the result.
   const worker = (async () => {
-    const { runJanitor } = await import("../janitor/index.js");
+    const { runJanitorExclusive } = await import("../janitor/index.js");
     try {
       while (!controller.signal.aborted) {
         const job = await waker.next(owner, { signal: controller.signal });
         if (!job) return;
         try {
-          const status = await runJanitor();
+          // null = another process holds the janitor lock; that run covers this job.
+          const status = await runJanitorExclusive();
           job.ack();
           try { h.notify(JANITOR_CHANNEL, { type: "janitor-complete", status }); } catch { /* notify best-effort */ }
         } catch (err) {

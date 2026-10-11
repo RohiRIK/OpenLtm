@@ -5,6 +5,7 @@
  */
 import { getDb, getSetting } from "../shared-db.js";
 import { normalizeKey } from "../dedup.js";
+import { scrubOrRefuse } from "../secretsScrubber.js";
 import { SETTING_KEYS, getDefault } from "./providers/types.js";
 
 export interface PromoteResult {
@@ -61,7 +62,12 @@ export function runPromote(): PromoteResult {
   result.scanned = items.length;
 
   for (const item of items) {
-    const dedupKey = normalizeKey(item.content);
+    const { scrubbed, redactions } = scrubOrRefuse(item.content);
+    if (redactions.length > 0) {
+      process.stderr.write(`[promote] Scrubbed ${redactions.length} secret(s): ${redactions.join(", ")}\n`);
+    }
+    const content = scrubbed;
+    const dedupKey = normalizeKey(content);
 
     // Check if a memory with this dedup_key already exists
     const existing = db
@@ -88,7 +94,7 @@ export function runPromote(): PromoteResult {
     const insertResult = db.run(
       `INSERT INTO memories (content, category, importance, confidence, source, project_scope, dedup_key, status)
        VALUES (?, ?, ?, 0.8, 'auto-promote', ?, ?, 'pending')`,
-      [item.content, category, importance, item.project_name, dedupKey],
+      [content, category, importance, item.project_name, dedupKey],
     );
 
     const memoryId = Number(insertResult.lastInsertRowid);

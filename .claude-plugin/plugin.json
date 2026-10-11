@@ -1,7 +1,7 @@
 {
   "name": "openltm",
   "description": "OpenLTM — Long-Term Memory for AI coding agents: semantic search, context injection, session learning",
-  "version": "2.16.2",
+  "version": "2.17.0",
   "author": {
     "name": "RohiRIK"
   },
@@ -13,13 +13,13 @@
         "${CLAUDE_PLUGIN_ROOT}/src/mcp-server.ts"
       ],
       "env": {
-        "LTM_DB_PATH": "${CLAUDE_PLUGIN_DATA}/openltm.db"
+        "LTM_PLUGIN_DATA": "${CLAUDE_PLUGIN_DATA}"
       }
     }
   },
   "skills": "./skills/",
   "agents": [
     "./agents/git-learner.md",
-    "./agents/planner.md"
+    "./agents/ltm-planner.md"
   ]
 }

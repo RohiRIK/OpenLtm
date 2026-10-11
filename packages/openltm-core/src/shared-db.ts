@@ -46,6 +46,11 @@ export async function initDb(opts?: { dbPath?: string; schemaPath?: string }): P
   return db;
 }
 
+/** Path of the database this process opens (after configure()/initDb overrides). */
+export function getConfiguredDbPath(): string {
+  return DB_PATH;
+}
+
 export function getDb(): Database {
   if (_db) return _db;
   // Synchronous callers: run initDb eagerly and block via Bun's top-level await support.

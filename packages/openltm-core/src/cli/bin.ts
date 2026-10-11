@@ -10,11 +10,13 @@
  *   bunx @rohirik/openltm-core --dry-run --claude # preview without writing
  *
  *   bunx @rohirik/openltm-core hook --name <hookName>  # lifecycle hook entrypoint
+ *   bunx @rohirik/openltm-core janitor run             # curate the DB, no server needed
  *   bunx @rohirik/openltm-core mcp-serve               # MCP server
  */
 import { runInstallCli } from "./install.js";
 import { runHook } from "./hook.js";
 import { runMemoryCli } from "./memory.js";
+import { runJanitorCli } from "./janitor.js";
 
 function printHelp(): void {
   process.stdout.write(
@@ -32,7 +34,10 @@ function printHelp(): void {
       "  Sub-commands:",
       "    memory <cmd>          Read/write memories from the shell (learn, recall,",
       "                          forget, relate, context) — run 'memory --help'",
-      "    hook --name <event>   Lifecycle hook entrypoint (SessionStart prefill + safe no-ops)",
+      "    janitor <cmd>         Curate the DB without graph-server (run, status,",
+      "                          schedule, daemon) — run 'janitor --help'",
+      "    hook --name <event>   Lifecycle hook entrypoint (SessionStart prefill,",
+      "                          SessionEnd janitor-if-due, safe no-ops)",
       "    mcp-serve             Start the LTM MCP server (stdio)",
       "",
       "  If no target flags are given, agents are auto-detected.",
@@ -49,9 +54,49 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
+
+  // Sub-command: conflict (list | accept | reject | coexist)
+  if (argv[0] === "conflict") {
+    const { waitForInit } = await import("../shared-db.js");
+    await waitForInit();
+    const {
+      listStagedConflicts,
+      acceptStagedConflict,
+      rejectStagedConflict,
+      coexistStagedConflict,
+    } = await import("../index.js");
+    const action = argv[1] ?? "list";
+    if (action === "list") {
+      const rows = listStagedConflicts(50);
+      process.stdout.write(JSON.stringify(rows, null, 2) + "\n");
+      process.exit(0);
+    }
+    const id = Number.parseInt(argv[2] ?? "", 10);
+    if (!Number.isFinite(id)) {
+      process.stderr.write("  ltm conflict: need staging id\n");
+      process.exit(1);
+    }
+    let ok = false;
+    if (action === "accept") ok = acceptStagedConflict(id);
+    else if (action === "reject") ok = rejectStagedConflict(id);
+    else if (action === "coexist") ok = coexistStagedConflict(id);
+    else {
+      process.stderr.write(`  ltm conflict: unknown action '${action}'\n`);
+      process.exit(1);
+    }
+    process.stdout.write(JSON.stringify({ ok, action, id }) + "\n");
+    process.exit(ok ? 0 : 1);
+  }
+
   // Sub-command: memory (learn | recall | forget | relate | context)
   if (argv[0] === "memory") {
     const exitCode = await runMemoryCli(argv.slice(1));
+    process.exit(exitCode);
+  }
+
+  // Sub-command: janitor (run | status | schedule | daemon)
+  if (argv[0] === "janitor") {
+    const exitCode = await runJanitorCli(argv.slice(1));
     process.exit(exitCode);
   }
 
@@ -70,7 +115,9 @@ async function main(): Promise<void> {
   // Sub-command: mcp-serve — run the LTM MCP server on stdio
   if (argv[0] === "mcp-serve") {
     const { startMcpServer } = await import("../mcp/server.js");
-    await startMcpServer();
+    const { deriveProjectFromCwd } = await import("../prefill.js");
+    // Context tools default to the project of the directory the host started us in.
+    await startMcpServer({ defaultProject: () => deriveProjectFromCwd(process.cwd()) });
     return; // keep the process alive — transport owns the event loop
   }
 

@@ -52,4 +52,4 @@ During local development, the plugin system reads from the cache at
 
 ## Memory Contract
 
-Tool names, the recall-before / learn-after ritual, memory categories, and the Spec/Plan phase map all live in the **Ltm** skill (`skills/Ltm/SKILL.md`) — the single source of truth. It auto-loads on memory work; load it explicitly with `SkillSearch('ltm memory contract')` if you need the names mid-task.
+Tool names, the recall-before / learn-after ritual, memory categories, and the Spec/Plan phase map all live in the **Ltm** skill (`skills/Ltm/SKILL.md`, details in `skills/Ltm/reference/`) — the single source of truth. It auto-loads on memory work; read that file directly if you need the names mid-task. Memory curation (pending proposals, stale flags, duplicates) is the **MemoryReview** skill.

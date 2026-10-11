@@ -54,3 +54,22 @@ describe("prefill helpers", () => {
     expect(block).toContain("shared prefill builder");
   });
 });
+
+describe("prefill injectTopN regression", () => {
+  it("selectPrefillMemories respects maxMemories (injectTopN stand-in)", async () => {
+    const { learn, selectPrefillMemories } = await import("../index.js");
+    const project = `inject-topn-${Date.now()}`;
+    for (let i = 0; i < 8; i++) {
+      learn({
+        content: `Prefill inject regression memory ${i} for ${project}`,
+        category: "pattern",
+        importance: 3,
+        project_scope: project,
+        skipExport: true,
+      });
+    }
+    const { scoped, globals, report } = selectPrefillMemories(project, { maxMemories: 3 });
+    expect(scoped.length + globals.length).toBeLessThanOrEqual(3);
+    expect(report.selected).toBeLessThanOrEqual(3);
+  });
+});
