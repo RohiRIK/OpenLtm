@@ -17,6 +17,7 @@ import { DB_PATH } from "./shared-db.js";
 import { getDataDir, getRegistryPath } from "./paths.js";
 import { legacyLastSegment, loadProjectRegistry, resolveProjectName } from "./project.js";
 import { createProjectDataProbe } from "./projectProbe.js";
+import { frameRecalledMemory } from "./memoryFrame.js";
 
 export interface PrefillOptions {
   project: string;
@@ -222,7 +223,7 @@ export function buildPrefillContext(opts: PrefillOptions): string {
   const { globals, scoped } = selectPrefillMemories(opts.project, opts);
   if (globals.length === 0 && scoped.length === 0) return "";
 
-  const lines: string[] = [opts.header ?? DEFAULT_HEADER, ""];
+  const lines: string[] = [];
 
   if (scoped.length > 0) {
     lines.push(`Project (${opts.project}):`);
@@ -236,7 +237,7 @@ export function buildPrefillContext(opts: PrefillOptions): string {
     lines.push("");
   }
 
-  return trimLines(lines, maxLines).join("\n").trimEnd() + "\n";
+  return `${opts.header ?? DEFAULT_HEADER}\n\n${frameRecalledMemory(trimLines(lines, Math.max(1, maxLines - 2)).join("\n"))}`;
 }
 
 function renderLine(memory: Pick<Memory, "id" | "content" | "category" | "importance">): string {

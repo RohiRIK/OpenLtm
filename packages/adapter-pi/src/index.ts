@@ -12,6 +12,7 @@ import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { existsSync, readdirSync } from "node:fs";
 import { findCoreCli } from "./find-core.js";
+import { frameRecalledMemory } from "../../openltm-core/src/memoryFrame.js";
 // Relative import so esbuild inlines the Node-safe resolver into dist (core itself is external).
 import { dataDirFor, getClaudePluginDataDir, getLegacyClaudeDir, legacyLastSegment, loadProjectRegistry, resolveProjectName, sharedDbPath } from "../../openltm-core/src/project.js";
 
@@ -220,7 +221,7 @@ function formatContextPayload(project: string, raw: string): string {
     const scoped = Array.isArray(parsed.scoped) ? parsed.scoped : [];
     if (globals.length === 0 && scoped.length === 0) return "";
 
-    const lines: string[] = ["## Prior Knowledge (LTM)", ""];
+    const lines: string[] = [];
     if (globals.length > 0) {
       lines.push("Global:");
       for (const m of globals.slice(0, 3)) lines.push(`- [${m.id}] ${String(m.content).replace(/\s+/g, " ").trim()}`);
@@ -231,7 +232,7 @@ function formatContextPayload(project: string, raw: string): string {
       for (const m of scoped.slice(0, 7)) lines.push(`- [${m.id}] ${String(m.content).replace(/\s+/g, " ").trim()}`);
       lines.push("");
     }
-    return lines.join("\n").trimEnd() + "\n";
+    return `## Prior Knowledge (LTM)\n\n${frameRecalledMemory(lines.join("\n"))}`;
   } catch {
     return "";
   }
@@ -313,7 +314,7 @@ export default function ltmExtension(pi: unknown): void {
         : await client.callTool("recall", { project, limit: 8, sort_by: "relevance" });
       const block = toolName === "context"
         ? formatContextPayload(project, text)
-        : `## Prior Knowledge (LTM)\n\n${text}\n`;
+        : `## Prior Knowledge (LTM)\n\n${frameRecalledMemory(text)}`;
       if (!block.trim()) return;
       const existing = String(ev?.systemPrompt ?? "");
       return { systemPrompt: existing ? `${existing}\n\n${block}` : block };

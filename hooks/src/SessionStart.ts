@@ -22,7 +22,7 @@ import { findLtmHooksInUserSettings, userSettingsPath } from "../lib/settingsHoo
 import { getContextMerge, getSimilarMemories, getContextMergeWithGraph,
          embedText, getDb, listMemoryIdsMissingEmbedding, exportContextMarkdown,
          waitForInit, getRecentConflicts, listStagedConflicts, emitEvent, listPendingProposals,
-         scrubForEgress } from "@rohirik/openltm-core";
+         scrubForEgress, frameRecalledMemory } from "@rohirik/openltm-core";
 import { readConfigSync } from "../../src/config.js";
 import type { Config } from "../../src/config.js";
 
@@ -103,7 +103,7 @@ async function buildLtmSection(
     if (globals.length > 0) lines.push("globals:", ...globals.map(indexLine), "");
     if (scoped.length > 0)  lines.push("project:", ...scoped.map(indexLine), "");
     if (graphInsights) lines.push(...scrubForEgress(graphInsights).split("\n").slice(0, MAX_GRAPH_LINES), "");
-    return { text: lines.join("\n"), ids: [...globals, ...scoped].map(m => m.id) };
+    return { text: frameRecalledMemory(lines.join("\n")), ids: [...globals, ...scoped].map(m => m.id) };
   } catch (err) {
     process.stderr.write(`[SessionStart:buildLtmSection] ${err}\n`);
     return none;
@@ -272,7 +272,7 @@ async function main(): Promise<void> {
     const injected = trimSummary(summaryText, MAX_INJECT_LINES);
     const ctxLines = injected.split("\n").filter(Boolean).length;
     const label = source === "compact" ? "compaction snapshot" : "restored";
-    output += `## LTM Session: ${name.slice(0, 24)} | ${label}: ${ctxLines} ctx items, ${ltm.ids.length} top memories\n\n${injected}`;
+    output += `## LTM Session: ${name.slice(0, 24)} | ${label}: ${ctxLines} ctx items, ${ltm.ids.length} top memories\n\n${frameRecalledMemory(injected)}`;
   } else {
     output += `**Context not restored:** ${notRestored}\n`;
     if (promptsAllowed && isNew) {

@@ -17,6 +17,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { findCoreCli } from "./find-core.js";
+import { frameRecalledMemory } from "../../openltm-core/src/memoryFrame.js";
 // Relative on purpose: esbuild inlines this Node-safe module into dist/index.js,
 // whereas the `@rohirik/openltm-core` package entry is Bun-only and external.
 import { dataDirFor, legacyLastSegment, loadProjectRegistry, resolveProjectName, sharedDbPath } from "../../openltm-core/src/project.js";
@@ -309,10 +310,8 @@ export default definePluginEntry({
         limit: Math.min(50, budget - 1),
       });
       if (hits.length === 0) return [];
-      return [
-        "## Prior Knowledge (LTM)",
-        ...hits.slice(0, budget - 1).map((m) => `- (${m.category}) ${m.content.replace(/\s+/g, " ").slice(0, 200)}`),
-      ];
+      const body = hits.slice(0, budget - 1).map((m) => `- (${m.category}) ${m.content.replace(/\s+/g, " ").slice(0, 200)}`);
+      return ["## Prior Knowledge (LTM)", ...frameRecalledMemory(body.join("\n")).trimEnd().split("\n")];
     };
     const prefillOrNothing = async (): Promise<string[]> => {
       try {

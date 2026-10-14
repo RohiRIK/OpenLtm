@@ -63,6 +63,9 @@ export { createProjectDataProbe } from "./projectProbe.js";
 // Storage locations (data dir, registry, config)
 export { getDataDir, getProjectsDir, getRegistryPath, getConfigPath, getLegacyConfigPath } from "./paths.js";
 
+// Recalled-memory framing: injected memory is evidence, not instructions
+export { frameRecalledMemory, neutralizeMemoryFrameTags, RECALLED_MEMORY_NOTICE, RECALLED_MEMORY_TAG } from "./memoryFrame.js";
+
 // Session prefill helpers
 export { buildPrefillContext, deriveProjectFromCwd, selectPrefillMemories } from "./prefill.js";
 export type { PrefillOptions, PrefillSelection, PrefillCategory, PrefillQuotaReport } from "./prefill.js";
