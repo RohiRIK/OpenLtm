@@ -9,6 +9,7 @@ untracked live plugin at `~/.hermes/plugins/openltm_hermes`.
 
 ```
 hermes/
+├── upgrade-plugin.sh           # upgrade an installed plugin (copied dir or symlink) from this checkout
 ├── schema.sql                  # canonical Long-Term Memory schema (column-terminal; folds migrations 007/011/013 per Max review)
 ├── extraction/
 │   └── ltm_extraction_logic.py # standalone heuristic extractor (reference; not loaded by the plugin)
@@ -91,13 +92,22 @@ through `LTM_DB_PATH` (2.17.1+): see
 
 ## Update flow
 
+First check how the plugin is installed: `hermes/upgrade-plugin.sh --check`
+reports a **copied directory** (what `hermes plugins install` creates) or a
+**symlink** into a checkout, and the installed version.
+
 - **Catalog install:** `hermes plugins update openltm` picks up a new pin once
   the catalog PR for it is merged (`hermes plugins list --json` reports
   `update_available`).
-- **Repo install:** pull the latest `main` of OpenLtm, then reinstall with
-  `hermes plugins install RohiRIK/OpenLtm/hermes/openltm_hermes`.
+- **Copied install, any other version:** from an OpenLtm checkout at that
+  version, run `hermes/upgrade-plugin.sh`. It replaces the copy and keeps the
+  old one in `~/.hermes/plugin-backups/`.
+- **Symlinked install:** update the checkout it points at
+  (`hermes/upgrade-plugin.sh --pull` does `git pull --ff-only` there). Never run
+  `hermes plugins remove/install --force/update` on a symlink.
 
 Restart the Hermes gateway afterwards (the plugin is only loaded at startup).
+Details: [Upgrading an installed plugin](../docs/10-hermes-plugin.md#upgrading-an-installed-plugin).
 
 > The live plugin dir is a generated/installed copy — never edit it directly; edit
 > this repo and reinstall. The plugin creates its own schema (`init_schema()`) and
