@@ -263,20 +263,52 @@ export function listStagedConflicts(limit = 50, project?: string): StagedConflic
   ).all(...(project ? [project] : []), limit);
 }
 
+let _failAcceptAfterSupersede = false;
+/** Test hook: throw inside the accept transaction after supersede() ran. */
+export function _forceAcceptFailForTesting(value: boolean): void {
+  _failAcceptAfterSupersede = value;
+}
+
 /**
- * Accept a staged conflict: apply supersede(newer, older) and mark staging accepted.
- * Returns false if not found / not pending.
+ * Accept a staged conflict atomically. One write transaction (BEGIN IMMEDIATE):
+ *   1. Claim: UPDATE staging -> 'accepted' WHERE id=? AND status='pending';
+ *      0 rows -> false (unknown id, already resolved, or lost a race).
+ *   2. Guard: both memories must still be status='active', else roll back -> false.
+ *   3. supersede(newer, older); its own transaction nests as a SAVEPOINT.
+ * Any throw rolls back both the claim and the supersede: the memory stays
+ * active and the staging row stays pending.
  */
 export function acceptStagedConflict(stagingId: number): boolean {
   const db = getDb();
-  const row = db.query<{ id: number; older_id: number; newer_id: number; status: string }, [number]>(
-    `SELECT id, older_id, newer_id, status FROM memory_conflict_staging WHERE id = ?`,
-  ).get(stagingId);
-  if (!row || row.status !== "pending") return false;
+  class GuardFailed extends Error {}
 
-  supersede(row.newer_id, row.older_id, true);
-  db.run(`UPDATE memory_conflict_staging SET status = 'accepted' WHERE id = ?`, [stagingId]);
-  return true;
+  const run = db.transaction((): boolean => {
+    const claimed = db.run(
+      `UPDATE memory_conflict_staging SET status = 'accepted'
+       WHERE id = ? AND status = 'pending'`,
+      [stagingId],
+    );
+    if (Number(claimed.changes) === 0) return false;
+
+    const row = db.query<{ older_id: number; newer_id: number }, [number]>(
+      `SELECT older_id, newer_id FROM memory_conflict_staging WHERE id = ?`,
+    ).get(stagingId)!;
+    const active = db.query<{ n: number }, [number, number]>(
+      `SELECT COUNT(*) AS n FROM memories WHERE id IN (?, ?) AND status = 'active'`,
+    ).get(row.older_id, row.newer_id)!;
+    if (row.older_id === row.newer_id || active.n !== 2) throw new GuardFailed();
+
+    supersede(row.newer_id, row.older_id, true);
+    if (_failAcceptAfterSupersede) throw new Error("injected accept failure");
+    return true;
+  });
+
+  try {
+    return run.immediate();
+  } catch (err) {
+    if (err instanceof GuardFailed) return false;
+    throw err;
+  }
 }
 
 /** Reject a staged conflict without superseding. */
