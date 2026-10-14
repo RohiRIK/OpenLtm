@@ -7,10 +7,12 @@ const dbPath = `/tmp/test-openltm-supersede-ux-${process.pid}-${Date.now()}.db`;
 const SCHEMA_PATH = join(import.meta.dir, "..", "schema.sql");
 
 let core: typeof import("../index.js");
+let supersedes: typeof import("../janitor/supersedes.js");
 let db: Database;
 
 beforeAll(async () => {
   core = await import("../index.js");
+  supersedes = await import("../janitor/supersedes.js");
   db = new Database(dbPath, { create: true });
   db.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
   db.exec(readFileSync(SCHEMA_PATH, "utf-8"));
@@ -64,7 +66,7 @@ describe("supersede UX resolve", () => {
     expect(row.status).toBe("active");
   });
 
-  it("listStagedConflicts(limit, project) shows only conflicts touching that project or a global", () => {
+  it("listStagedConflicts(limit, project): both memories must be that project or global", () => {
     const mk = (content: string, scope: string | null) => Number(db.run(
       `INSERT INTO memories (content, category, importance, confidence, status, dedup_key, project_scope)
        VALUES (?, 'architecture', 3, 1, 'active', ?, ?)`, [content, `ux-p-${content}-${Date.now()}`, scope],
@@ -72,14 +74,20 @@ describe("supersede UX resolve", () => {
     const [a1, a2] = [mk("alpha uses kafka", "alpha"), mk("alpha uses nats", "alpha")];
     const [b1, b2] = [mk("beta uses redis", "beta"), mk("beta uses memcached", "beta")];
     const [g1, b3] = [mk("prefer tabs", null), mk("beta prefers spaces", "beta")];
+    const [g2, a3] = [mk("prefer semicolons", null), mk("alpha drops semicolons", "alpha")];
+    const [g3, g4] = [mk("global uses yaml", null), mk("global uses toml", null)];
     core.stageContradictions([
       { olderId: a1, olderContent: "kafka", newerId: a2, newerContent: "nats", term: "kafka vs nats" },
       { olderId: b1, olderContent: "redis", newerId: b2, newerContent: "memcached", term: "redis vs memcached" },
       { olderId: g1, olderContent: "tabs", newerId: b3, newerContent: "spaces", term: "tabs vs spaces" },
+      { olderId: g2, olderContent: "semi", newerId: a3, newerContent: "nosemi", term: "semi" },
+      { olderId: g3, olderContent: "yaml", newerId: g4, newerContent: "toml", term: "yaml vs toml" },
     ]);
     const forAlpha = core.listStagedConflicts(50, "alpha").map((s) => s.olderId);
-    expect(forAlpha).toContain(a1);
-    expect(forAlpha).toContain(g1); // touches a global memory
+    expect(forAlpha).toContain(a1);   // alpha + alpha
+    expect(forAlpha).toContain(g2);   // global + alpha
+    expect(forAlpha).toContain(g3);   // global + global
+    expect(forAlpha).not.toContain(g1); // global + beta must NOT show in alpha's banner
     expect(forAlpha).not.toContain(b1);
     expect(core.listStagedConflicts(50).map((s) => s.olderId)).toContain(b1);
   });
@@ -109,11 +117,11 @@ describe("atomic accept + resolve guards", () => {
   it("failure mid-accept rolls back: memory still active, row still pending", () => {
     const older = mem("mid-fail old"), newer = mem("mid-fail new");
     const sid = stage(older, newer);
-    core._forceAcceptFailForTesting(true);
+    supersedes._forceAcceptFailForTesting(true);
     try {
       expect(() => core.acceptStagedConflict(sid)).toThrow();
     } finally {
-      core._forceAcceptFailForTesting(false);
+      supersedes._forceAcceptFailForTesting(false);
     }
     expect(status(older)).toBe("active");
     expect(stagingStatus(sid)).toBe("pending");
@@ -123,12 +131,20 @@ describe("atomic accept + resolve guards", () => {
     expect(rel.c).toBe(0);
   });
 
-  it("accept returns false when a memory is no longer active", () => {
+  it("accept on an inactive memory returns false and marks the row stale (not pending forever)", () => {
     const older = mem("deprecated old"), newer = mem("deprecated new");
     const sid = stage(older, newer);
     db.run("UPDATE memories SET status='deprecated' WHERE id=?", [older]);
     expect(core.acceptStagedConflict(sid)).toBe(false);
-    expect(stagingStatus(sid)).toBe("pending");
+    expect(stagingStatus(sid)).toBe("stale");
+    expect(status(older)).toBe("deprecated");
+    expect(status(newer)).toBe("active");
+    expect(core.listStagedConflicts(500).some((s) => s.id === sid)).toBe(false);
+    expect(core.acceptStagedConflict(sid)).toBe(false);
+  });
+
+  it("test hook is not part of the public index export", () => {
+    expect((core as Record<string, unknown>)._forceAcceptFailForTesting).toBeUndefined();
   });
 
   it("unknown id: accept/reject/coexist all return false", () => {

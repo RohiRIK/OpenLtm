@@ -761,7 +761,14 @@ export function learn(input: LearnInput): LearnResult {
     };
   }
 
-  const title = input.title?.trim().slice(0, 60) || deriveTitle(content);
+  // Title is durable text too: scrub before slicing (fail-closed — on scrub
+  // failure fall back to a title derived from the already-scrubbed content).
+  let agentTitle: string | undefined;
+  if (input.title?.trim()) {
+    const st = scrubOrRefuse(input.title.trim());
+    agentTitle = st.redactions.includes("scrub-failed") ? undefined : st.scrubbed.slice(0, 60);
+  }
+  const title = agentTitle || deriveTitle(content);
 
   const result = db.run(
     `INSERT INTO memories (content, title, category, importance, confidence, source, project_scope, dedup_key, created_by, workspace_id, agent_id)
