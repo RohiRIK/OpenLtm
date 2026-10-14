@@ -42,6 +42,18 @@ export LTM_DB_PATH="/custom/path/openltm.db"
 
 A memory learned in Pi is available to another OpenLTM adapter using the same database.
 
+## Semantic recall with llama.cpp
+
+Recall works out of the box with SQLite full-text search. For semantic recall, run a local [llama.cpp](https://github.com/ggerganov/llama.cpp) embedding server; OpenLTM uses it by default when it is reachable, and no API key is needed:
+
+```bash
+llama-server -m bge-m3.gguf --embeddings --pooling mean --port 8080
+```
+
+Defaults are `LTM_LLAMA_CPP_URL=http://127.0.0.1:8080` and `LTM_EMBED_MODEL=bge-m3`; export either before starting Pi to change it. If the server is not running, recall stays on full-text search and memory text is not sent anywhere. Use the same model as the other adapters that share the database, since vectors from different models are not comparable.
+
+Recalled memories are wrapped in a `<recalled-memory>` block that marks them as context from earlier sessions, not instructions.
+
 ## Privacy and license
 
 Memory is stored locally. Optional embedding or janitor providers can send memory content to the provider you configure; see the [repository's security notes](https://github.com/RohiRIK/OpenLtm#security-notes). MIT licensed.
