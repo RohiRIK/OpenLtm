@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.17.5] — 2026-10-14
+
+### Fixed
+- **Hermes plugin upgrade steps assumed a symlinked install.** `hermes plugins install` (catalog or repo path) leaves a copied directory in `~/.hermes/plugins/openltm/`, which `git pull` never updates, so upgrade verification stopped at its first step on such a machine. New `hermes/upgrade-plugin.sh` works for both: `--check` reports the install kind and installed vs. checkout version (exit 3 when missing or different); a copied install is replaced from the checkout with the old copy kept in `~/.hermes/plugin-backups/` (outside `plugins/`, so Hermes never loads it twice); a symlinked install is never deleted or copied over, and `--pull` fast-forwards the checkout it points at; `--link` turns a copy into a symlink. `openltm.json` and the DB are not touched.
+
+### Docs
+- [Hermes Integration](docs/10-hermes-plugin.md#upgrading-an-installed-plugin) and `hermes/README.md` explain how to tell a copied install from a symlink and how to upgrade each.
+
 ## [2.17.2] — 2026-10-11
 
 ### Added
