@@ -15,18 +15,31 @@
 # the checkout it points at. Plugin settings (openltm.json) and the DB live in
 # $HERMES_HOME, not in the plugin dir, so neither is touched.
 #
+# At most $OPENLTM_KEEP_BACKUPS (default 5) plugin backups are kept; a copied
+# install identical to this source is left alone (no backup is made).
+#
 # Exit codes: 0 done / up to date, 1 error, 3 (--check) install missing or outdated.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_DIR="$SCRIPT_DIR/openltm_hermes"
-HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
+: "${HOME:?HOME is not set}"
+HERMES_HOME="${HERMES_HOME-$HOME/.hermes}"
+case "$HERMES_HOME" in
+  ""|*[!/]*) ;;
+  *) HERMES_HOME="" ;;
+esac
+case "$HERMES_HOME" in
+  "") echo "error: refusing an empty or / HERMES_HOME" >&2; exit 1 ;;
+esac
+KEEP_BACKUPS="${OPENLTM_KEEP_BACKUPS:-5}"
+case "$KEEP_BACKUPS" in ''|*[!0-9]*) echo "error: OPENLTM_KEEP_BACKUPS must be a number" >&2; exit 1 ;; esac
 PLUGIN_DIR=""
 MODE="upgrade"
 DRY_RUN=0
 PULL=0
 
-usage() { sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -91,7 +104,8 @@ fi
 
 # A backup path that does not exist yet (mv into an existing dir would nest).
 new_backup_path() {
-  local base="$BACKUP_ROOT/openltm-$(date +%Y%m%d-%H%M%S)" path n=1
+  local base path n=1
+  base="$BACKUP_ROOT/openltm-$(date +%Y%m%d-%H%M%S)"
   path="$base"
   while [ -e "$path" ]; do n=$((n + 1)); path="$base-$n"; done
   echo "$path"
@@ -104,20 +118,45 @@ upgrade_symlink() {
     echo "The symlink points at this checkout, so it already runs this source."
   fi
   if ! repo="$(git -C "$TARGET_REAL" rev-parse --show-toplevel 2>/dev/null)"; then
+    [ "$PULL" = 1 ] && die "--pull: $TARGET_REAL is not inside a git checkout; update it by hand"
     echo "The symlink target is not inside a git checkout; update $TARGET_REAL by hand."
     return 0
   fi
   echo "checkout:    $repo ($(git -C "$repo" rev-parse --abbrev-ref HEAD) @ $(git -C "$repo" rev-parse --short HEAD))"
   if [ "$PULL" = 1 ]; then
+    [ -z "$(git -C "$repo" status --porcelain)" ] || die "checkout $repo has uncommitted changes; commit or stash first"
     run git -C "$repo" pull --ff-only
   elif [ "$TARGET_REAL" != "$SOURCE_REAL" ]; then
     echo "Update that checkout (git -C $repo pull --ff-only), or re-run with --pull."
   fi
 }
 
+# Keep only the newest $KEEP_BACKUPS openltm-* backups (names sort by time).
+prune_backups() {
+  local all n i=0 b
+  [ -d "$BACKUP_ROOT" ] || return 0
+  all="$(find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d -name 'openltm-[0-9]*' | sort -V)"
+  [ -n "$all" ] || return 0
+  n="$(printf '%s\n' "$all" | wc -l)"
+  while IFS= read -r b; do
+    [ $((n - i)) -gt "$KEEP_BACKUPS" ] || break
+    case "$b" in "$BACKUP_ROOT"/openltm-*) run rm -rf -- "$b" ;; esac
+    i=$((i + 1))
+  done <<<"$all"
+}
+
+# True when the copied install matches the source (ignoring caches).
+copy_is_current() {
+  diff -rq -x __pycache__ -x .pytest_cache "$SOURCE_DIR" "$PLUGIN_DIR" >/dev/null 2>&1
+}
+
 # --- copied install: stage a fresh copy, back up the old one, swap ----------
 install_copy() {
   local stage backup
+  if [ "$KIND" = copy ] && copy_is_current; then
+    echo "The copied install already matches this source; nothing to do."
+    return 0
+  fi
   stage="$BACKUP_ROOT/.staging-$$"
   backup="$(new_backup_path)"
   if [ "$DRY_RUN" = 1 ]; then
@@ -134,6 +173,7 @@ install_copy() {
     echo "backed up:   $backup"
   fi
   mv "$stage" "$PLUGIN_DIR"
+  prune_backups
 }
 
 link_to_source() {
@@ -145,6 +185,7 @@ link_to_source() {
   fi
   run mkdir -p "$(dirname "$PLUGIN_DIR")"
   run ln -s "$SOURCE_REAL" "$PLUGIN_DIR"
+  [ "$DRY_RUN" = 1 ] || prune_backups
   if [ "$DRY_RUN" = 0 ] && [ "$KIND" = copy ]; then echo "backed up:   $backup"; fi
 }
 
