@@ -10,6 +10,12 @@
 ### Changed
 - The OpenClaw `prefillLines` budget now counts the header and memory lines; the four frame lines are fixed overhead on top of it.
 
+### Fixed
+- `hermes memory setup openltm` offers `llamacpp` as an embedder choice (listed first); it was missing although the plugin supports it since 2.17.2. The default when nothing is configured is still Ollama.
+
+### Docs
+- Hermes plugin README, catalog entry and [Hermes Integration](docs/10-hermes-plugin.md) lead with a local llama.cpp embedding server for semantic recall; cloud embedders are no longer described as options up front. The root README and [Configuration](docs/04-configuration.md) list cloud providers only as opt-in values.
+
 ## [2.17.5] — 2026-10-14
 
 ### Fixed

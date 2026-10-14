@@ -663,9 +663,9 @@ class OpenLtmpMemoryProvider(MemoryProvider):
             },
             {
                 "key": "embedder",
-                "description": "Embedding backend for vector search (gemini/openai send memory text to that API)",
+                "description": "Embedding backend for vector search (llamacpp recommended; openai/gemini send memory text to that API)",
                 "default": "ollama",
-                "choices": ["ollama", "gemini", "openai", "none"],
+                "choices": ["llamacpp", "ollama", "none", "openai", "gemini"],
             },
         ]
 

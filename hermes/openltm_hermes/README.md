@@ -9,7 +9,7 @@ A Hermes memory provider plugin that wraps [OpenLTM](https://github.com/RohiRIK/
 ## Features
 
 - **FTS5 full-text search** — fast text recall, built into SQLite
-- **Vector embeddings** — semantic search via llama.cpp/Ollama/OpenAI/Gemini (optional)
+- **Vector embeddings** — semantic search via a local llama.cpp server (optional; Ollama also supported)
 - **Memory categories** — preference, architecture, gotcha, pattern, workflow, constraint
 - **Importance-weighted decay** — importance 5 = permanent; 1-4 fade over time
 - **Deduplication** — same insight reinforced, not duplicated
@@ -48,11 +48,10 @@ A Hermes memory provider plugin that wraps [OpenLTM](https://github.com/RohiRIK/
 
 3. The provider auto-creates `~/.hermes/openltm.db` on first use
 
-4. Vector search uses local Ollama by default. To use Gemini or OpenAI embeddings instead
-   (memory text is sent to that API), pick it explicitly with `hermes memory setup openltm`
-   (`embedder: gemini|openai|ollama|llamacpp|none` in `~/.hermes/openltm.json`).
+4. For semantic (vector) search, run a local llama.cpp embedding server (below).
+   Without one, recall uses FTS5 full-text search and nothing leaves your machine.
 
-### Local llama.cpp embeddings (2.17.2+)
+### Local llama.cpp embeddings (recommended)
 
 Run a dedicated embedding model with llama-server, not a chat model:
 
@@ -60,7 +59,8 @@ Run a dedicated embedding model with llama-server, not a chat model:
 llama-server --model /path/to/bge-m3-Q8_0.gguf --embedding --pooling cls --alias bge-m3 --host 127.0.0.1 --port 8080
 ```
 
-Merge these fields into your profile's `openltm.json`, preserving other settings:
+Pick `llamacpp` in `hermes memory setup openltm`, or merge these fields into your
+profile's `openltm.json`, preserving other settings:
 
 ```json
 {
@@ -85,6 +85,9 @@ the actual model served. Do not label BGE-M3 vectors `nomic-embed-text`: vectors
 from different models are not interchangeable. Existing vectors are not
 automatically re-embedded by this plugin change. Keep the server loopback-bound
 unless you have an authenticated, trusted network deployment.
+
+If `openltm.json` sets no `embedder`, the plugin probes a local Ollama server
+(`nomic-embed-text`) instead. `"embedder": "none"` turns vector search off.
 
 ## How it works
 

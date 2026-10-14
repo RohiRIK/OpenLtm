@@ -17,7 +17,7 @@ hermes/
     ├── __init__.py             # OpenLtmMemoryProvider: tools, hooks, DB wiring
     ├── auto_capture.py         # automatic-capture policy: rules, guards, distillation
     ├── _db.py                  # FTS5-hardened storage layer
-    ├── _providers.py           # embedding providers (Gemini / OpenAI / Ollama)
+    ├── _providers.py           # embedding providers (llama.cpp / Ollama / cloud opt-ins)
     ├── _secrets_scrubber.py    # PII/secret redaction
     ├── _project_memory.py      # project-scoped memory helpers
     ├── plugin.yaml             # name: openltm  (install dir + config memory.provider)

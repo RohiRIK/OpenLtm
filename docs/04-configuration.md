@@ -47,17 +47,17 @@ llama-server -m bge-m3.gguf --embeddings --pooling mean --port 8080
 
 Resolution order:
 
-1. `LTM_EMBED_PROVIDER` if set (`llamacpp`, `gemini`, `openai`, `ollama`, `disabled`)
+1. `LTM_EMBED_PROVIDER` if set (`llamacpp`, `ollama`, `disabled`, or a cloud provider: `openai`, `gemini`)
 2. `embeddings.provider` in config.json
-3. Otherwise `llamacpp`. `available()` probes `LTM_LLAMA_CPP_URL` (default `http://127.0.0.1:8080`) once per process. A miss keeps recall on FTS5 and does not call Gemini.
+3. Otherwise `llamacpp`. `available()` probes `LTM_LLAMA_CPP_URL` (default `http://127.0.0.1:8080`) once per process. A miss keeps recall on FTS5 and never falls back to a cloud provider.
 
 | Env var | Default | Description |
 |---------|---------|-------------|
-| `LTM_EMBED_PROVIDER` | (unset → llamacpp) | Pin the embedding provider. `gemini` requires `GEMINI_API_KEY`. |
+| `LTM_EMBED_PROVIDER` | (unset → llamacpp) | Pin the embedding provider. Cloud providers need their API key. |
 | `LTM_LLAMA_CPP_URL` | `http://127.0.0.1:8080` | llama-server base URL (`/health`, `/v1/embeddings`) |
 | `LTM_EMBED_MODEL` | `bge-m3` | Model name sent to llama-server. bge-m3 is 1024-d. |
 
-Stored vectors are stamped with `model` and `dim`. A switch does not mix spaces: recall ignores other stamps, and backfill re-embeds mismatched rows. Gemini stays available; it is no longer the default.
+Stored vectors are stamped with `model` and `dim`. A switch does not mix spaces: recall ignores other stamps, and backfill re-embeds mismatched rows.
 
 ```json
 {
