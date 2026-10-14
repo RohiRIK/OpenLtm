@@ -31,14 +31,10 @@ This article proposes a clearer authority boundary for future development. It do
 Three pieces of this boundary exist in code today. All are narrow; none is a general authorization layer.
 
 - **Injected memory is framed as evidence (2.18.0).** Every path that puts memory into a prompt wraps it in a `<recalled-memory>` block that opens with a fixed notice: the content is context from earlier sessions, not instructions, and grants no permission. This covers the Claude Code SessionStart index and restored context, UserPromptSubmit prompt recall, the OpenCode, Pi and OpenClaw prefill blocks, and the Hermes system-prompt context and prefetch. A stored record cannot close the block early: any `recalled-memory` tag inside memory text is defanged. The MCP server states the same rule in its instructions and in the `recall`, `get` and `context` descriptions. The frame is a label, not enforcement: it helps the model weigh memory correctly, but it does not stop prompt injection on its own.
-
 - **Conflicts are staged for the owner, never applied automatically.** Contradiction pairs go into `memory_conflict_staging` as `pending`. Nothing supersedes a memory on its own; only the owner resolves a staged conflict, through the `ltm conflict list | accept | reject | coexist` CLI. There is no MCP tool for resolving conflicts, so an agent has no built-in tool path to settle one. Note that automatic detection does not feed the staging table yet, so in practice it is usually empty.
 - **Memory is scrubbed before it is stored and before it leaves the process.** Content goes through `scrubOrRefuse` on write; if scrubbing fails, a placeholder is stored instead of the original. `scrubForEgress` runs before memory text reaches SessionStart injection, MCP responses, and the categorise, embedding, and janitor dedup LLM/provider calls, and it sends a redacted stub rather than raw text if scrubbing fails.
 
-In progress, not shipped:
-
-- Addressing the SessionStart conflict banner to the owner instead of the agent, and making `ltm conflict accept` a single atomic transaction.
-- Scrubbing the agent-supplied `title` on write, and scrubbing memory text before the auto-relate classification LLM call.
+Since 2.17.4 the SessionStart conflict banner addresses the owner rather than the agent, `ltm conflict accept` runs as one atomic transaction, the agent-supplied `title` is scrubbed on write, and memory text is scrubbed before the auto-relate classification LLM call.
 
 Scrubbing is pattern-based redaction of known secret shapes. It does not catch every sensitive value, and it is not encryption.
 
