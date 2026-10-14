@@ -1,10 +1,10 @@
 # Memory versus Authority
 
-An agent should remember how you work without making you approve every preference, correction, and useful lesson. Otherwise, long-term memory becomes another inbox to maintain.
+An agent should remember how you work without making you approve every preference, correction, and useful lesson. Otherwise long-term memory becomes another inbox.
 
 But remembering something is not permission to act on it. A recalled preference can improve a recommendation. A recalled approval can explain a past decision. Neither, by itself, authorizes a new deployment, a message to someone else, or a change to your task board.
 
-**Memory is context and evidence. Authority comes from the applicable instructions, permissions, and current authorization.** Keeping those separate lets memory do its job without becoming an accidental permission system.
+**Memory is context and evidence. Authority comes from the applicable instructions, permissions, and current authorization.** Keeping them separate lets memory do its job without becoming an accidental permission system.
 
 ## Three different questions
 
@@ -16,7 +16,7 @@ It helps to separate three decisions that often get bundled together:
 
 The first two belong to learning and recall. The third belongs to the action boundary. A memory can pass the first two checks and still provide no permission to execute anything.
 
-This does not mean asking for approval twice. If the owner has already given a valid instruction to perform an action, remembering related context should help carry it out. The point is not to manufacture extra gates; it is to avoid treating an old record as a new instruction.
+This does not mean asking for approval twice. If the owner has already given a valid instruction, related memory should help carry it out. The point is not extra gates; it is not treating an old record as a new instruction.
 
 ## What OpenLTM provides today
 
@@ -25,6 +25,20 @@ OpenLTM already has learning and recall tools, lifecycle integrations, and mecha
 The core also supports importance-weighted [decay](02-how-it-works.md#memory-decay) and optional [file anchors and code-change staleness](02-how-it-works.md#code-anchored-invalidation). Those mechanisms help manage relevance and freshness. They are not authorization checks. A high-importance memory can remain useful for a long time without acquiring any right to override the owner.
 
 This article proposes a clearer authority boundary for future development. It does **not** claim that OpenLTM currently enforces that boundary across every adapter, prevents prompt injection, or controls the permissions of external tools.
+
+## Where OpenLTM already applies this
+
+Two pieces of this boundary exist in code today (shipped in 2.17.0). Both are narrow; neither is a general authorization layer.
+
+- **Conflicts are staged for the owner, never applied automatically.** Contradiction pairs go into `memory_conflict_staging` as `pending`. Nothing supersedes a memory on its own; only the owner resolves a staged conflict, through the `ltm conflict list | accept | reject | coexist` CLI. There is no MCP tool for resolving conflicts, so an agent has no built-in tool path to settle one. Note that automatic detection does not feed the staging table yet, so in practice it is usually empty.
+- **Memory is scrubbed before it is stored and before it leaves the process.** Content goes through `scrubOrRefuse` on write; if scrubbing fails, a placeholder is stored instead of the original. `scrubForEgress` runs before memory text reaches SessionStart injection, MCP responses, and the categorise, embedding, and janitor dedup LLM/provider calls, and it sends a redacted stub rather than raw text if scrubbing fails.
+
+In progress, not shipped:
+
+- Addressing the SessionStart conflict banner to the owner instead of the agent, and making `ltm conflict accept` a single atomic transaction.
+- Scrubbing the agent-supplied `title` on write, and scrubbing memory text before the auto-relate classification LLM call.
+
+Scrubbing is pattern-based redaction of known secret shapes. It does not catch every sensitive value, and it is not encryption.
 
 ## Learning should remain ordinary
 
@@ -90,6 +104,3 @@ The goal is simple: **let the agent remember freely enough to be helpful, while 
 - [Hooks](06-hooks.md) — capture and injection lifecycle
 - [Hermes Integration](10-hermes-plugin.md) — the Hermes provider and adapter-specific behavior
 
----
-
-Powered by caffeine and questionable life choices.
