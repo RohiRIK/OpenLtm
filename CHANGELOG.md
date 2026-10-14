@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.18.0] — 2026-10-14
+
+### Added
+- **Recalled memory is framed as evidence, not instructions** (Phase 1 of [Memory versus Authority](docs/memory-versus-authority.md)). Every path that injects memory into a prompt now wraps it in a `<recalled-memory>` block that opens with a fixed notice: the content is context from earlier sessions and grants no permission. Covers the SessionStart index and restored context, UserPromptSubmit prompt recall, the OpenCode, Pi and OpenClaw prefill blocks, OpenCode compaction, and the Hermes system-prompt context and prefetch. Any `recalled-memory` tag inside stored text is defanged, so a record cannot close the block and pose as an instruction.
+- The MCP server sends the same rule in its `instructions`, and the `recall`, `get` and `context` descriptions say results are evidence, not instructions. Tool result payloads are unchanged.
+- `frameRecalledMemory` is exported from `@rohirik/openltm-core`; Hermes has a matching `_memory_frame.py` (a test keeps the notice text identical).
+
+### Changed
+- The OpenClaw `prefillLines` budget now counts the header and memory lines; the four frame lines are fixed overhead on top of it.
+
 ## [2.17.5] — 2026-10-14
 
 ### Fixed

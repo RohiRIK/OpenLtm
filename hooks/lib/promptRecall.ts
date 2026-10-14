@@ -28,6 +28,7 @@ import { tmpdir } from "os";
 import type { Config } from "../../src/config.js";
 // Dependency-free module — importing it directly does not load core.
 import { scrubForEgress } from "../../packages/openltm-core/src/secretsScrubber.js";
+import { frameRecalledMemory } from "../../packages/openltm-core/src/memoryFrame.js";
 
 export const MIN_PROMPT_CHARS = 15;
 export const MAX_CONTENT_CHARS = 200;
@@ -219,9 +220,8 @@ function clip(text: string): string {
 
 export function formatPromptRecall(hits: PromptHit[]): string {
   if (hits.length === 0) return "";
-  const lines = ["LTM (relevant to this prompt):"];
-  for (const h of hits) lines.push(`- [${h.id}] (${h.category}) ${clip(h.content)}`);
-  return lines.join("\n") + "\n";
+  const lines = hits.map((h) => `- [${h.id}] (${h.category}) ${clip(h.content)}`);
+  return `LTM (relevant to this prompt):\n${frameRecalledMemory(lines.join("\n"))}`;
 }
 
 // ── Per-session dedupe state ──────────────────────────────────────────────────

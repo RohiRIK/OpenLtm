@@ -186,7 +186,11 @@ describe("OpenClaw adapter — behaviour over the real bridge", () => {
 
   it("auto-recall respects the line budget", async () => {
     const api = await register({ prefillLines: 4 });
-    expect((await api.preparations[0]!()).length).toBeLessThanOrEqual(4);
+    const lines = await api.preparations[0]!();
+    // Budget covers header + memories; the evidence frame (open, notice, blank, close) is fixed overhead.
+    expect(lines.filter((l) => l.startsWith("- (")).length).toBeLessThanOrEqual(3);
+    expect(lines).toContain("<recalled-memory>");
+    expect(lines.at(-1)).toBe("</recalled-memory>");
   });
 
   it("auto-recall falls back to a cached synchronous supplement on older hosts", async () => {

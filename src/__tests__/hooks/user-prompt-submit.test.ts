@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
+import { RECALLED_MEMORY_NOTICE } from "../../../packages/openltm-core/src/memoryFrame.js";
 import {
   formatPromptRecall, promptRecallLimit, promptSkipReason, queryTokens, MAX_CONTENT_CHARS,
 } from "../../../hooks/lib/promptRecall";
@@ -43,8 +44,11 @@ describe("promptRecall helpers", () => {
     ]);
     const lines = out.trimEnd().split("\n");
     expect(lines[0]).toBe("LTM (relevant to this prompt):");
-    expect(lines[1]).toBe("- [7] (gotcha) line one line two");
-    const clipped = lines[2]!.replace("- [9] (pattern) ", "");
+    expect(lines[1]).toBe("<recalled-memory>");
+    expect(lines[2]).toBe(RECALLED_MEMORY_NOTICE);
+    expect(lines.at(-1)).toBe("</recalled-memory>");
+    expect(lines[4]).toBe("- [7] (gotcha) line one line two");
+    const clipped = lines[5]!.replace("- [9] (pattern) ", "");
     expect(clipped.length).toBe(MAX_CONTENT_CHARS);
     expect(clipped.endsWith("…")).toBe(true);
     expect(formatPromptRecall([])).toBe("");
@@ -94,7 +98,8 @@ describe("UserPromptSubmit hook (subprocess)", () => {
     expect(exitCode).toBe(0);
     const lines = stdout.trimEnd().split("\n");
     expect(lines[0]).toBe("LTM (relevant to this prompt):");
-    expect(lines[1]).toBe(`- [${ids.global}] (gotcha) SQLite WAL needs busy_timeout: hooks and the MCP server write concurrently`);
+    expect(lines[1]).toBe("<recalled-memory>");
+    expect(lines[4]).toBe(`- [${ids.global}] (gotcha) SQLite WAL needs busy_timeout: hooks and the MCP server write concurrently`);
   }, 30_000);
 
   it("excludes stale, non-active, private, single-weak-token and other-project memories", async () => {
