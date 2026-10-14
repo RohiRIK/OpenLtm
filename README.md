@@ -37,9 +37,9 @@ Persistent semantic memory that survives every session, every update, every comp
 
 **The database is local. Embeddings and the janitor LLM are local by default.**
 
-Semantic search needs vectors. The default embedding provider is a local [llama.cpp](https://github.com/ggerganov/llama.cpp) server (`llama-server --embeddings`), model `bge-m3`, via the OpenAI-compatible `POST /v1/embeddings` endpoint. If that server is not running, recall stays on FTS5 — memory text is not sent anywhere. Gemini, OpenAI, and Cohere embeddings are opt-in (`LTM_EMBED_PROVIDER=gemini` plus an API key).
+Semantic search needs vectors. The default embedding provider is a local [llama.cpp](https://github.com/ggerganov/llama.cpp) server (`llama-server --embeddings`), model `bge-m3`, via the OpenAI-compatible `POST /v1/embeddings` endpoint. If that server is not running, recall stays on FTS5 — memory text is not sent anywhere. Cloud embedding providers are opt-in only; see [Configuration](docs/04-configuration.md#embeddings).
 
-The janitor LLM defaults to local [Ollama](https://ollama.com) (`LTM_LLM_PROVIDER` unset → `ollama`). Gemini, Anthropic, OpenAI, Cohere, and OpenRouter stay supported as opt-in providers; they receive memory content only when you pin them.
+The janitor LLM defaults to local [Ollama](https://ollama.com) (`LTM_LLM_PROVIDER` unset → `ollama`). Cloud LLM providers are opt-in; they receive memory content only when you pin them.
 
 There is no telemetry and no analytics in any configuration.
 
@@ -50,8 +50,6 @@ llama-server -m bge-m3.gguf --embeddings --pooling mean --port 8080
 # optional overrides
 export LTM_LLAMA_CPP_URL=http://127.0.0.1:8080
 export LTM_EMBED_MODEL=bge-m3
-export LTM_EMBED_PROVIDER=gemini      # opt out of local embeddings
-export LTM_LLM_PROVIDER=gemini        # opt into cloud janitor LLM
 ```
 
 Full detail, including which write paths scrub secrets and which don't: [Security notes](#security-notes).
@@ -271,8 +269,8 @@ Three things worth knowing before this holds anything you care about.
 | Variable | Purpose |
 |---|---|
 | `LTM_DB_PATH` | Where the SQLite file lives. Overrides the default location. |
-| `LTM_EMBED_PROVIDER` | Embedding provider. Unset probes local llama.cpp (`llamacpp`); falls back to FTS if the server is down. `gemini` / `openai` / `ollama` / `disabled` opt in or out. |
-| `LTM_LLM_PROVIDER` | Provider for janitor summaries. Unset → `ollama` (local). `gemini` / `openai` / `anthropic` / `cohere` / `openrouter` are opt-in. |
+| `LTM_EMBED_PROVIDER` | Embedding provider. Unset probes local llama.cpp (`llamacpp`); falls back to FTS if the server is down. `ollama` / `disabled` and the cloud providers (`openai`, `gemini`) opt in or out. |
+| `LTM_LLM_PROVIDER` | Provider for janitor summaries. Unset → `ollama` (local). Cloud providers (`anthropic`, `openai`, `gemini`, `cohere`, `openrouter`) are opt-in. |
 | `LTM_JANITOR_INTERVAL_MINUTES` | Minimum minutes between `janitor run --if-due` passes (hook, timers, daemon). Default 360. |
 | `LTM_JANITOR_ON_SESSION_END` | `0` disables the janitor-on-`SessionEnd` hook. |
 | `LTM_DISABLE_VEC` | Turn off the sqlite-vec loader; falls back to JS-cosine. |

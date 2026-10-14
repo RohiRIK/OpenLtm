@@ -121,12 +121,13 @@ of their own, so a memory learned in either place is recalled in both. Point
 
 ```json
 // ~/.claude/settings.json
-{ "env": { "LTM_DB_PATH": "~/.hermes/openltm.db", "LTM_EMBED_PROVIDER": "ollama" } }
+{ "env": { "LTM_DB_PATH": "~/.hermes/openltm.db", "LTM_EMBED_PROVIDER": "llamacpp" } }
 ```
 
 or export both in your shell profile to share it with the CLI, OpenCode and Pi
-too. `LTM_EMBED_PROVIDER=ollama` matches the plugin's default embedder (see
-below; if `openltm.json` picks another provider, set the same one). Restart
+too. `LTM_EMBED_PROVIDER=llamacpp` matches the plugin's recommended local
+llama.cpp embedder (`"embedder": "llamacpp"` in `openltm.json`; see below. If
+`openltm.json` picks another provider, set the same one). Restart
 Claude Code, and the Hermes gateway after updating the plugin.
 
 What happens on the first open:
@@ -145,12 +146,12 @@ What happens on the first open:
   and its recall returns nothing.
 - Vectors from different embedding models are not comparable, so each side
   only compares vectors from its own model, and each memory holds one vector.
-  The defaults differ: the Hermes plugin uses Ollama `nomic-embed-text`, core
-  uses llama.cpp `bge-m3` when a llama-server is running. With different models,
-  core's janitor re-embeds memories with its own model, and those then match
-  Hermes by keyword (FTS) only. To share semantic recall, run core on the same
-  model: add `"LTM_EMBED_PROVIDER": "ollama"` next to `LTM_DB_PATH` (core's Ollama
-  default is `nomic-embed-text`, 768-d, the same key the plugin writes).
+  Core uses llama.cpp `bge-m3` by default. Set the plugin to the same server
+  (`"embedder": "llamacpp"`, same `llamacpp_url` and `embedding_model` in
+  `openltm.json`) so both sides write the same vectors. If the plugin has no
+  `embedder` set it falls back to Ollama `nomic-embed-text`; with different
+  models, core's janitor re-embeds memories with its own model, and those then
+  match Hermes by keyword (FTS) only.
 - Exact-text dedup keys differ between the two writers, so learning the very
   same sentence on both sides can store it twice; semantic dedup still catches
   it when both use the same model.
