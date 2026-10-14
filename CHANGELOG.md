@@ -10,6 +10,15 @@
 ### Changed
 - The OpenClaw `prefillLines` budget now counts the header and memory lines; the four frame lines are fixed overhead on top of it.
 
+## [2.17.5] — 2026-10-14
+
+### Fixed
+- **Hermes plugin upgrade steps assumed a symlinked install.** `hermes plugins install` (catalog or repo path) leaves a copied directory in `~/.hermes/plugins/openltm/`, which `git pull` never updates, so upgrade verification stopped at its first step on such a machine. New `hermes/upgrade-plugin.sh` works for both: `--check` reports the install kind and installed vs. checkout version (exit 3 when missing or different); a copied install is replaced from the checkout with the old copy kept in `~/.hermes/plugin-backups/` (outside `plugins/`, so Hermes never loads it twice); a symlinked install is never deleted or copied over, and `--pull` fast-forwards the checkout it points at; `--link` turns a copy into a symlink. `openltm.json` and the DB are not touched.
+- `upgrade-plugin.sh --pull` refuses a checkout with uncommitted changes and exits 1 when the symlink target is not a git checkout. The script refuses an unset `HOME` and an empty or `/` `HERMES_HOME`, skips the backup when a copied install already matches the source, and keeps at most `OPENLTM_KEEP_BACKUPS` (default 5) plugin backups.
+
+### Docs
+- [Hermes Integration](docs/10-hermes-plugin.md#upgrading-an-installed-plugin) and `hermes/README.md` explain how to tell a copied install from a symlink and how to upgrade each.
+
 ## [2.17.4] — 2026-10-14
 
 ### Security

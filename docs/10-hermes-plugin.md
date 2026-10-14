@@ -38,20 +38,57 @@ Either path clones the repo (depth 1), installs the plugin subdir into
 plugin's `register(ctx)` → `ctx.register_memory_provider(...)`; select it with
 `hermes config set memory.provider openltm`.
 
-## Live machine (Rohi's homelab gateway) — symlink wiring
+## Upgrading an installed plugin
+
+A Hermes machine has the plugin in `~/.hermes/plugins/openltm/` in one of two
+forms, and they upgrade differently. Check which one you have first:
+
+```bash
+ls -ld ~/.hermes/plugins/openltm           # "l…  -> /path/…" is a symlink; "d…" is a copied directory
+grep '^version' ~/.hermes/plugins/openltm/plugin.yaml
+```
+
+- **Copied directory.** What `hermes plugins install` (catalog or repo path)
+  creates. It is not a git checkout, so `git pull` does nothing for it. A
+  catalog install takes `hermes plugins update openltm`, which only moves to the
+  catalog pin (see [`11-publishing.md`](11-publishing.md)); for any other
+  version, upgrade from an OpenLtm checkout of that version.
+- **Symlink** to `hermes/openltm_hermes` in a checkout (below). Upgrading means
+  updating that checkout. Never run `hermes plugins remove`, `install --force`
+  or `update` on it (rmtree fails on symlinks).
+
+From an OpenLtm checkout at the version you want, `hermes/upgrade-plugin.sh`
+handles both:
+
+```bash
+hermes/upgrade-plugin.sh --check     # install kind, installed vs. this checkout's version
+hermes/upgrade-plugin.sh             # copied: replace it with this checkout's plugin
+                                     # symlink: leave it, say which checkout to update
+hermes/upgrade-plugin.sh --pull      # symlink: also git pull --ff-only that checkout
+hermes/upgrade-plugin.sh --link      # turn a copied install into a symlink to this checkout
+hermes gateway restart               # the plugin loads only at startup
+```
+
+A replaced copy is kept in `~/.hermes/plugin-backups/openltm-<timestamp>/`,
+outside `plugins/`, so Hermes never loads it. Settings (`openltm.json`) and the
+DB live in `~/.hermes/`, not in the plugin dir, and are not touched. Add
+`--dry-run` to see what would change, and `--plugin-dir DIR` if the plugin is
+not in `$HERMES_HOME/plugins/openltm`. `--check` exits 3 when the plugin is
+missing or a different version, so a verification run can gate on it.
+
+### Live machine (Rohi's homelab gateway): symlink wiring
 
 For a machine that already keeps a checkout of this repo, the most efficient
-update is a symlink (verified against `plugins/memory/__init__.py` discovery — the
+update is a symlink (verified against `plugins/memory/__init__.py` discovery; the
 scanner follows links):
 
 ```bash
 ln -s /home/rohi/projects/OpenLtm/hermes/openltm_hermes ~/.hermes/plugins/openltm
+# or, replacing an existing copied install: hermes/upgrade-plugin.sh --link
 # then: hermes gateway restart
 ```
 
 Then a `git pull` + gateway restart = live update with zero install drift.
-⚠️ Never `hermes plugins remove/install --force/update` on a symlinked plugin
-(rmtree fails on symlinks).
 
 ## Update flow (this repo)
 
@@ -103,7 +140,7 @@ What happens on the first open:
   ~/openltm-hermes-backup.db"`) before the first open anyway.
 - The Hermes plugin (2.17.1+) reads and writes vectors in whichever layout the
   DB has, so semantic recall keeps working after the move. **Update the Hermes
-  plugin before pointing Claude Code at its DB**: an older plugin with an
+  plugin before pointing Claude Code at its DB** ([how](#upgrading-an-installed-plugin)): an older plugin with an
   embedder configured finds no `memories.embedding` column on the migrated DB,
   and its recall returns nothing.
 - Vectors from different embedding models are not comparable, so each side
