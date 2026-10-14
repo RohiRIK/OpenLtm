@@ -18,6 +18,7 @@ Read top to bottom for a guided path, or jump to what you need.
 | 11 | [External Distribution](11-publishing.md) | Every channel — npm, the Claude marketplace, the Hermes catalog, ClawHub — with links and status |
 | 12 | [Comparison](12-comparison.md) | How other LTM tools solve the same problem, and how self-improvement differs |
 | 13 | [Janitor](13-janitor.md) | Run the janitor without graph-server: CLI, SessionEnd hook, systemd/launchd timers |
+| 14 | [Memory versus authority](memory-versus-authority.md) | Conceptual separation of LTM from action approval |
 
 **Top-level docs** live at the repository root: [README](../README.md) · [Changelog](../CHANGELOG.md) · [Contributing](../CONTRIBUTING.md).
 

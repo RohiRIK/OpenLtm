@@ -8,6 +8,12 @@
 ### Docs
 - [Hermes Integration](docs/10-hermes-plugin.md#upgrading-an-installed-plugin) and `hermes/README.md` explain how to tell a copied install from a symlink and how to upgrade each.
 
+## [2.17.3] — 2026-10-14
+
+### Docs
+- Added [Memory versus Authority](docs/memory-versus-authority.md): ordinary learning and recall provide context and evidence, not authorization for consequential actions. Distinguishes implemented adapter behavior from a proposed authority boundary, with practical examples and future acceptance criteria. No memory-policy or runtime-enforcement changes.
+- Linked the article from the documentation index.
+
 ## [2.17.2] — 2026-10-11
 
 ### Added
