@@ -13,6 +13,12 @@ CREATE TABLE memory_conflict_staging_new (
 );
 INSERT INTO memory_conflict_staging_new (id, older_id, newer_id, term, status, created_at)
   SELECT id, older_id, newer_id, term, status, created_at FROM memory_conflict_staging;
+-- Guard: abort (CHECK failure -> error -> rollback) unless every row was
+-- copied, before the old table is dropped.
+CREATE TEMP TABLE _m027_row_guard (ok INTEGER NOT NULL CHECK(ok = 1));
+INSERT INTO _m027_row_guard (ok)
+  SELECT (SELECT COUNT(*) FROM memory_conflict_staging) = (SELECT COUNT(*) FROM memory_conflict_staging_new);
+DROP TABLE _m027_row_guard;
 DROP TABLE memory_conflict_staging;
 ALTER TABLE memory_conflict_staging_new RENAME TO memory_conflict_staging;
 CREATE INDEX IF NOT EXISTS idx_conflict_staging_status

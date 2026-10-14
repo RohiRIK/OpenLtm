@@ -79,9 +79,22 @@ export async function backupDb(): Promise<string> {
   // Skip backup when the source DB doesn't exist (e.g. in-process test DBs
   // that were created on a different path than the module-level DB_PATH).
   if (!existsSync(DB_PATH)) return backupPath;
-  const bytes = await Bun.file(DB_PATH).arrayBuffer();
-  await Bun.write(backupPath, bytes);
-  return backupPath;
+  // VACUUM INTO writes a consistent single-file snapshot that includes any
+  // rows still sitting in the -wal file. A raw byte copy of the main file
+  // would miss un-checkpointed WAL pages. Fall back to checkpoint + copy.
+  let src: Database | null = null;
+  try {
+    src = new Database(DB_PATH);
+    src.run("VACUUM INTO ?", [backupPath]);
+    return backupPath;
+  } catch {
+    try { src?.run("PRAGMA wal_checkpoint(TRUNCATE)"); } catch { /* best effort */ }
+    const bytes = await Bun.file(DB_PATH).arrayBuffer();
+    await Bun.write(backupPath, bytes);
+    return backupPath;
+  } finally {
+    try { src?.close(); } catch { /* ignore */ }
+  }
 }
 
 /**
@@ -574,7 +587,7 @@ export function reconcileMigration(db: Database, up: string): void {
       throw new Error(`refusing to run a destructive statement during reconciliation: "${statement}"`);
     }
     try {
-      db.exec(statement);
+      db.run(statement);
     } catch (err: unknown) {
       throw new Error(`statement failed during reconciliation: "${statement}": ${(err as Error).message}`);
     }
@@ -654,8 +667,12 @@ export async function runPendingMigrations(db?: Database): Promise<MigrationResu
 
     try {
       _db.transaction(() => {
-        // Skip exec for marker migrations that have no DDL (e.g. 001_baseline).
-        if (up) _db.exec(up);
+        // Run statement by statement: bun:sqlite's multi-statement exec()
+        // silently skips errors after the first statement, which could let a
+        // failed INSERT...SELECT be followed by DROP + RENAME and still record
+        // the version. Each run() throws on error and rolls the whole
+        // migration back. Marker migrations with no DDL yield no statements.
+        if (up) for (const statement of splitSqlStatements(up)) _db.run(statement);
         _db.run(
           `INSERT INTO _schema_version (version, name, checksum) VALUES (?, ?, ?)`,
           [file.version, file.name, checksum],
