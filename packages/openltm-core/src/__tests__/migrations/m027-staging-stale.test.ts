@@ -131,31 +131,93 @@ describe("per-statement runner vs every shipped migration", () => {
 });
 
 describe("backupDb snapshot", () => {
-  it("includes rows still only in the -wal file (subprocess, own LTM_DB_PATH)", () => {
-    const { mkdtempSync, writeFileSync, rmSync } = require("fs") as typeof import("fs");
-    const { tmpdir } = require("os") as typeof import("os");
-    const dir = mkdtempSync(join(tmpdir(), "ltm-backup-wal-"));
-    const dbFile = join(dir, "w.db");
-    const mod = join(import.meta.dir, "..", "..", "migrations.ts");
-    const script = join(dir, "b.ts");
+  const { mkdtempSync, writeFileSync, rmSync } = require("fs") as typeof import("fs");
+  const { tmpdir } = require("os") as typeof import("os");
+  const mod = join(import.meta.dir, "..", "..", "migrations.ts");
+
+  /** Run a script in a subprocess whose LTM_DB_PATH is set before migrations.ts loads. */
+  function runScript(dbFile: string, body: string): Record<string, unknown> {
+    const dir = mkdtempSync(join(tmpdir(), "ltm-backup-script-"));
+    const script = join(dir, "s.ts");
     writeFileSync(script, `
       import { Database } from "bun:sqlite";
-      const db = new Database(${JSON.stringify(dbFile)}, { create: true });
-      db.exec("PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0; CREATE TABLE t(x); INSERT INTO t VALUES (1),(2),(3);");
-      const { backupDb } = await import(${JSON.stringify(mod)});
-      const p = await backupDb();
-      const b = new Database(p, { readonly: true });
-      const walExists = await Bun.file(${JSON.stringify(dbFile + "-wal")}).exists();
-      console.log(JSON.stringify({ rows: (b.query("SELECT COUNT(*) c FROM t").get() as { c: number }).c, walExists }));
+      import { existsSync, readFileSync } from "fs";
+      const m = await import(${JSON.stringify(mod)});
+      const DB = ${JSON.stringify(dbFile)};
+      ${body}
     `);
     try {
       const r = Bun.spawnSync([process.execPath, script], {
         env: { ...process.env, LTM_DB_PATH: dbFile }, stdout: "pipe", stderr: "pipe",
       });
       expect(r.exitCode).toBe(0);
-      const out = JSON.parse(r.stdout.toString().trim().split("\n").pop()!);
+      return JSON.parse(r.stdout.toString().trim().split("\n").pop()!);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  const WAL_SETUP = `
+    const db = new Database(DB, { create: true });
+    db.exec("PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0; CREATE TABLE t(x); INSERT INTO t VALUES (1),(2),(3);");
+    const rowsIn = (p) => (new Database(p, { readonly: true }).query("SELECT COUNT(*) c FROM t").get()).c;
+  `;
+
+  it("includes rows still only in the -wal file", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ltm-backup-wal-"));
+    try {
+      const out = runScript(join(dir, "w.db"), WAL_SETUP + `
+        const p = await m.backupDb();
+        console.log(JSON.stringify({ rows: rowsIn(p), walExists: existsSync(DB + "-wal") }));
+      `);
       expect(out.walExists).toBe(true);
       expect(out.rows).toBe(3);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("collision: pre-existing file untouched; new backup at a suffixed path with WAL rows", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ltm-backup-collide-"));
+    try {
+      const out = runScript(join(dir, "w.db"), WAL_SETUP + `
+        const now = new Date("2026-10-14T05:00:00.000Z");
+        const base = DB + ".bak-" + now.toISOString().replace(/[:.]/g, "-");
+        await Bun.write(base, "PRE-EXISTING");
+        const p1 = await m.backupDb(now);
+        const p2 = await m.backupDb(now);
+        console.log(JSON.stringify({
+          base, p1, p2, untouched: readFileSync(base, "utf-8") === "PRE-EXISTING",
+          rows1: rowsIn(p1), rows2: rowsIn(p2),
+        }));
+      `);
+      expect(out.untouched).toBe(true);
+      expect(out.p1).toBe(`${out.base}-1`);
+      expect(out.p2).toBe(`${out.base}-2`);
+      expect(out.rows1).toBe(3);
+      expect(out.rows2).toBe(3);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("VACUUM INTO failure throws and aborts the migration run (nothing recorded)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ltm-backup-fail-"));
+    const dbFile = join(dir, "w.db");
+    try {
+      // The live DB path holds bytes that are not a database: VACUUM INTO fails.
+      writeFileSync(dbFile, "not a sqlite database ".repeat(200));
+      const out = runScript(dbFile, `
+        const mem = new Database(":memory:");
+        let error = "";
+        try { await m.runPendingMigrations(mem); } catch (e) { error = String(e.message ?? e); }
+        const recorded = (mem.query("SELECT COUNT(*) c FROM _schema_version").get()).c;
+        const { readdirSync } = await import("fs");
+        const baks = readdirSync(${JSON.stringify(dir)}).filter((f) => f.includes(".bak-"));
+        console.log(JSON.stringify({ error, recorded, baks: baks.length }));
+      `);
+      expect(String(out.error)).toContain("backup failed");
+      expect(out.recorded).toBe(0);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

@@ -73,28 +73,30 @@ export function computeChecksum(content: string): string {
   return createHash("sha256").update(content).digest("hex");
 }
 
-export async function backupDb(): Promise<string> {
-  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const backupPath = `${DB_PATH}.bak-${timestamp}`;
+/**
+ * Snapshot the live DB before migrating. Uses VACUUM INTO, which writes a
+ * consistent single file that includes rows still only in the -wal file.
+ * Never overwrites: if the timestamped path exists, a numeric suffix is added.
+ * There is no raw-copy fallback — if VACUUM INTO fails this throws, and the
+ * caller aborts before any migration runs or is recorded.
+ */
+export async function backupDb(now: Date = new Date()): Promise<string> {
+  const timestamp = now.toISOString().replace(/[:.]/g, "-");
+  const base = `${DB_PATH}.bak-${timestamp}`;
   // Skip backup when the source DB doesn't exist (e.g. in-process test DBs
   // that were created on a different path than the module-level DB_PATH).
-  if (!existsSync(DB_PATH)) return backupPath;
-  // VACUUM INTO writes a consistent single-file snapshot that includes any
-  // rows still sitting in the -wal file. A raw byte copy of the main file
-  // would miss un-checkpointed WAL pages. Fall back to checkpoint + copy.
-  let src: Database | null = null;
+  if (!existsSync(DB_PATH)) return base;
+  let backupPath = base;
+  for (let n = 1; existsSync(backupPath); n++) backupPath = `${base}-${n}`;
+  const src = new Database(DB_PATH);
   try {
-    src = new Database(DB_PATH);
     src.run("VACUUM INTO ?", [backupPath]);
-    return backupPath;
-  } catch {
-    try { src?.run("PRAGMA wal_checkpoint(TRUNCATE)"); } catch { /* best effort */ }
-    const bytes = await Bun.file(DB_PATH).arrayBuffer();
-    await Bun.write(backupPath, bytes);
-    return backupPath;
+  } catch (err: unknown) {
+    throw new Error(`[migrations] backup failed (VACUUM INTO ${backupPath}): ${(err as Error).message}; refusing to migrate`);
   } finally {
-    try { src?.close(); } catch { /* ignore */ }
+    try { src.close(); } catch { /* ignore */ }
   }
+  return backupPath;
 }
 
 /**
