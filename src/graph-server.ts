@@ -24,7 +24,7 @@ import {
   startLtmListener,
   getCapabilities, acquireJanitorLock, scrubOrRefuse,
 } from "@rohirik/openltm-core";
-import { applyMemoryUiUpdate } from "./memoryUiUpdate.js";
+import { applyMemoryUiUpdate, replaceMemoryTags } from "./memoryUiUpdate.js";
 import { detectCommunities, generateClusterLabel, assignClusterColors } from "./cluster.js";
 import { getDbPath, getSchemaPath } from "./paths.js";
 import {
@@ -1161,17 +1161,7 @@ Bun.serve({
       if (body.importance !== undefined) {
         db.run("UPDATE memories SET importance=? WHERE id=?", [body.importance, id]);
       }
-      if (body.tags !== undefined) {
-        db.run("DELETE FROM memory_tags WHERE memory_id=?", [id]);
-        for (const tag of body.tags) {
-          let tagRow = db.query<{ id: number }, [string]>("SELECT id FROM tags WHERE name=?").get(tag);
-          if (!tagRow) {
-            db.run("INSERT OR IGNORE INTO tags(name) VALUES(?)", [tag]);
-            tagRow = db.query<{ id: number }, [string]>("SELECT id FROM tags WHERE name=?").get(tag)!;
-          }
-          db.run("INSERT OR IGNORE INTO memory_tags(memory_id,tag_id) VALUES(?,?)", [id, tagRow.id]);
-        }
-      }
+      if (body.tags !== undefined) replaceMemoryTags(db, id, body.tags);
       broadcast({ type: "memory_updated", id });
       return Response.json({ ok: true });
     }

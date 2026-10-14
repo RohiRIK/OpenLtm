@@ -249,7 +249,9 @@ function upsertTag(db: Database, name: string): number {
 
 function attachTags(db: Database, memoryId: number, tags: string[]): void {
   for (const tag of tags) {
-    const tagId = upsertTag(db, tag.toLowerCase().trim());
+    // Tag names are durable text: scrub BEFORE lowercasing (secret patterns are
+    // case-sensitive), fail-closed like every other write.
+    const tagId = upsertTag(db, scrubOrRefuse(tag.trim()).scrubbed.toLowerCase());
     db.run(`INSERT OR IGNORE INTO memory_tags (memory_id, tag_id) VALUES (?, ?)`, [memoryId, tagId]);
   }
 }

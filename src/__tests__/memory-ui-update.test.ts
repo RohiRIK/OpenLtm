@@ -6,7 +6,7 @@ import { Database } from "bun:sqlite";
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "fs";
 import { join } from "path";
-import { applyMemoryUiUpdate } from "../memoryUiUpdate.js";
+import { applyMemoryUiUpdate, replaceMemoryTags } from "../memoryUiUpdate.js";
 import { _forceScrubThrowForTesting, SCRUB_FAILED_PLACEHOLDER } from "@rohirik/openltm-core";
 
 const AWS = "AKIAIOSFODNN7EXAMPLE";
@@ -55,5 +55,45 @@ describe("PUT /api/memory/:id/ui scrub", () => {
     const { db, id } = freshDb();
     expect(await put(db, id, { title: null })).toEqual({ ok: true });
     expect(await put(db, id, {})).toEqual({ ok: false, error: "No fields to update" });
+  });
+});
+
+describe("PUT /api/memory/:id/ui color + icon validation", () => {
+  it.each(["#abc", "#A1B2C3", null])("accepts color %p", async (color) => {
+    const { db, id } = freshDb();
+    expect(await put(db, id, { color })).toEqual({ ok: true });
+  });
+
+  it.each(["red", "#abcd", "#12345g", "javascript:alert(1)", "#fff; background:url(x)", 7])("rejects color %p", async (color) => {
+    const { db, id } = freshDb();
+    const r = await put(db, id, { color, title: "should not apply" });
+    expect(r.ok).toBe(false);
+    const row = db.query<{ color: string | null; title: string | null }, [number]>("SELECT color, title FROM memories WHERE id=?").get(id)!;
+    expect(row.color).toBeNull();
+    expect(row.title).toBeNull();
+  });
+
+  it.each(["star", "alert-triangle", "🔥", null])("accepts icon %p", async (icon) => {
+    const { db, id } = freshDb();
+    expect(await put(db, id, { icon })).toEqual({ ok: true });
+  });
+
+  it.each(["", "x".repeat(33), "<svg onload=x>", "a b", `AKIA ${AWS}`, 3])("rejects icon %p", async (icon) => {
+    const { db, id } = freshDb();
+    expect((await put(db, id, { icon })).ok).toBe(false);
+    expect(db.query<{ icon: string | null }, [number]>("SELECT icon FROM memories WHERE id=?").get(id)!.icon).toBeNull();
+  });
+});
+
+describe("graph PUT /api/memory/:id tags scrub", () => {
+  it("plant-secret tag name is stored redacted", () => {
+    const { db, id } = freshDb();
+    replaceMemoryTags(db, id, [`deploy-${AWS}`, "clean"]);
+    const names = db.query<{ name: string }, [number]>(
+      "SELECT t.name FROM tags t JOIN memory_tags mt ON mt.tag_id=t.id WHERE mt.memory_id=?",
+    ).all(id).map((r) => r.name);
+    expect(names.join(",")).not.toContain(AWS);
+    expect(names).toContain("clean");
+    expect(names.some((n) => n.includes("[REDACTED:aws-access-key]"))).toBe(true);
   });
 });
