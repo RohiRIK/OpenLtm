@@ -56,13 +56,19 @@ function scrubContentField(value: unknown): unknown {
   return typeof value === "string" ? scrubForEgress(value) : value;
 }
 
-function scrubMemoryPayload(obj: unknown): unknown {
-  if (Array.isArray(obj)) return obj.map(scrubMemoryPayload);
-  if (!obj || typeof obj !== "object") return obj;
-  const mem = obj as Record<string, unknown>;
-  const out: Record<string, unknown> = { ...mem };
-  if (typeof out.content === "string") out.content = scrubForEgress(out.content);
-  if (typeof out.title === "string") out.title = scrubForEgress(out.title);
+/**
+ * Deep egress scrub: every string anywhere in the payload (including nested
+ * relations[].memory, tags, dedup_key, notes) goes through scrubForEgress.
+ * Fail-closed — scrub failure yields the stub, never raw text.
+ */
+function scrubMemoryPayload(obj: unknown, depth = 0): unknown {
+  if (typeof obj === "string") return scrubForEgress(obj);
+  if (depth > 32 || !obj || typeof obj !== "object") return obj;
+  if (Array.isArray(obj)) return obj.map((v) => scrubMemoryPayload(v, depth + 1));
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+    out[k] = scrubMemoryPayload(v, depth + 1);
+  }
   return out;
 }
 

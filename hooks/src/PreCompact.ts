@@ -5,6 +5,7 @@ import { resolveProject, getDbPath } from "../lib/resolveProject.js";
 import { readStdin, parseHookInput, readFileSafe, budgetSection, safeRun } from "../lib/hookUtils.js";
 import { logHook, logEvent } from "../lib/hookLogger.js";
 import { EVENTS } from "../lib/eventNames.js";
+import { scrubSnapshotLines } from "../lib/snapshotLines.js";
 import { getItems, exportContextMarkdown, emitEvent } from "@rohirik/openltm-core";
 
 const DB_PATH = getDbPath();
@@ -12,7 +13,7 @@ const DB_PATH = getDbPath();
 async function buildSummaryFromDb(name: string, cwd: string): Promise<string | null> {
   try {
     exportContextMarkdown(name);
-    const toLines = (items: Array<{ content: string }>) => items.map(i => i.content);
+    const toLines = (items: Array<{ content: string }>) => scrubSnapshotLines(items.map(i => i.content));
     const timestamp = new Date().toISOString().replace("T", " ").replace(/\..+/, "");
     return [
       `# Context Summary\n**Project:** ${name} (${cwd})\n**Compaction checkpoint:** ${timestamp}\n`,
@@ -27,7 +28,7 @@ async function buildSummaryFromDb(name: string, cwd: string): Promise<string | n
 }
 
 function buildSummaryFromFiles(name: string, cwd: string, projectDir: string): string {
-  const toLines = (raw: string) => raw.split("\n").filter(Boolean);
+  const toLines = (raw: string) => scrubSnapshotLines(raw.split("\n").filter(Boolean));
   const timestamp = new Date().toISOString().replace("T", " ").replace(/\..+/, "");
   return [
     `# Context Summary\n**Project:** ${name} (${cwd})\n**Compaction checkpoint:** ${timestamp}\n`,

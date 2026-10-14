@@ -475,3 +475,29 @@ describe("mcp/server — context returns the project's context items", () => {
     expect(anchored.project_scope).toBe("scope-proj");
   });
 });
+
+describe("mcp/server — neighbour relations are scrubbed (deep)", () => {
+  const AWS = "AKIAIOSFODNN7EXAMPLE";
+  it("get + recall on a clean memory never leak a related memory's secret", async () => {
+    const core = await import("../index.js");
+    const db = core.getDb();
+    // Plant raw secret directly (bypassing write scrub) to model a legacy row.
+    const dirty = Number(db.run(
+      `INSERT INTO memories (content, title, category, importance, confidence, status, dedup_key)
+       VALUES (?, ?, 'gotcha', 3, 1, 'active', ?)`,
+      [`runner key ${AWS} rotates monthly`, `title ${AWS}`, `neighbour-dirty-${AWS}`],
+    ).lastInsertRowid);
+    const clean = core.learn({ content: "zebrafish neighbour scrub clean memory", category: "pattern", importance: 3, skipExport: true }).id;
+    core.relate({ source_id: clean, target_id: dirty, relationship_type: "related_to" });
+
+    const client = await connect();
+    const got = await call(client, "get", { id: clean });
+    expect(got.content[0]!.text).not.toContain(AWS);
+    expect(got.content[0]!.text).toContain("[REDACTED:aws-access-key]");
+    const parsed = json<{ memory: { relations: Array<{ memory: { id: number } }> } }>(got);
+    expect(parsed.memory.relations.some((r) => r.memory.id === dirty)).toBe(true);
+
+    const rec = await call(client, "recall", { query: "zebrafish neighbour", verbose: true });
+    expect(rec.content[0]!.text).not.toContain(AWS);
+  });
+});

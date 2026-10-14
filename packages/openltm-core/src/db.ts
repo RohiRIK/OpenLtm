@@ -12,7 +12,7 @@ import { normalizeAnchorPaths } from "./anchors.js";
 import { getDb, DB_PATH, configure as configureDb } from "./shared-db.js";
 import { enqueueEmbedding } from "./queue/index.js";
 import { notifyLtm, notifyMemoryAdded } from "./events/index.js";
-import { scrubOrRefuse } from "./secretsScrubber.js";
+import { scrubOrRefuse, scrubForEgress } from "./secretsScrubber.js";
 import { insertProvenance, insertAudit, snapshotMemory, listProvenanceBatch } from "./dao/provenanceAudit.js";
 import type { ProvenanceSourceType } from "./dao/types.js";
 import type { LtmCoreConfig } from "./adapterTypes.js";
@@ -287,6 +287,19 @@ function getTagsBatch(db: Database, ids: number[]): Map<number, string[]> {
   return result;
 }
 
+/**
+ * Neighbour memories ride along in recall/get payloads, so their free text is
+ * egress: scrub content/title/user_note/dedup_key (dedup_key is derived from
+ * content). Fail-closed — a scrub failure yields the stub, never raw text.
+ */
+function scrubNeighbour(mem: Memory): Memory {
+  const out = { ...mem } as Memory & Record<string, unknown>;
+  for (const k of ["content", "title", "user_note", "dedup_key"]) {
+    if (typeof out[k] === "string") out[k] = scrubForEgress(out[k] as string);
+  }
+  return out;
+}
+
 function getRelationsForMemory(db: Database, memoryId: number): MemoryWithRelations["relations"] {
   const outgoing = db.query<{ target_memory_id: number; relationship_type: string }, [number]>(
     `SELECT target_memory_id, relationship_type FROM memory_relations WHERE source_memory_id=?`
@@ -300,11 +313,11 @@ function getRelationsForMemory(db: Database, memoryId: number): MemoryWithRelati
 
   for (const r of outgoing) {
     const mem = db.query<Memory, [number]>(`SELECT * FROM memories WHERE id=?`).get(r.target_memory_id);
-    if (mem) results.push({ memory: mem, relationship_type: r.relationship_type as RelationshipType, direction: "outgoing" });
+    if (mem) results.push({ memory: scrubNeighbour(mem), relationship_type: r.relationship_type as RelationshipType, direction: "outgoing" });
   }
   for (const r of incoming) {
     const mem = db.query<Memory, [number]>(`SELECT * FROM memories WHERE id=?`).get(r.source_memory_id);
-    if (mem) results.push({ memory: mem, relationship_type: r.relationship_type as RelationshipType, direction: "incoming" });
+    if (mem) results.push({ memory: scrubNeighbour(mem), relationship_type: r.relationship_type as RelationshipType, direction: "incoming" });
   }
 
   return results;
