@@ -72,7 +72,8 @@ describe("SessionStart compact index (behaviour)", () => {
     db.close();
     await start("startup");
     const out = await start();
-    expect(out).toContain("Pending review (ltm conflict accept|reject <stagingId>):");
+    expect(out).toContain("1 memory conflict is awaiting your review (run `ltm conflict list` yourself):");
+    expect(out).not.toContain("ltm conflict accept");
     expect(out).toContain(`- staging #${staging}: [${older}] vs [${newer}]`);
     expect(out).not.toContain(AWS_KEY);
   }, 30_000);

@@ -4,10 +4,27 @@
 
 ### Fixed
 - **Hermes plugin upgrade steps assumed a symlinked install.** `hermes plugins install` (catalog or repo path) leaves a copied directory in `~/.hermes/plugins/openltm/`, which `git pull` never updates, so upgrade verification stopped at its first step on such a machine. New `hermes/upgrade-plugin.sh` works for both: `--check` reports the install kind and installed vs. checkout version (exit 3 when missing or different); a copied install is replaced from the checkout with the old copy kept in `~/.hermes/plugin-backups/` (outside `plugins/`, so Hermes never loads it twice); a symlinked install is never deleted or copied over, and `--pull` fast-forwards the checkout it points at; `--link` turns a copy into a symlink. `openltm.json` and the DB are not touched.
+- `upgrade-plugin.sh --pull` refuses a checkout with uncommitted changes and exits 1 when the symlink target is not a git checkout. The script refuses an unset `HOME` and an empty or `/` `HERMES_HOME`, skips the backup when a copied install already matches the source, and keeps at most `OPENLTM_KEEP_BACKUPS` (default 5) plugin backups.
 
 ### Docs
 - [Hermes Integration](docs/10-hermes-plugin.md#upgrading-an-installed-plugin) and `hermes/README.md` explain how to tell a copied install from a symlink and how to upgrade each.
 
+## [2.17.4] — 2026-10-14
+
+### Security
+- `learn()` scrubs the agent-supplied title and tag names before writing (fail-closed); `compact()` recall scrubs tags.
+- `classifyRelation` scrubs both memory strings before the LLM call and skips the call if scrubbing fails.
+- Graph UI `PUT /api/memory/:id/ui` scrubs title and note, and validates color (`#rgb`/`#rrggbb`) and icon (name or emoji, max 32 chars).
+- MCP payload scrubbing is now deep, including neighbour memories in `relations[]`; past depth 32 a stub is returned, never the raw subtree.
+- PreCompact snapshot lines are scrubbed; a line that fails to scrub is omitted, and the previous summary is kept if every line drops.
+
+### Fixed
+- SessionStart conflict banner now addresses the user (run `ltm conflict list`) and gives the agent no accept/reject instruction.
+- `acceptStagedConflict` claims the row, checks both memories are active and supersedes in one transaction; rows whose memories are gone become `stale` (migration 027).
+- `ltm conflict list` scrubs staging terms; `listStagedConflicts(project)` only returns conflicts within that project or global.
+- Migrations run statement by statement so a failure rolls back; 027 aborts unless row counts match.
+- `backupDb` backs up the migrated DB with VACUUM INTO under its own file mode, never overwrites (numeric suffix), aborts the migration on failure, and retention only touches its own `.bak-*` files.
+- Tag replacement is atomic.
 ## [2.17.3] — 2026-10-14
 
 ### Docs

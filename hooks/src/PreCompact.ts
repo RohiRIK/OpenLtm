@@ -1,18 +1,19 @@
 #!/usr/bin/env bun
-import { existsSync, mkdirSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync } from "fs";
 import { join } from "path";
 import { resolveProject, getDbPath } from "../lib/resolveProject.js";
 import { readStdin, parseHookInput, readFileSafe, budgetSection, safeRun } from "../lib/hookUtils.js";
 import { logHook, logEvent } from "../lib/hookLogger.js";
 import { EVENTS } from "../lib/eventNames.js";
+import { scrubSnapshotLines, newSnapshotStats, writeSnapshotUnlessAllDropped, type SnapshotStats } from "../lib/snapshotLines.js";
 import { getItems, exportContextMarkdown, emitEvent } from "@rohirik/openltm-core";
 
 const DB_PATH = getDbPath();
 
-async function buildSummaryFromDb(name: string, cwd: string): Promise<string | null> {
+async function buildSummaryFromDb(name: string, cwd: string, stats: SnapshotStats): Promise<string | null> {
   try {
     exportContextMarkdown(name);
-    const toLines = (items: Array<{ content: string }>) => items.map(i => i.content);
+    const toLines = (items: Array<{ content: string }>) => scrubSnapshotLines(items.map(i => i.content), stats);
     const timestamp = new Date().toISOString().replace("T", " ").replace(/\..+/, "");
     return [
       `# Context Summary\n**Project:** ${name} (${cwd})\n**Compaction checkpoint:** ${timestamp}\n`,
@@ -26,8 +27,8 @@ async function buildSummaryFromDb(name: string, cwd: string): Promise<string | n
   }
 }
 
-function buildSummaryFromFiles(name: string, cwd: string, projectDir: string): string {
-  const toLines = (raw: string) => raw.split("\n").filter(Boolean);
+function buildSummaryFromFiles(name: string, cwd: string, projectDir: string, stats: SnapshotStats): string {
+  const toLines = (raw: string) => scrubSnapshotLines(raw.split("\n").filter(Boolean), stats);
   const timestamp = new Date().toISOString().replace("T", " ").replace(/\..+/, "");
   return [
     `# Context Summary\n**Project:** ${name} (${cwd})\n**Compaction checkpoint:** ${timestamp}\n`,
@@ -54,11 +55,18 @@ async function main(): Promise<void> {
   if (!existsSync(projectDir)) mkdirSync(projectDir, { recursive: true });
 
   // Try DB first; fall back to .md files if DB doesn't exist yet
-  const finalSummary = existsSync(DB_PATH)
-    ? ((await buildSummaryFromDb(name, cwd)) ?? buildSummaryFromFiles(name, cwd, projectDir))
-    : buildSummaryFromFiles(name, cwd, projectDir);
+  let stats = newSnapshotStats();
+  let finalSummary = existsSync(DB_PATH) ? await buildSummaryFromDb(name, cwd, stats) : null;
+  if (finalSummary === null) {
+    stats = newSnapshotStats();
+    finalSummary = buildSummaryFromFiles(name, cwd, projectDir, stats);
+  }
 
-  writeFileSync(join(projectDir, "context-summary.md"), finalSummary);
+  const summaryPath = join(projectDir, "context-summary.md");
+  if (!writeSnapshotUnlessAllDropped(summaryPath, finalSummary, stats)) {
+    logHook("PreCompact", "warn", `Every snapshot line failed to scrub for "${name}"; kept the previous context summary`);
+    return;
+  }
   logHook("PreCompact", "info", `Saved context summary for "${name}" (${finalSummary.split("\n").length} lines)`);
   logEvent("PreCompact", EVENTS.COMPACT_PRE, { project: name });
   emitEvent({ hook: "PreCompact", event: EVENTS.COMPACT_PRE, project: name, ts: new Date().toISOString() });

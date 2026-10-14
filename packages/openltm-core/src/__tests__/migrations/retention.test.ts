@@ -116,3 +116,44 @@ describe("enforceRetention", () => {
     expect(result.kept).toEqual([]);
   });
 });
+
+describe("enforceRetention — only backupDb-named regular files", () => {
+  it("leaves user files, symlinks and dirs untouched and uncounted", async () => {
+    const { mkdirSync, symlinkSync, lstatSync } = await import("fs");
+    const dbPath = join(tmpDir, "x.db");
+    const real1 = makeBak("x.db.bak-2026-01-01T00-00-00-000Z", 200);
+    const real2 = makeBak("x.db.bak-2026-01-02T00-00-00-000Z", 200);
+    const notes = makeBak("x.db.bak-notes", 200);
+    const almost = makeBak("x.db.bak-2026-01-01T00-00-00-000Z.old", 200);
+    const otherDb = makeBak("xxdb.bak-2026-01-01T00-00-00-000Z", 200); // '.' must be literal
+    const target = makeBak("keep-me.txt", 200);
+    const link = join(tmpDir, "x.db.bak-2025-01-01T00-00-00-000Z");
+    symlinkSync(target, link);
+    const dir = join(tmpDir, "x.db.bak-2024-01-01T00-00-00-000Z");
+    mkdirSync(dir);
+
+    const result = await enforceRetention(1, { dbPath });
+    expect(result.deleted).toEqual([real1]);
+    expect(result.kept).toEqual([real2]);
+    for (const p of [notes, almost, otherDb, target]) expect(existsSync(p)).toBe(true);
+    expect(lstatSync(link).isSymbolicLink()).toBe(true);
+    expect(lstatSync(dir).isDirectory()).toBe(true);
+    expect(existsSync(real2)).toBe(true);
+  });
+
+  it("orders by timestamp, then numeric suffix (-10 after -9, bare before -1)", async () => {
+    const dbPath = join(tmpDir, "openltm.db");
+    const ts = "openltm.db.bak-2026-03-01T00-00-00-000Z";
+    const bare = makeBak(ts, 200);
+    const s1 = makeBak(`${ts}-1`, 200);
+    const s2 = makeBak(`${ts}-2`, 200);
+    const s9 = makeBak(`${ts}-9`, 200);
+    const s10 = makeBak(`${ts}-10`, 200);
+    const older = makeBak("openltm.db.bak-2026-02-28T23-59-59-999Z-5", 200);
+    const newer = makeBak("openltm.db.bak-2026-03-02T00-00-00-000Z", 200);
+
+    const result = await enforceRetention(2, { dbPath });
+    expect(result.deleted).toEqual([older, bare, s1, s2, s9]);
+    expect(result.kept).toEqual([s10, newer]);
+  });
+});

@@ -475,3 +475,72 @@ describe("mcp/server — context returns the project's context items", () => {
     expect(anchored.project_scope).toBe("scope-proj");
   });
 });
+
+describe("mcp/server — neighbour relations are scrubbed (deep)", () => {
+  const AWS = "AKIAIOSFODNN7EXAMPLE";
+  it("get + recall on a clean memory never leak a related memory's secret", async () => {
+    const core = await import("../index.js");
+    const db = core.getDb();
+    // Plant raw secret directly (bypassing write scrub) to model a legacy row.
+    const dirty = Number(db.run(
+      `INSERT INTO memories (content, title, category, importance, confidence, status, dedup_key)
+       VALUES (?, ?, 'gotcha', 3, 1, 'active', ?)`,
+      [`runner key ${AWS} rotates monthly`, `title ${AWS}`, `neighbour-dirty-${AWS}`],
+    ).lastInsertRowid);
+    const clean = core.learn({ content: "zebrafish neighbour scrub clean memory", category: "pattern", importance: 3, skipExport: true }).id;
+    core.relate({ source_id: clean, target_id: dirty, relationship_type: "related_to" });
+
+    const client = await connect();
+    const got = await call(client, "get", { id: clean });
+    expect(got.content[0]!.text).not.toContain(AWS);
+    expect(got.content[0]!.text).toContain("[REDACTED:aws-access-key]");
+    const parsed = json<{ memory: { relations: Array<{ memory: { id: number } }> } }>(got);
+    expect(parsed.memory.relations.some((r) => r.memory.id === dirty)).toBe(true);
+
+    const rec = await call(client, "recall", { query: "zebrafish neighbour", verbose: true });
+    expect(rec.content[0]!.text).not.toContain(AWS);
+  });
+});
+
+describe("mcp/server — tags scrub (write + compact egress)", () => {
+  const AWS = "AKIAIOSFODNN7EXAMPLE";
+  it("learn() stores a planted-secret tag redacted", async () => {
+    const core = await import("../index.js");
+    const id = core.learn({ content: "quokka tag write scrub", category: "pattern", importance: 3, tags: [`key-${AWS}`], skipExport: true }).id;
+    const names = core.getDb().query<{ name: string }, [number]>(
+      "SELECT t.name FROM tags t JOIN memory_tags mt ON mt.tag_id=t.id WHERE mt.memory_id=?",
+    ).all(id).map((r) => r.name);
+    expect(names.join(",").toUpperCase()).not.toContain(AWS);
+    expect(names.join(",")).toContain("[redacted:aws-access-key]");
+  });
+
+  it("compact recall output never returns a raw legacy tag", async () => {
+    const core = await import("../index.js");
+    const db = core.getDb();
+    const id = core.learn({ content: "wombat compact tag egress", category: "pattern", importance: 3, skipExport: true }).id;
+    // Legacy raw tag inserted directly (bypassing the write scrub).
+    db.run("INSERT OR IGNORE INTO tags(name) VALUES(?)", [`legacy-${AWS}`]);
+    const tagId = db.query<{ id: number }, [string]>("SELECT id FROM tags WHERE name=?").get(`legacy-${AWS}`)!.id;
+    db.run("INSERT INTO memory_tags(memory_id, tag_id) VALUES(?, ?)", [id, tagId]);
+    const client = await connect();
+    const rec = await call(client, "recall", { query: "wombat compact" });
+    const text = rec.content[0]!.text;
+    expect(text).toContain(`${id}`);
+    expect(text).not.toContain(AWS);
+    expect(text).toContain("[REDACTED:aws-access-key]");
+  });
+
+  it("deep scrub past depth 32 returns the stub, never the raw value", async () => {
+    const { scrubMemoryPayload } = await import("../mcp/server.js");
+    const core = await import("../index.js");
+    let nested: unknown = { secret: `raw ${AWS}` };
+    for (let i = 0; i < 40; i++) nested = { child: nested };
+    const out = JSON.stringify(scrubMemoryPayload(nested));
+    expect(out).not.toContain(AWS);
+    expect(out).toContain(core.SCRUB_FAILED_PLACEHOLDER);
+    // Arrays too.
+    let arr: unknown = [`raw ${AWS}`];
+    for (let i = 0; i < 40; i++) arr = [arr];
+    expect(JSON.stringify(scrubMemoryPayload(arr))).not.toContain(AWS);
+  });
+});

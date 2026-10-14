@@ -7,7 +7,7 @@
 import type { Database } from "bun:sqlite";
 import type { EmbeddingProvider } from "./providers/embeddingProvider.js";
 import { setEmbedding, listMemoryIdsNeedingEmbedding } from "./dao/embeddings.js";
-import { scrubForEgress } from "./secretsScrubber.js";
+import { scrubForEgress, isEgressScrubFailed } from "./secretsScrubber.js";
 import { notPrivateSql } from "./privacy.js";
 
 // --- Provider config (retained for LLM/auto-relate path) ---
@@ -396,7 +396,12 @@ export async function classifyRelation(a: string, b: string): Promise<AutoRelati
   const cfg = getLlmConfig();
   if (!cfg) return null;
 
-  const userMessage = `Memory A: ${a}\n\nMemory B: ${b}`;
+  // Egress: never send raw memory text. If scrubbing fails for either side,
+  // skip the call entirely (no stub-vs-text classification is meaningful).
+  const safeA = scrubForEgress(a);
+  const safeB = scrubForEgress(b);
+  if (isEgressScrubFailed(safeA) || isEgressScrubFailed(safeB)) return null;
+  const userMessage = `Memory A: ${safeA}\n\nMemory B: ${safeB}`;
   const raw = await callLlm(cfg, userMessage);
   if (!raw || !VALID_RELATIONS.has(raw)) return null;
   return raw as AutoRelationType;
