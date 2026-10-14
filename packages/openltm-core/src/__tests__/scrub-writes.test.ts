@@ -90,6 +90,34 @@ describe("learn() fail-closed write", () => {
   });
 });
 
+describe("learn() title fail-closed write", () => {
+  it("plant-secret: agent-supplied title is redacted before INSERT", () => {
+    const result = core.learn({
+      content: `title scrub body ${Date.now()}`,
+      title: `key ${AWS_KEY}`,
+      category: "gotcha",
+      importance: 3,
+      skipExport: true,
+    });
+    const row = db.query<{ title: string }, [number]>("SELECT title FROM memories WHERE id = ?").get(result.id);
+    assertNoSecret(row?.title);
+    expect(row?.title).toContain("[REDACTED:aws-access-key]");
+  });
+
+  it("on scrub throw the title never stores the original", () => {
+    core._forceScrubThrowForTesting(true);
+    const result = core.learn({
+      content: `title scrub-fail body ${Date.now()}`,
+      title: `key ${AWS_KEY}`,
+      category: "gotcha",
+      importance: 2,
+      skipExport: true,
+    });
+    const row = db.query<{ title: string | null }, [number]>("SELECT title FROM memories WHERE id = ?").get(result.id);
+    assertNoSecret(row?.title ?? "");
+  });
+});
+
 describe("W4 context.addItem", () => {
   it("scrubs before INSERT into context_items", () => {
     const project = `scrub-w4-${Date.now()}`;

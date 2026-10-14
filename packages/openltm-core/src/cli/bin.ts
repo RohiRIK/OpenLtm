@@ -67,7 +67,11 @@ async function main(): Promise<void> {
     } = await import("../index.js");
     const action = argv[1] ?? "list";
     if (action === "list") {
-      const rows = listStagedConflicts(50);
+      const { scrubForEgress } = await import("../secretsScrubber.js");
+      const rows = listStagedConflicts(50).map((r) => ({
+        ...r,
+        term: r.term ? scrubForEgress(r.term) : r.term,
+      }));
       process.stdout.write(JSON.stringify(rows, null, 2) + "\n");
       process.exit(0);
     }
