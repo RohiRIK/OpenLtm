@@ -201,24 +201,71 @@ describe("backupDb snapshot", () => {
     }
   });
 
-  it("VACUUM INTO failure throws and aborts the migration run (nothing recorded)", () => {
+  it("backup failure throws and aborts the migration run (nothing recorded, rows intact)", async () => {
     const dir = mkdtempSync(join(tmpdir(), "ltm-backup-fail-"));
-    const dbFile = join(dir, "w.db");
+    const dbFile = join(dir, "openltm.db");
+    const m = await import("../../migrations.js");
+    const db = new Database(dbFile, { create: true });
     try {
-      // The live DB path holds bytes that are not a database: VACUUM INTO fails.
-      writeFileSync(dbFile, "not a sqlite database ".repeat(200));
-      const out = runScript(dbFile, `
-        const mem = new Database(":memory:");
-        let error = "";
-        try { await m.runPendingMigrations(mem); } catch (e) { error = String(e.message ?? e); }
-        const recorded = (mem.query("SELECT COUNT(*) c FROM _schema_version").get()).c;
-        const { readdirSync } = await import("fs");
-        const baks = readdirSync(${JSON.stringify(dir)}).filter((f) => f.includes(".bak-"));
-        console.log(JSON.stringify({ error, recorded, baks: baks.length }));
-      `);
-      expect(String(out.error)).toContain("backup failed");
-      expect(out.recorded).toBe(0);
+      db.exec("PRAGMA foreign_keys=ON;");
+      db.exec(readFileSync(CORE_SCHEMA, "utf-8").replace(
+        "CHECK(status IN ('pending', 'accepted', 'rejected', 'coexist', 'stale'))",
+        "CHECK(status IN ('pending', 'accepted', 'rejected', 'coexist'))",
+      ));
+      m.ensureMigrationsTable(db);
+      for (const f of await m.getMigrationFiles()) {
+        if (f.version <= 26) db.run("INSERT OR IGNORE INTO _schema_version (version, name, checksum) VALUES (?, ?, ?)", [f.version, f.name, m.computeChecksum(f.content)]);
+      }
+      seedValid(db);
+      const before = rows(db);
+      m._forceBackupFailForTesting(true);
+      try {
+        await expect(m.runPendingMigrations(db)).rejects.toThrow(/backup failed/);
+      } finally {
+        m._forceBackupFailForTesting(false);
+      }
+      expect(recorded(db, 27)).toBe(0);
+      expect(rows(db)).toEqual(before);
+      expect(stagingDdl(db)).not.toContain("'stale'");
     } finally {
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it.each([0o600, 0o640])("backs up the db passed in, with the source file mode (%o)", async (mode) => {
+    if (process.platform === "win32") return;
+    const dir = mkdtempSync(join(tmpdir(), "ltm-backup-mode-"));
+    const dbFile = join(dir, "custom-name.db");
+    const { chmodSync, statSync } = require("fs") as typeof import("fs");
+    const m = await import("../../migrations.js");
+    const db = new Database(dbFile, { create: true });
+    try {
+      db.exec("CREATE TABLE t(x); INSERT INTO t VALUES (1);");
+      chmodSync(dbFile, mode);
+      const p = await m.backupDb(new Date("2026-10-14T06:00:00.000Z"), db);
+      expect(p.startsWith(`${dbFile}.bak-`)).toBe(true);
+      expect(statSync(p).mode & 0o777).toBe(mode);
+      expect((new Database(p, { readonly: true }).query("SELECT COUNT(*) c FROM t").get() as { c: number }).c).toBe(1);
+    } finally {
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("in-memory and empty databases are not backed up", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "ltm-backup-empty-"));
+    const m = await import("../../migrations.js");
+    const { existsSync } = require("fs") as typeof import("fs");
+    const empty = new Database(join(dir, "empty.db"), { create: true });
+    try {
+      empty.exec("CREATE TABLE t(x);");
+      expect(existsSync(await m.backupDb(new Date(), empty))).toBe(false);
+      const mem = new Database(":memory:");
+      mem.exec("CREATE TABLE t(x); INSERT INTO t VALUES (1);");
+      expect(existsSync(await m.backupDb(new Date(), mem))).toBe(false);
+    } finally {
+      empty.close();
       rmSync(dir, { recursive: true, force: true });
     }
   });

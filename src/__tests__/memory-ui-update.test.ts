@@ -92,8 +92,28 @@ describe("graph PUT /api/memory/:id tags scrub", () => {
     const names = db.query<{ name: string }, [number]>(
       "SELECT t.name FROM tags t JOIN memory_tags mt ON mt.tag_id=t.id WHERE mt.memory_id=?",
     ).all(id).map((r) => r.name);
-    expect(names.join(",")).not.toContain(AWS);
+    expect(names.join(",").toUpperCase()).not.toContain(AWS);
     expect(names).toContain("clean");
-    expect(names.some((n) => n.includes("[REDACTED:aws-access-key]"))).toBe(true);
+    expect(names.some((n) => n.includes("[redacted:aws-access-key]"))).toBe(true);
+  });
+});
+
+describe("replaceMemoryTags transaction + normalisation", () => {
+  const names = (db: Database, id: number) => db.query<{ name: string }, [number]>(
+    "SELECT t.name FROM tags t JOIN memory_tags mt ON mt.tag_id=t.id WHERE mt.memory_id=? ORDER BY t.name",
+  ).all(id).map((r) => r.name);
+
+  it("lowercases and trims like learn()'s attachTags", () => {
+    const { db, id } = freshDb();
+    replaceMemoryTags(db, id, ["  Infra ", "CI"]);
+    expect(names(db, id)).toEqual(["ci", "infra"]);
+  });
+
+  it("a failure part-way rolls back: previous tags are kept", () => {
+    const { db, id } = freshDb();
+    replaceMemoryTags(db, id, ["old-a", "old-b"]);
+    // A non-string sneaks past validation -> trim() throws mid-loop.
+    expect(() => replaceMemoryTags(db, id, ["new-a", 42 as unknown as string])).toThrow();
+    expect(names(db, id)).toEqual(["old-a", "old-b"]);
   });
 });

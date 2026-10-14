@@ -7,7 +7,9 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { existsSync, mkdirSync, readdirSync, readFileSync } from "fs";
 import { join } from "path";
 import { initSandboxDb, makeSandbox, markOnboarded, runHook, type Sandbox } from "./hookHarness";
-import { scrubSnapshotLines } from "../../../hooks/lib/snapshotLines.js";
+import { newSnapshotStats, scrubSnapshotLines, writeSnapshotUnlessAllDropped } from "../../../hooks/lib/snapshotLines.js";
+import { mkdtempSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
 import { _forceScrubThrowForTesting } from "@rohirik/openltm-core";
 
 const AWS_KEY = "AKIAIOSFODNN7EXAMPLE";
@@ -68,6 +70,57 @@ describe("scrubSnapshotLines", () => {
       expect(out).toEqual([]);
     } finally {
       _forceScrubThrowForTesting(false);
+    }
+  });
+});
+
+describe("PreCompact keeps the previous summary when every line is dropped", () => {
+  it("all lines fail to scrub -> previous context-summary.md is untouched", () => {
+    const dir = mkdtempSync(join(tmpdir(), "precompact-keep-"));
+    const path = join(dir, "context-summary.md");
+    writeFileSync(path, "PREVIOUS SUMMARY");
+    try {
+      const stats = newSnapshotStats();
+      _forceScrubThrowForTesting(true);
+      let lines: string[];
+      try {
+        lines = scrubSnapshotLines([`goal ${AWS_KEY}`, "progress"], stats);
+      } finally {
+        _forceScrubThrowForTesting(false);
+      }
+      expect(lines).toEqual([]);
+      expect(stats).toEqual({ input: 2, kept: 0 });
+      expect(writeSnapshotUnlessAllDropped(path, "# Context Summary\n", stats)).toBe(false);
+      expect(readFileSync(path, "utf-8")).toBe("PREVIOUS SUMMARY");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("writes when some lines survive, and when there was nothing to scrub", () => {
+    const dir = mkdtempSync(join(tmpdir(), "precompact-write-"));
+    const path = join(dir, "context-summary.md");
+    writeFileSync(path, "PREVIOUS SUMMARY");
+    try {
+      const stats = newSnapshotStats();
+      scrubSnapshotLines(["kept line"], stats);
+      expect(writeSnapshotUnlessAllDropped(path, "NEW", stats)).toBe(true);
+      expect(readFileSync(path, "utf-8")).toBe("NEW");
+      expect(writeSnapshotUnlessAllDropped(path, "EMPTY PROJECT", newSnapshotStats())).toBe(true);
+      expect(readFileSync(path, "utf-8")).toBe("EMPTY PROJECT");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("first run with every line dropped still writes (no previous file to keep)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "precompact-first-"));
+    const path = join(dir, "context-summary.md");
+    try {
+      expect(writeSnapshotUnlessAllDropped(path, "SKELETON", { input: 3, kept: 0 })).toBe(true);
+      expect(readFileSync(path, "utf-8")).toBe("SKELETON");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });

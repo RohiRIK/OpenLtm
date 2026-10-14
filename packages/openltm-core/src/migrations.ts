@@ -6,8 +6,8 @@
  * CLI: bun migrations.ts [--status | --up | --down | --reset]
  */
 import { Database } from "bun:sqlite";
-import { readdirSync, existsSync, statSync, unlinkSync } from "fs";
-import { join, dirname } from "path";
+import { readdirSync, existsSync, statSync, unlinkSync, chmodSync } from "fs";
+import { join, dirname, basename } from "path";
 import { createHash } from "crypto";
 import { getDbPath, getMigrationsDir } from "./paths.js";
 
@@ -73,30 +73,64 @@ export function computeChecksum(content: string): string {
   return createHash("sha256").update(content).digest("hex");
 }
 
-/**
- * Snapshot the live DB before migrating. Uses VACUUM INTO, which writes a
- * consistent single file that includes rows still only in the -wal file.
- * Never overwrites: if the timestamped path exists, a numeric suffix is added.
- * There is no raw-copy fallback — if VACUUM INTO fails this throws, and the
- * caller aborts before any migration runs or is recorded.
- */
-export async function backupDb(now: Date = new Date()): Promise<string> {
-  const timestamp = now.toISOString().replace(/[:.]/g, "-");
-  const base = `${DB_PATH}.bak-${timestamp}`;
-  // Skip backup when the source DB doesn't exist (e.g. in-process test DBs
-  // that were created on a different path than the module-level DB_PATH).
-  if (!existsSync(DB_PATH)) return base;
-  let backupPath = base;
-  for (let n = 1; existsSync(backupPath); n++) backupPath = `${base}-${n}`;
-  const src = new Database(DB_PATH);
-  try {
-    src.run("VACUUM INTO ?", [backupPath]);
-  } catch (err: unknown) {
-    throw new Error(`[migrations] backup failed (VACUUM INTO ${backupPath}): ${(err as Error).message}; refusing to migrate`);
-  } finally {
-    try { src.close(); } catch { /* ignore */ }
+let _failBackupForTesting = false;
+/** Test hook: make the next backups fail as if VACUUM INTO errored. */
+export function _forceBackupFailForTesting(value: boolean): void {
+  _failBackupForTesting = value;
+}
+
+/** True when no user table holds a row (nothing a backup could preserve). */
+function databaseIsEmpty(db: Database): boolean {
+  const tables = db.query<{ name: string }, []>(
+    `SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name <> '_schema_version'`,
+  ).all();
+  for (const { name } of tables) {
+    try {
+      if (db.query(`SELECT 1 FROM ${quoteIdent(name)} LIMIT 1`).get()) return false;
+    } catch {
+      return false; // virtual/shadow table we cannot read: be safe, back up
+    }
   }
-  return backupPath;
+  return true;
+}
+
+/**
+ * Snapshot the database being migrated (the `db` passed in, not the global
+ * path). Uses VACUUM INTO, which writes a consistent single file that
+ * includes rows still only in the -wal file.
+ * - Never overwrites: if the timestamped path exists, a numeric suffix is added.
+ * - The backup gets the source DB's file mode (created under umask 077 first,
+ *   so it is never briefly world-readable).
+ * - No raw-copy fallback: if VACUUM INTO fails this throws, and the caller
+ *   aborts before any migration runs or is recorded.
+ * In-memory databases and databases with no rows are not backed up.
+ */
+export async function backupDb(now: Date = new Date(), source?: Database): Promise<string> {
+  const ownConnection = source === undefined;
+  const srcPath = source ? source.filename : DB_PATH;
+  const timestamp = now.toISOString().replace(/[:.]/g, "-");
+  const base = `${srcPath}.bak-${timestamp}`;
+  if (!srcPath || srcPath === ":memory:" || !existsSync(srcPath)) return base;
+  const src = source ?? new Database(srcPath);
+  try {
+    if (databaseIsEmpty(src)) return base;
+    let backupPath = base;
+    for (let n = 1; existsSync(backupPath); n++) backupPath = `${base}-${n}`;
+    const mode = statSync(srcPath).mode & 0o777;
+    const prevUmask = process.umask(0o077);
+    try {
+      if (_failBackupForTesting) throw new Error("injected backup failure");
+      src.run("VACUUM INTO ?", [backupPath]);
+      chmodSync(backupPath, mode);
+    } catch (err: unknown) {
+      throw new Error(`[migrations] backup failed (VACUUM INTO ${backupPath}): ${(err as Error).message}; refusing to migrate`);
+    } finally {
+      process.umask(prevUmask);
+    }
+    return backupPath;
+  } finally {
+    if (ownConnection) try { src.close(); } catch { /* ignore */ }
+  }
 }
 
 /**
@@ -154,7 +188,8 @@ export async function enforceRetention(
     return result;
   }
 
-  const files = readdirSync(dir).filter((f) => f.startsWith("openltm.db.bak-"));
+  const prefix = `${basename(dbPath)}.bak-`;
+  const files = readdirSync(dir).filter((f) => f.startsWith(prefix));
   if (files.length === 0) return result;
 
   const now = Date.now();
@@ -660,7 +695,7 @@ export async function runPendingMigrations(db?: Database): Promise<MigrationResu
 
   if (pending.length === 0) return [];
 
-  const newBackupPath = await backupDb();
+  const newBackupPath = await backupDb(new Date(), _db);
 
   const results: MigrationResult[] = [];
   for (const file of pending) {
@@ -709,7 +744,7 @@ export async function runPendingMigrations(db?: Database): Promise<MigrationResu
   }
 
   try {
-    await enforceRetention(getRetentionDefault(), { currentBackupPath: newBackupPath });
+    await enforceRetention(getRetentionDefault(), { currentBackupPath: newBackupPath, dbPath: _db.filename || undefined });
   } catch (err: unknown) {
     console.warn(`[migrations] retention enforcement failed: ${(err as Error).message}`);
   }

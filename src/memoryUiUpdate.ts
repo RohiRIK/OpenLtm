@@ -53,11 +53,17 @@ export function applyMemoryUiUpdate(db: Database, id: number, body: Record<strin
  * text: scrubOrRefuse before they reach the tags table.
  */
 export function replaceMemoryTags(db: Database, id: number, tags: string[]): void {
-  db.run("DELETE FROM memory_tags WHERE memory_id=?", [id]);
-  for (const rawTag of tags) {
-    const tag = scrubOrRefuse(rawTag).scrubbed;
-    db.run("INSERT OR IGNORE INTO tags(name) VALUES(?)", [tag]);
-    const tagRow = db.query<{ id: number }, [string]>("SELECT id FROM tags WHERE name=?").get(tag)!;
-    db.run("INSERT OR IGNORE INTO memory_tags(memory_id,tag_id) VALUES(?,?)", [id, tagRow.id]);
-  }
+  // One transaction: a failure part-way never leaves the memory with no tags.
+  db.transaction(() => {
+    db.run("DELETE FROM memory_tags WHERE memory_id=?", [id]);
+    for (const rawTag of tags) {
+      // Scrub BEFORE lowercasing (secret patterns are case-sensitive), then
+      // normalise like learn()'s attachTags.
+      const tag = scrubOrRefuse(rawTag.trim()).scrubbed.toLowerCase();
+      if (!tag) continue;
+      db.run("INSERT OR IGNORE INTO tags(name) VALUES(?)", [tag]);
+      const tagRow = db.query<{ id: number }, [string]>("SELECT id FROM tags WHERE name=?").get(tag)!;
+      db.run("INSERT OR IGNORE INTO memory_tags(memory_id,tag_id) VALUES(?,?)", [id, tagRow.id]);
+    }
+  })();
 }
