@@ -92,6 +92,7 @@ const fakeHome = join(testRoot, "home");
 mkdirSync(fakeHome, { recursive: true });
 
 const before = snapshot();
+const runStartedAt = Date.now() - 1000;
 
 const proc = Bun.spawnSync([process.execPath, "test", ...process.argv.slice(2)], {
   stdio: ["inherit", "inherit", "inherit"],
@@ -110,6 +111,18 @@ const proc = Bun.spawnSync([process.execPath, "test", ...process.argv.slice(2)],
 });
 
 const changes = diff(before, snapshot());
+
+// Migration backups: runPendingMigrations backs up the DB it migrates, so
+// per-test DBs leave `test-*.db.bak-*` files. Remove the ones this run made.
+for (const dir of new Set([tmpdir(), "/tmp"])) {
+  let names: string[] = [];
+  try { names = readdirSync(dir); } catch { continue; }
+  for (const name of names) {
+    if (!/^test-.*\.db\.bak-/.test(name)) continue;
+    const p = join(dir, name);
+    try { if (statSync(p).mtimeMs >= runStartedAt) rmSync(p, { force: true }); } catch {}
+  }
+}
 try { rmSync(testRoot, { recursive: true, force: true }); } catch {}
 
 let exitCode = proc.exitCode ?? 1;

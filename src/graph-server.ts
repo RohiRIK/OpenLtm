@@ -24,6 +24,7 @@ import {
   startLtmListener,
   getCapabilities, acquireJanitorLock, scrubOrRefuse,
 } from "@rohirik/openltm-core";
+import { applyMemoryUiUpdate, replaceMemoryTags } from "./memoryUiUpdate.js";
 import { detectCommunities, generateClusterLabel, assignClusterColors } from "./cluster.js";
 import { getDbPath, getSchemaPath } from "./paths.js";
 import {
@@ -1160,17 +1161,7 @@ Bun.serve({
       if (body.importance !== undefined) {
         db.run("UPDATE memories SET importance=? WHERE id=?", [body.importance, id]);
       }
-      if (body.tags !== undefined) {
-        db.run("DELETE FROM memory_tags WHERE memory_id=?", [id]);
-        for (const tag of body.tags) {
-          let tagRow = db.query<{ id: number }, [string]>("SELECT id FROM tags WHERE name=?").get(tag);
-          if (!tagRow) {
-            db.run("INSERT OR IGNORE INTO tags(name) VALUES(?)", [tag]);
-            tagRow = db.query<{ id: number }, [string]>("SELECT id FROM tags WHERE name=?").get(tag)!;
-          }
-          db.run("INSERT OR IGNORE INTO memory_tags(memory_id,tag_id) VALUES(?,?)", [id, tagRow.id]);
-        }
-      }
+      if (body.tags !== undefined) replaceMemoryTags(db, id, body.tags);
       broadcast({ type: "memory_updated", id });
       return Response.json({ ok: true });
     }
@@ -1207,16 +1198,8 @@ Bun.serve({
     if (uiMatch?.[1] && req.method === "PUT") {
       const id = parseInt(uiMatch[1], 10);
       const body = await req.json() as Record<string, unknown>;
-      const updates: string[] = [];
-      const params: (string | number | null)[] = [];
-      if ("hidden" in body)    { updates.push("hidden=?");    params.push(body.hidden ? 1 : 0); }
-      if ("color" in body)     { updates.push("color=?");     params.push((body.color as string | null) ?? null); }
-      if ("icon" in body)      { updates.push("icon=?");      params.push((body.icon as string | null) ?? null); }
-      if ("user_note" in body) { updates.push("user_note=?"); params.push((body.user_note as string | null) ?? null); }
-      if ("title" in body)     { updates.push("title=?");     params.push((body.title as string | null) ?? null); }
-      if (updates.length === 0) return Response.json({ ok: false, error: "No fields to update" }, { status: 400 });
-      params.push(id);
-      db.run(`UPDATE memories SET ${updates.join(", ")} WHERE id=?`, params);
+      const result = applyMemoryUiUpdate(db, id, body);
+      if (!result.ok) return Response.json(result, { status: 400 });
       broadcast({ type: "refresh" });
       return Response.json({ ok: true });
     }

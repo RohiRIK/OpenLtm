@@ -12,7 +12,7 @@ import { normalizeAnchorPaths } from "./anchors.js";
 import { getDb, DB_PATH, configure as configureDb } from "./shared-db.js";
 import { enqueueEmbedding } from "./queue/index.js";
 import { notifyLtm, notifyMemoryAdded } from "./events/index.js";
-import { scrubOrRefuse } from "./secretsScrubber.js";
+import { scrubOrRefuse, scrubForEgress } from "./secretsScrubber.js";
 import { insertProvenance, insertAudit, snapshotMemory, listProvenanceBatch } from "./dao/provenanceAudit.js";
 import type { ProvenanceSourceType } from "./dao/types.js";
 import type { LtmCoreConfig } from "./adapterTypes.js";
@@ -249,7 +249,9 @@ function upsertTag(db: Database, name: string): number {
 
 function attachTags(db: Database, memoryId: number, tags: string[]): void {
   for (const tag of tags) {
-    const tagId = upsertTag(db, tag.toLowerCase().trim());
+    // Tag names are durable text: scrub BEFORE lowercasing (secret patterns are
+    // case-sensitive), fail-closed like every other write.
+    const tagId = upsertTag(db, scrubOrRefuse(tag.trim()).scrubbed.toLowerCase());
     db.run(`INSERT OR IGNORE INTO memory_tags (memory_id, tag_id) VALUES (?, ?)`, [memoryId, tagId]);
   }
 }
@@ -287,6 +289,19 @@ function getTagsBatch(db: Database, ids: number[]): Map<number, string[]> {
   return result;
 }
 
+/**
+ * Neighbour memories ride along in recall/get payloads, so their free text is
+ * egress: scrub content/title/user_note/dedup_key (dedup_key is derived from
+ * content). Fail-closed — a scrub failure yields the stub, never raw text.
+ */
+function scrubNeighbour(mem: Memory): Memory {
+  const out = { ...mem } as Memory & Record<string, unknown>;
+  for (const k of ["content", "title", "user_note", "dedup_key"]) {
+    if (typeof out[k] === "string") out[k] = scrubForEgress(out[k] as string);
+  }
+  return out;
+}
+
 function getRelationsForMemory(db: Database, memoryId: number): MemoryWithRelations["relations"] {
   const outgoing = db.query<{ target_memory_id: number; relationship_type: string }, [number]>(
     `SELECT target_memory_id, relationship_type FROM memory_relations WHERE source_memory_id=?`
@@ -300,11 +315,11 @@ function getRelationsForMemory(db: Database, memoryId: number): MemoryWithRelati
 
   for (const r of outgoing) {
     const mem = db.query<Memory, [number]>(`SELECT * FROM memories WHERE id=?`).get(r.target_memory_id);
-    if (mem) results.push({ memory: mem, relationship_type: r.relationship_type as RelationshipType, direction: "outgoing" });
+    if (mem) results.push({ memory: scrubNeighbour(mem), relationship_type: r.relationship_type as RelationshipType, direction: "outgoing" });
   }
   for (const r of incoming) {
     const mem = db.query<Memory, [number]>(`SELECT * FROM memories WHERE id=?`).get(r.source_memory_id);
-    if (mem) results.push({ memory: mem, relationship_type: r.relationship_type as RelationshipType, direction: "incoming" });
+    if (mem) results.push({ memory: scrubNeighbour(mem), relationship_type: r.relationship_type as RelationshipType, direction: "incoming" });
   }
 
   return results;
@@ -761,7 +776,14 @@ export function learn(input: LearnInput): LearnResult {
     };
   }
 
-  const title = input.title?.trim().slice(0, 60) || deriveTitle(content);
+  // Title is durable text too: scrub before slicing (fail-closed — on scrub
+  // failure fall back to a title derived from the already-scrubbed content).
+  let agentTitle: string | undefined;
+  if (input.title?.trim()) {
+    const st = scrubOrRefuse(input.title.trim());
+    agentTitle = st.redactions.includes("scrub-failed") ? undefined : st.scrubbed.slice(0, 60);
+  }
+  const title = agentTitle || deriveTitle(content);
 
   const result = db.run(
     `INSERT INTO memories (content, title, category, importance, confidence, source, project_scope, dedup_key, created_by, workspace_id, agent_id)

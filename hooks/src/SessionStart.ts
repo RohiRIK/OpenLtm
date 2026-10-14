@@ -119,7 +119,9 @@ function buildConflictSection(project: string): string {
 
     const lines: string[] = ["⚠️ Memory Conflicts", ""];
     if (staged.length > 0) {
-      lines.push("Pending review (ltm conflict accept|reject <stagingId>):");
+      // Addressed to the owner, not the agent: no instruction to resolve.
+      const n = staged.length;
+      lines.push(`${n} memory conflict${n === 1 ? " is" : "s are"} awaiting your review (run \`ltm conflict list\` yourself):`);
       for (const s of staged) {
         const term = s.term ? scrubForEgress(s.term) : "";
         lines.push(`- staging #${s.id}: [${s.olderId}] vs [${s.newerId}]${term ? ` (${term})` : ""}`);

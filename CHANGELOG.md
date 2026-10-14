@@ -10,6 +10,22 @@
 ### Changed
 - The OpenClaw `prefillLines` budget now counts the header and memory lines; the four frame lines are fixed overhead on top of it.
 
+## [2.17.4] — 2026-10-14
+
+### Security
+- `learn()` scrubs the agent-supplied title and tag names before writing (fail-closed); `compact()` recall scrubs tags.
+- `classifyRelation` scrubs both memory strings before the LLM call and skips the call if scrubbing fails.
+- Graph UI `PUT /api/memory/:id/ui` scrubs title and note, and validates color (`#rgb`/`#rrggbb`) and icon (name or emoji, max 32 chars).
+- MCP payload scrubbing is now deep, including neighbour memories in `relations[]`; past depth 32 a stub is returned, never the raw subtree.
+- PreCompact snapshot lines are scrubbed; a line that fails to scrub is omitted, and the previous summary is kept if every line drops.
+
+### Fixed
+- SessionStart conflict banner now addresses the user (run `ltm conflict list`) and gives the agent no accept/reject instruction.
+- `acceptStagedConflict` claims the row, checks both memories are active and supersedes in one transaction; rows whose memories are gone become `stale` (migration 027).
+- `ltm conflict list` scrubs staging terms; `listStagedConflicts(project)` only returns conflicts within that project or global.
+- Migrations run statement by statement so a failure rolls back; 027 aborts unless row counts match.
+- `backupDb` backs up the migrated DB with VACUUM INTO under its own file mode, never overwrites (numeric suffix), aborts the migration on failure, and retention only touches its own `.bak-*` files.
+- Tag replacement is atomic.
 ## [2.17.3] — 2026-10-14
 
 ### Docs

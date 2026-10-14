@@ -251,8 +251,8 @@ export interface StagedConflict {
 export function listStagedConflicts(limit = 50, project?: string): StagedConflict[] {
   const db = getDb();
   const scoped = project
-    ? `AND EXISTS (SELECT 1 FROM memories m WHERE m.id IN (s.older_id, s.newer_id)
-                     AND (m.project_scope IS NULL OR m.project_scope = ?))`
+    ? `AND NOT EXISTS (SELECT 1 FROM memories m WHERE m.id IN (s.older_id, s.newer_id)
+                     AND m.project_scope IS NOT NULL AND m.project_scope <> ?)`
     : "";
   return db.query<StagedConflict, Array<number | string>>(
     `SELECT s.id, s.older_id as olderId, s.newer_id as newerId, s.term, s.status, s.created_at as createdAt
@@ -263,20 +263,51 @@ export function listStagedConflicts(limit = 50, project?: string): StagedConflic
   ).all(...(project ? [project] : []), limit);
 }
 
+let _failAcceptAfterSupersede = false;
+/** Test hook: throw inside the accept transaction after supersede() ran. */
+export function _forceAcceptFailForTesting(value: boolean): void {
+  _failAcceptAfterSupersede = value;
+}
+
 /**
- * Accept a staged conflict: apply supersede(newer, older) and mark staging accepted.
- * Returns false if not found / not pending.
+ * Accept a staged conflict atomically. One write transaction (BEGIN IMMEDIATE):
+ *   1. Claim: UPDATE staging -> 'accepted' WHERE id=? AND status='pending';
+ *      0 rows -> false (unknown id, already resolved, or lost a race).
+ *   2. Guard: both memories must still be status='active'; otherwise the row
+ *      is marked 'stale' (not left pending forever) and false is returned.
+ *   3. supersede(newer, older); its own transaction nests as a SAVEPOINT.
+ * Any throw rolls back both the claim and the supersede: the memory stays
+ * active and the staging row stays pending.
  */
 export function acceptStagedConflict(stagingId: number): boolean {
   const db = getDb();
-  const row = db.query<{ id: number; older_id: number; newer_id: number; status: string }, [number]>(
-    `SELECT id, older_id, newer_id, status FROM memory_conflict_staging WHERE id = ?`,
-  ).get(stagingId);
-  if (!row || row.status !== "pending") return false;
 
-  supersede(row.newer_id, row.older_id, true);
-  db.run(`UPDATE memory_conflict_staging SET status = 'accepted' WHERE id = ?`, [stagingId]);
-  return true;
+  const run = db.transaction((): boolean => {
+    const claimed = db.run(
+      `UPDATE memory_conflict_staging SET status = 'accepted'
+       WHERE id = ? AND status = 'pending'`,
+      [stagingId],
+    );
+    if (Number(claimed.changes) === 0) return false;
+
+    const row = db.query<{ older_id: number; newer_id: number }, [number]>(
+      `SELECT older_id, newer_id FROM memory_conflict_staging WHERE id = ?`,
+    ).get(stagingId)!;
+    const active = db.query<{ n: number }, [number, number]>(
+      `SELECT COUNT(*) AS n FROM memories WHERE id IN (?, ?) AND status = 'active'`,
+    ).get(row.older_id, row.newer_id)!;
+    if (row.older_id === row.newer_id || active.n !== 2) {
+      // Retire instead of leaving pending forever; commits with the claim undone.
+      db.run(`UPDATE memory_conflict_staging SET status = 'stale' WHERE id = ?`, [stagingId]);
+      return false;
+    }
+
+    supersede(row.newer_id, row.older_id, true);
+    if (_failAcceptAfterSupersede) throw new Error("injected accept failure");
+    return true;
+  });
+
+  return run.immediate();
 }
 
 /** Reject a staged conflict without superseding. */

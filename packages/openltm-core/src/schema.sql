@@ -214,7 +214,7 @@ CREATE TABLE IF NOT EXISTS memory_conflict_staging (
   newer_id INTEGER NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
   term TEXT,
   status TEXT NOT NULL DEFAULT 'pending'
-    CHECK(status IN ('pending', 'accepted', 'rejected', 'coexist')),
+    CHECK(status IN ('pending', 'accepted', 'rejected', 'coexist', 'stale')),
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE(older_id, newer_id)
 );
