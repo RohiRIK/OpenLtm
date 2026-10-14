@@ -6,7 +6,7 @@
  * CLI: bun migrations.ts [--status | --up | --down | --reset]
  */
 import { Database } from "bun:sqlite";
-import { readdirSync, existsSync, statSync, unlinkSync, chmodSync } from "fs";
+import { readdirSync, existsSync, statSync, lstatSync, unlinkSync, chmodSync } from "fs";
 import { join, dirname, basename } from "path";
 import { createHash } from "crypto";
 import { getDbPath, getMigrationsDir } from "./paths.js";
@@ -188,18 +188,29 @@ export async function enforceRetention(
     return result;
   }
 
-  const prefix = `${basename(dbPath)}.bak-`;
-  const files = readdirSync(dir).filter((f) => f.startsWith(prefix));
-  if (files.length === 0) return result;
+  // Only files backupDb() itself names: <db filename>.bak-<ISO ts>[-<n>].
+  // Anything else that merely shares the prefix (user notes, symlinks, dirs)
+  // is never touched and never counted.
+  const escaped = basename(dbPath).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const backupRe = new RegExp(
+    `^${escaped}\\.bak-(\\d{4}-\\d{2}-\\d{2}T\\d{2}-\\d{2}-\\d{2}-\\d{3}Z)(?:-(\\d+))?$`,
+  );
+  const candidates: Array<{ name: string; ts: string; suffix: number }> = [];
+  for (const f of readdirSync(dir)) {
+    const m = backupRe.exec(f);
+    if (m) candidates.push({ name: f, ts: m[1]!, suffix: m[2] === undefined ? 0 : Number(m[2]) });
+  }
+  if (candidates.length === 0) return result;
 
   const now = Date.now();
-  const eligible: string[] = [];
+  const eligible: typeof candidates = [];
   const excluded: string[] = [];
-  for (const f of files) {
-    const fullPath = join(dir, f);
+  for (const c of candidates) {
+    const fullPath = join(dir, c.name);
     try {
-      const mtime = statSync(fullPath).mtimeMs;
-      if (now - mtime < gracePeriodMs) {
+      const st = lstatSync(fullPath);
+      if (!st.isFile()) continue; // symlink, directory, etc.: not ours
+      if (now - st.mtimeMs < gracePeriodMs) {
         excluded.push(fullPath);
         continue;
       }
@@ -213,7 +224,7 @@ export async function enforceRetention(
       excluded.push(fullPath);
       continue;
     }
-    eligible.push(fullPath);
+    eligible.push(c);
   }
 
   if (eligible.length === 0) {
@@ -221,10 +232,14 @@ export async function enforceRetention(
     return result;
   }
 
-  eligible.sort();
+  // Oldest first: by timestamp (fixed-width ISO sorts lexically), then by the
+  // collision suffix as a number (-10 after -9; no suffix before -1).
+  const ordered = eligible
+    .sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : a.suffix - b.suffix))
+    .map((c) => join(dir, c.name));
 
-  const toDelete = eligible.slice(0, Math.max(0, eligible.length - maxBackups));
-  const toKeep = eligible.slice(toDelete.length);
+  const toDelete = ordered.slice(0, Math.max(0, ordered.length - maxBackups));
+  const toKeep = ordered.slice(toDelete.length);
 
   for (const file of toDelete) {
     try {
