@@ -147,7 +147,8 @@ CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
   title,
   content,
   content='memories',
-  content_rowid='id'
+  content_rowid='id',
+  tokenize='porter unicode61 remove_diacritics 2'
 );
 
 -- Triggers to keep FTS in sync with memories table
@@ -175,7 +176,8 @@ CREATE VIRTUAL TABLE IF NOT EXISTS context_items_fts USING fts5(
   title,
   content,
   content='context_items',
-  content_rowid='id'
+  content_rowid='id',
+  tokenize='porter unicode61 remove_diacritics 2'
 );
 
 CREATE TRIGGER IF NOT EXISTS context_items_ai AFTER INSERT ON context_items BEGIN

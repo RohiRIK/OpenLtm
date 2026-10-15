@@ -142,7 +142,8 @@ CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
   title,
   content,
   content='memories',
-  content_rowid='id'
+  content_rowid='id',
+  tokenize='porter unicode61 remove_diacritics 2'
 );
 
 -- FTS5 for context_items
@@ -150,7 +151,8 @@ CREATE VIRTUAL TABLE IF NOT EXISTS context_items_fts USING fts5(
   title,
   content,
   content='context_items',
-  content_rowid='id'
+  content_rowid='id',
+  tokenize='porter unicode61 remove_diacritics 2'
 );
 """
 
