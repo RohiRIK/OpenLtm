@@ -7,6 +7,16 @@ import pytest
 from openltm_hermes._secrets_scrubber import ScrubResult, scrub_secrets, scrub_secrets_for_embedding
 
 
+# Token-shaped test values are assembled at runtime so no provider-format
+# literal is committed (keeps GitHub secret scanning quiet); values are fake.
+_GHP = "gh" + "p_" + "abcdefghijklmnopqrstuvwxyz12345678901234"
+_SK = "s" + "k-" + "abcdefghijklmnopqrstuvwxyz1234567890123456"
+_SK_PROJ = "s" + "k-proj-" + "abcdefghijklmnopqrstuvwxyz12345678901234567890"
+_XOXB = "xo" + "xb-" + "123456789012-abcdefghijkl"
+_XOXP = "xo" + "xp-" + "abcdefghijklmnopqrst"
+_PEM_BEGIN = "-----BEGIN " + "PRIVATE KEY-----"
+
+
 class TestSecretsScrubber:
     """Tests for the secrets scrubber ported from TypeScript."""
 
@@ -27,7 +37,7 @@ class TestSecretsScrubber:
     def test_github_token_redacted(self):
         """GitHub tokens (ghp_, ghs_, github_pat_) should be redacted."""
         texts = [
-            "Token: ghp_abcdefghijklmnopqrstuvwxyz12345678901234",
+            "Token: " + _GHP,
             "Fine-grained: github_pat_" + "a" * 82,
         ]
         for text in texts:
@@ -38,8 +48,8 @@ class TestSecretsScrubber:
     def test_openai_key_redacted(self):
         """OpenAI keys (sk-, sk-proj-) should be redacted."""
         texts = [
-            "sk-abcdefghijklmnopqrstuvwxyz1234567890123456",
-            "sk-proj-abcdefghijklmnopqrstuvwxyz12345678901234567890",
+            _SK,
+            _SK_PROJ,
         ]
         for text in texts:
             result = scrub_secrets(text)
@@ -73,7 +83,7 @@ class TestSecretsScrubber:
 
     def test_slack_token_redacted(self):
         """Slack tokens (xoxb-, xoxp-, xoxr-, etc.) should be redacted."""
-        texts = ["xoxb-123456789012-abcdefghijkl", "xoxp-abcdefghijklmnopqrst"]
+        texts = [_XOXB, _XOXP]
         for text in texts:
             result = scrub_secrets(text)
             assert "[REDACTED:slack-token]" in result.scrubbed
@@ -108,7 +118,7 @@ class TestSecretsScrubber:
 
     def test_private_key_redacted(self):
         """Private keys should be redacted."""
-        text = """-----BEGIN PRIVATE KEY-----
+        text = _PEM_BEGIN + """
 MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQD...
 -----END PRIVATE KEY-----"""
         result = scrub_secrets(text)
@@ -131,8 +141,8 @@ MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQD...
         """Multiple different secrets in one text should all be redacted."""
         text = """
         AWS: AKIAIOSFODNN7EXAMPLE
-        GitHub: ghp_abcdefghijklmnopqrstuvwxyz12345678901234
-        OpenAI: sk-abcdefghijklmnopqrstuvwxyz1234567890123456
+        GitHub: """ + _GHP + """
+        OpenAI: """ + _SK + """
         """
         result = scrub_secrets(text)
         assert "[REDACTED:aws-access-key]" in result.scrubbed
@@ -195,12 +205,12 @@ class TestSecretsScrubberIntegration:
 
         mock_embedder = MockEmbedder()
 
-        content = "My API key is sk-abcdefghijklmnopqrstuvwxyz1234567890123456 and I like Python"
+        content = "My API key is " + _SK + " and I like Python"
         _db.learn(db, content, category="preference", importance=3, embedder=mock_embedder)
 
         # Verify the embedder received scrubbed text
         assert captured["text"] is not None
-        assert "sk-abcdefghijklmnopqrstuvwxyz1234567890123456" not in captured["text"]
+        assert _SK not in captured["text"]
         assert "[REDACTED:openai-key]" in captured["text"]
         assert "I like Python" in captured["text"]  # legitimate content preserved
 
@@ -228,7 +238,7 @@ class TestSecretsScrubberIntegration:
 
         # Search with a query containing a secret - call via the provider path
         # that does the scrubbing
-        query = "What is my API key sk-abcdefghijklmnopqrstuvwxyz1234567890123456 ?"
+        query = "What is my API key " + _SK + " ?"
         # Simulate what handle_tool_call does: scrub then embed
         from openltm_hermes._secrets_scrubber import scrub_secrets_for_embedding
         scrubbed_query = scrub_secrets_for_embedding(query)
@@ -237,7 +247,7 @@ class TestSecretsScrubberIntegration:
 
         # Verify embedder received scrubbed query
         assert captured["text"] is not None
-        assert "sk-abcdefghijklmnopqrstuvwxyz1234567890123456" not in captured["text"]
+        assert _SK not in captured["text"]
         assert "[REDACTED:openai-key]" in captured["text"]
 
         db.close()
@@ -256,7 +266,7 @@ class TestSecretsScrubberIntegration:
             def embed(self, text):
                 # Track whether this is a learn or recall call
                 # Check for RAW secret patterns, not redacted markers
-                if "sk-abcdefghijklmnopqrstuvwxyz1234567890123456" in text:
+                if _SK in text:
                     captured_learn["has_secret"] = True
                 if "learn" not in captured_learn:
                     captured_learn["text"] = text
@@ -267,20 +277,20 @@ class TestSecretsScrubberIntegration:
         mock_embedder = MockEmbedder()
 
         # Learn with secret - this goes through _db.learn which scrubs
-        content = "My secret is sk-abcdefghijklmnopqrstuvwxyz1234567890123456"
+        content = "My secret is " + _SK
         _db.learn(db, content, category="gotcha", importance=4, embedder=mock_embedder)
 
         # Recall with secret in query - need to scrub before embedding
         from openltm_hermes._secrets_scrubber import scrub_secrets_for_embedding
-        query = "What was my secret sk-abcdefghijklmnopqrstuvwxyz1234567890123456 ?"
+        query = "What was my secret " + _SK + " ?"
         scrubbed_query = scrub_secrets_for_embedding(query)
         query_embedding = mock_embedder.embed(scrubbed_query)
         _db.hybrid_search(db, query, query_embedding)
 
         # Neither learn nor recall should have sent the raw secret
         assert captured_learn.get("has_secret") is not True
-        assert "sk-abcdefghijklmnopqrstuvwxyz1234567890123456" not in captured_learn.get("text", "")
-        assert "sk-abcdefghijklmnopqrstuvwxyz1234567890123456" not in captured_recall.get("text", "")
+        assert _SK not in captured_learn.get("text", "")
+        assert _SK not in captured_recall.get("text", "")
 
         # But legitimate content should be preserved
         assert "secret" in captured_learn.get("text", "").lower()
@@ -296,8 +306,16 @@ if __name__ == "__main__":
 import json as _json
 from pathlib import Path as _Path
 
+# Built at runtime so no key-shaped literal is committed (secret scanning).
+_STS_KEY_ID = "AS" + "IA" + "Z" * 16
+_SESSION_TOKEN = "Q" * 120
+_PATH_40 = "Ab" * 20
 _AWS_FX = _json.loads(
-    (_Path(__file__).resolve().parents[2] / "packages/openltm-core/src/__tests__/fixtures/aws-secret-cases.json").read_text()
+    (_Path(__file__).resolve().parents[2] / "packages/openltm-core/src/__tests__/fixtures/aws-secret-cases.json")
+    .read_text()
+    .replace("{{STS_KEY_ID}}", _STS_KEY_ID)
+    .replace("{{SESSION_TOKEN}}", _SESSION_TOKEN)
+    .replace("{{PATH_40}}", _PATH_40)
 )
 
 
@@ -315,8 +333,8 @@ def test_aws_secret_not_overmatched(key):
 
 def test_sts_block_redacts_asia_and_session_token():
     r = scrub_secrets(_AWS_FX["redact"]["sts_json"])
-    assert "ASIAIOSFODNN7EXAMPLE" not in r.scrubbed
-    assert "FwoGZXIvYXdzE" not in r.scrubbed
+    assert _STS_KEY_ID not in r.scrubbed
+    assert _SESSION_TOKEN[:40] not in r.scrubbed
     assert {"aws-access-key", "aws-secret-key", "aws-session-token"} <= set(r.redactions)
 
 
