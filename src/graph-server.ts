@@ -489,6 +489,19 @@ function getProjectDetail(projectName: string) {
   return { name: projectName, context, memories, context_items, relations };
 }
 
+/**
+ * Graph search text → FTS5 MATCH: each word quoted, so input like `foo-bar`,
+ * `c++` or a stray `"` is searched for instead of failing as FTS syntax.
+ * Words stay implicitly AND-ed and a trailing `*` stays a prefix search, as in a plain MATCH.
+ */
+function toMatchQuery(q: string): string {
+  return q.trim().split(/\s+/).filter(Boolean).map((t) => {
+    const prefix = t.length > 1 && t.endsWith("*");
+    const word = prefix ? t.slice(0, -1) : t;
+    return `"${word.replace(/"/g, '""')}"${prefix ? "*" : ""}`;
+  }).join(" ");
+}
+
 function searchMemories(q: string) {
   try {
     return queryDb<{ id: number; content: string; category: string; importance: number; project_scope: string | null }>(
@@ -498,7 +511,7 @@ function searchMemories(q: string) {
        WHERE memories_fts MATCH ?
        ORDER BY rank
        LIMIT 50`,
-      [q]
+      [toMatchQuery(q)]
     );
   } catch {
     return [];
@@ -1244,8 +1257,9 @@ Bun.serve({
 
     // GET /api/search/all — full-text search over memories + context_items titles + content
     if (p === "/api/search/all" && req.method === "GET") {
-      const q = url.searchParams.get("q") ?? "";
-      if (q.length < 2) return Response.json([]);
+      const raw = url.searchParams.get("q") ?? "";
+      if (raw.length < 2) return Response.json([]);
+      const q = toMatchQuery(raw);
       const memResults = queryDb<{ id: number; content: string; title: string | null; category: string; importance: number; project_scope: string | null; type: string }>(
         `SELECT m.id, m.content, m.title, m.category, m.importance, m.project_scope, 'memory' as type
          FROM memories_fts f JOIN memories m ON m.id = f.rowid

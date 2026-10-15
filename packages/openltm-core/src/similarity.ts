@@ -87,8 +87,10 @@ function isMarker(token: string): boolean {
  * is not distinct.
  */
 export function differsMeaningfully(a: string, b: string): boolean {
-  const allA = new Set(tokenizeAll(a));
-  const allB = new Set(tokenizeAll(b));
+  return differsMeaningfullySets(new Set(tokenizeAll(a)), new Set(tokenizeAll(b)));
+}
+
+function differsMeaningfullySets(allA: ReadonlySet<string>, allB: ReadonlySet<string>): boolean {
   const onlyA = [...allA].filter((t) => !allB.has(t));
   const onlyB = [...allB].filter((t) => !allA.has(t));
   const differing = [...onlyA, ...onlyB];
@@ -110,17 +112,28 @@ export function differsMeaningfully(a: string, b: string): boolean {
  */
 export function isNearDuplicate(a: string, b: string): boolean {
   if (typeof a !== "string" || typeof b !== "string") return false;
-  const ta = new Set(tokenize(a));
-  const tb = new Set(tokenize(b));
-  if (ta.size < 3 || tb.size < 3) return false;
+  return isNearDuplicateKey(nearDuplicateKey(a), nearDuplicateKey(b));
+}
+
+/** One text's tokens, computed once so a text can be compared against many others. */
+export interface NearDuplicateKey {
+  readonly content: ReadonlySet<string>;
+  readonly all: ReadonlySet<string>;
+}
+
+export function nearDuplicateKey(text: string): NearDuplicateKey {
+  return { content: new Set(tokenize(text)), all: new Set(tokenizeAll(text)) };
+}
+
+/** isNearDuplicate on precomputed keys: same rule, no re-tokenizing per pair. */
+export function isNearDuplicateKey(a: NearDuplicateKey, b: NearDuplicateKey): boolean {
+  if (a.content.size < 3 || b.content.size < 3) return false;
+
+  const [smaller, larger] = a.content.size <= b.content.size ? [a.content, b.content] : [b.content, a.content];
+  for (const token of smaller) {
+    if (!larger.has(token)) return false;
+  }
 
   // Differing by a marker, number, or polarity word → intentionally distinct.
-  if (differsMeaningfully(a, b)) return false;
-
-  const [smaller, larger] = ta.size <= tb.size ? [ta, tb] : [tb, ta];
-  let contained = 0;
-  for (const token of smaller) {
-    if (larger.has(token)) contained++;
-  }
-  return contained === smaller.size;
+  return !differsMeaningfullySets(a.all, b.all);
 }
