@@ -30,6 +30,7 @@ describe("MCP tool descriptions — WHEN-triggers", () => {
     expect(desc).toContain("gotcha");
     expect(desc).toContain("pattern");
     expect(desc).toContain("non-obvious");
+    expect(desc).toContain("in English");
   });
 
   it("relate: triggers when two memories connect", () => {
@@ -68,6 +69,7 @@ describe("MCP tool descriptions — WHEN-triggers", () => {
   it("context_add: records goals, decisions, gotchas, progress", () => {
     const desc = getDescription("context_add");
     for (const word of ["goal", "decision", "gotcha", "progress"]) expect(desc).toContain(word);
+    expect(desc).toContain("in English");
   });
 
   it("proposals: reviews pending proposals (list / accept / reject)", () => {

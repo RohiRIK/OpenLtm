@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.19.0] — 2026-10-15
+
+### Changed
+- **Memories are written in English.** The `learn` and `context_add` tool descriptions (MCP, OpenCode, OpenClaw, Hermes), the Ltm skill and the session/commit extraction prompt now tell the agent to store titles and content in English, translating when the conversation is in another language. Search and near-duplicate detection only handle English well, so mixed-language memories were hard to find again.
+
 ## [2.18.2] — 2026-10-15
 
 ### Performance

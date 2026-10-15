@@ -212,7 +212,7 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
     "learn",
     {
       title: "Learn a memory",
-      description: "Store or reinforce a memory after discovering a non-obvious pattern, gotcha, or architectural decision worth keeping across sessions. Skip facts already derivable from the code or git history. Always pass a concise title (the title param explains how).",
+      description: "Store or reinforce a memory after discovering a non-obvious pattern, gotcha, or architectural decision worth keeping across sessions. Skip facts already derivable from the code or git history. Always pass a concise title (the title param explains how). Write the title and content in English, translating if the conversation is in another language.",
       inputSchema: {
         content: z.string().describe("The insight, pattern, or decision to store"),
         title: z.string().max(60).optional().describe("Short noun-phrase label (≤60 chars) — e.g. 'Repository pattern for all DAO layers'. Always provide it; you generate it inline, no extra LLM call needed."),
@@ -431,7 +431,7 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
     "context_add",
     {
       title: "Add project context",
-      description: "Record a project goal, decision, gotcha, or progress note so it is restored with the project context in later sessions. A goal replaces the current goal; decisions and gotchas are kept permanently; progress keeps the most recent entries.",
+      description: "Record a project goal, decision, gotcha, or progress note so it is restored with the project context in later sessions. A goal replaces the current goal; decisions and gotchas are kept permanently; progress keeps the most recent entries. Write it in English, translating if the conversation is in another language.",
       inputSchema: {
         type: z.enum(["goal", "decision", "gotcha", "progress"]).describe("Kind of context item"),
         content: z.string().min(1).describe("The goal, decision, gotcha, or progress note — one concise line"),
@@ -585,7 +585,7 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
         role: "user",
         content: {
           type: "text",
-          text: `Extract learnable patterns, gotchas, and architectural decisions from this session summary. For each insight, use learn to store it with the appropriate category and importance.\n\nSession summary:\n${summary}`,
+          text: `Extract learnable patterns, gotchas, and architectural decisions from this session summary. For each insight, use learn to store it in English with the appropriate category and importance.\n\nSession summary:\n${summary}`,
         },
       }],
     }),
