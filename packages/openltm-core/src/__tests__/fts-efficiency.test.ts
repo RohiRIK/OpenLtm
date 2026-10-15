@@ -67,6 +67,20 @@ describe("FTS triggers fire only on text changes", () => {
   });
 });
 
+describe("FTS tokenizer (migration 029)", () => {
+  it("both FTS tables stem with porter", () => {
+    for (const t of ["memories_fts", "context_items_fts"]) {
+      const { sql } = db.query(`SELECT sql FROM sqlite_master WHERE name = ?`).get(t) as { sql: string };
+      expect(sql).toContain("porter");
+    }
+  });
+
+  it("a query word matches other forms of the stored word", () => {
+    const { id } = core.learn({ content: "Sandpiper jobs are migrating to the new queue", category: "workflow", skipExport: true });
+    expect(matchIds('"sandpiper" AND "migrations"')).toEqual([id]);
+  });
+});
+
 describe("recall FTS probe filters inside the search", () => {
   it("returns only in-scope, active matches", async () => {
     const inScope = core.learn({ content: "Flamingo cache warms on deploy", category: "pattern", project_scope: "birds", skipExport: true });

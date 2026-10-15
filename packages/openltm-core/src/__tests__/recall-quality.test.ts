@@ -125,6 +125,26 @@ describe("recall golden queries — embeddings disabled (FTS + stopwords)", () =
   });
 });
 
+// Other forms of the stored words: porter stemming (migration 029) lets
+// "migrating" find "migrations" and "decaying" find "decay".
+const INFLECTED: Array<{ query: string; expect: string }> = [
+  { query: "migrating", expect: "migrations" },
+  { query: "decaying", expect: "decay" },
+  { query: "scrubbing", expect: "scrub" },
+  { query: "merged duplicate", expect: "janitor" },
+  { query: "typechecking", expect: "typecheck" },
+  { query: "archived", expect: "janitor" },
+];
+
+describe("recall inflected queries — embeddings disabled (porter stemming)", () => {
+  for (const { query, expect: expected } of INFLECTED) {
+    it(`"${query}" → ${expected} in top 3`, async () => {
+      const results = await core.recall({ query, limit: 10, semantic: false });
+      expect(results.slice(0, 3).map((m) => keyOf(m.id))).toContain(expected);
+    });
+  }
+});
+
 describe("buildFtsQuery", () => {
   it("drops stopwords and short tokens, quotes and ORs the rest", () => {
     expect(dbMod.buildFtsQuery("how do we handle the DB migrations?")).toBe('"handle"* OR "db" OR "migration"*');
