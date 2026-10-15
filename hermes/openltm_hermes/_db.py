@@ -166,7 +166,11 @@ CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
     VALUES ('delete', old.id, coalesce(old.title, ''), old.content);
 END;
 
-CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE OF title, content ON memories BEGIN
+-- Pre-2.18.2 DBs carry an unscoped memories_au; IF NOT EXISTS would keep it.
+-- Drop and recreate so a DB only this plugin has opened gets core's 028 trigger.
+DROP TRIGGER IF EXISTS memories_au;
+
+CREATE TRIGGER memories_au AFTER UPDATE OF title, content ON memories BEGIN
   INSERT INTO memories_fts(memories_fts, rowid, title, content)
     VALUES ('delete', old.id, coalesce(old.title, ''), old.content);
   INSERT INTO memories_fts(rowid, title, content)
@@ -184,7 +188,9 @@ CREATE TRIGGER IF NOT EXISTS context_items_ad AFTER DELETE ON context_items BEGI
     VALUES ('delete', old.id, coalesce(old.title, ''), old.content);
 END;
 
-CREATE TRIGGER IF NOT EXISTS context_items_au AFTER UPDATE OF title, content ON context_items BEGIN
+DROP TRIGGER IF EXISTS context_items_au;
+
+CREATE TRIGGER context_items_au AFTER UPDATE OF title, content ON context_items BEGIN
   INSERT INTO context_items_fts(context_items_fts, rowid, title, content)
     VALUES ('delete', old.id, coalesce(old.title, ''), old.content);
   INSERT INTO context_items_fts(rowid, title, content)

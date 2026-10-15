@@ -9,6 +9,7 @@
 - `learn()`'s near-duplicate shortlist probes FTS with content words only, skipping stopwords.
 
 ### Fixed
+- Hermes: a database only the Hermes plugin has opened now gets the title/content-only FTS update triggers too. `init_schema` used `CREATE TRIGGER IF NOT EXISTS`, which kept the old unscoped `memories_au` / `context_items_au`; it now drops and recreates them with migration 028's definitions (idempotent). Upgrade tests for a populated 2.18.1 DB in TS and Python.
 - Graph app search quotes each word before MATCH, so input such as `foo-bar`, `c++` or a stray `"` is searched for instead of failing as FTS syntax. A trailing `*` still does a prefix search.
 
 ## [2.18.1] — 2026-10-15
