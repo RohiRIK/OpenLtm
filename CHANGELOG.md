@@ -4,6 +4,7 @@
 
 ### Changed
 - **Full-text search stems words with porter** (migration 029). `memories_fts` and `context_items_fts` are rebuilt with `tokenize='porter unicode61 remove_diacritics 2'`, so a query word matches the other forms of a stored word: "migrating" finds "migrations", "decaying" finds "decay", "typechecking" finds "typecheck". On the golden memories mixed into 3,000 noise memories, FTS paraphrase MRR rose from 0.55 to 0.78 and golden-query MRR from 0.52 to 0.61; the index is slightly smaller. Recall ranking changes accordingly. The rebuild runs once, when the migration applies.
+- **Memories are written in English.** The `learn` and `context_add` tool descriptions (MCP, OpenCode, OpenClaw, Hermes), the Ltm skill and the session/commit extraction prompt now tell the agent to store titles and content in English, translating when the conversation is in another language. Search and near-duplicate detection only handle English well, so mixed-language memories were hard to find again.
 
 ### Tests
 - Inflected golden recall queries that fail without stemming, and a check that both FTS tables use porter.

@@ -28,7 +28,7 @@ export function buildTools(_dbPath: string): ToolDefinition[] {
 
     {
       name: "ltm_learn",
-      description: "Store or reinforce a memory. Call after discovering a non-obvious pattern, gotcha, or architectural decision. Always provide a title: a concise noun-phrase label (≤60 chars).",
+      description: "Store or reinforce a memory. Call after discovering a non-obvious pattern, gotcha, or architectural decision. Always provide a title: a concise noun-phrase label (≤60 chars). Write the title and content in English, translating if the conversation is in another language.",
       parameters: {
         type: "object",
         properties: {

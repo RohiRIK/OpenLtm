@@ -375,7 +375,7 @@ export default definePluginEntry({
     tool(
       "openltm_learn",
       "OpenLTM Learn",
-      "Store or reinforce a durable memory. Call after discovering a non-obvious pattern, gotcha, or architectural decision. Skip facts derivable from code or git history.",
+      "Store or reinforce a durable memory. Call after discovering a non-obvious pattern, gotcha, or architectural decision. Skip facts derivable from code or git history. Write the title and content in English, translating if the conversation is in another language.",
       Type.Object({
         content: Type.String({ description: "The insight to store" }),
         title: Type.Optional(Type.String({ description: "Concise noun-phrase label (max 60 chars)", maxLength: 60 })),

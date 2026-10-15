@@ -11,6 +11,7 @@ const SYSTEM_PROMPT = `Extract learnings from the provided text. Return ONLY val
 - gotchas: problems hit and how fixed (max 5, <120 chars each)
 - patterns: reusable patterns discovered (max 5, <120 chars each)
 - progress: single sentence of what was accomplished
+Write every item in English, translating if the text is in another language.
 Empty array if nothing found. No markdown fences.`;
 
 const LEARN_ITEMS: Array<{ key: "decisions" | "gotchas" | "patterns"; category: MemoryCategory; importance: number }> = [

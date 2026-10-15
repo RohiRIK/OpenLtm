@@ -118,7 +118,9 @@ LEARN_SCHEMA = {
     "description": (
         "Store a durable insight in long-term memory. Use after discovering "
         "non-obvious patterns, architectural decisions, or gotchas worth keeping "
-        "across sessions. Skip facts derivable from code or git history."
+        "across sessions. Skip facts derivable from code or git history. "
+        "Write the title and content in English, translating if the "
+        "conversation is in another language."
     ),
     "parameters": {
         "type": "object",
