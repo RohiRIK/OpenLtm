@@ -181,7 +181,7 @@ CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
     VALUES ('delete', old.id, coalesce(old.title, ''), old.content);
 END;
 
-CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE ON memories BEGIN
+CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE OF title, content ON memories BEGIN
   INSERT INTO memories_fts(memories_fts, rowid, title, content)
     VALUES ('delete', old.id, coalesce(old.title, ''), old.content);
   INSERT INTO memories_fts(rowid, title, content)
@@ -208,7 +208,7 @@ CREATE TRIGGER IF NOT EXISTS context_items_ad AFTER DELETE ON context_items BEGI
     VALUES ('delete', old.id, coalesce(old.title, ''), old.content);
 END;
 
-CREATE TRIGGER IF NOT EXISTS context_items_au AFTER UPDATE ON context_items BEGIN
+CREATE TRIGGER IF NOT EXISTS context_items_au AFTER UPDATE OF title, content ON context_items BEGIN
   INSERT INTO context_items_fts(context_items_fts, rowid, title, content)
     VALUES ('delete', old.id, coalesce(old.title, ''), old.content);
   INSERT INTO context_items_fts(rowid, title, content)

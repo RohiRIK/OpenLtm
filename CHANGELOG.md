@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.18.2] — 2026-10-15
+
+### Performance
+- **Query recall is over 100x faster on large stores.** The FTS probe in `recall()` filtered with `rowid IN (SELECT id FROM memories …)`, which FTS5 treats as a rowid constraint and answers by re-running the MATCH once per memory in scope. It is now a JOIN with the same filters and returns the same rows in the same order. With the changes below, FTS-only recall at 10k memories goes from 1.26 s to 9 ms median (3.9 s → 16 ms p95).
+- **The full-text index is only rewritten when the text changes** (migration 028). The `memories_au` / `context_items_au` triggers fired on any column update, so every recall, every graph-app edit and the nightly decay refresh deleted and re-indexed the row's tokens. They now fire on `UPDATE OF title, content`. Nightly decay at 50k memories: 1.7 s → 0.26 s, and the index no longer fragments (three decay runs had tripled its segment count and doubled recall time). The migration runs an FTS `optimize` once.
+- **Recall's near-duplicate demotion tokenizes each candidate once** instead of once per pair (~40 ms → ~1 ms per recall; same results).
+- `learn()`'s near-duplicate shortlist probes FTS with content words only, skipping stopwords.
+
+### Fixed
+- Graph app search quotes each word before MATCH, so input such as `foo-bar`, `c++` or a stray `"` is searched for instead of failing as FTS syntax. A trailing `*` still does a prefix search.
+
 ## [2.18.1] — 2026-10-15
 
 ### Security

@@ -6,7 +6,7 @@ import type { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import { normalizeKey } from "./dedup.js";
-import { differsMeaningfully, isNearDuplicate, jaccardSimilarity } from "./similarity.js";
+import { differsMeaningfully, isNearDuplicate, isNearDuplicateKey, jaccardSimilarity, nearDuplicateKey, type NearDuplicateKey } from "./similarity.js";
 import { filterPrivateMemories, hasPrivateTag, notPrivateSql } from "./privacy.js";
 import { normalizeAnchorPaths } from "./anchors.js";
 import { getDb, DB_PATH, configure as configureDb } from "./shared-db.js";
@@ -190,10 +190,12 @@ function findNearDuplicate(
 
   // Tier 0 — FTS shortlist (cheap index probe)
   try {
+    // Content words only: stopwords ("the", "and") walk the largest posting
+    // lists and pull in unrelated rows.
     const ftsQuery = content
       .trim()
       .split(/\s+/)
-      .filter((t) => t.length > 2)
+      .filter((t) => t.length > 2 && !RECALL_STOPWORDS.has(t.toLowerCase().replace(WORD_EDGE_RE, "")))
       .slice(0, 12)
       .map((t) => `"${t.replace(/"/g, '""')}"`)
       .join(" OR ");
@@ -659,11 +661,13 @@ export function rankRecallResults(
 
   // Progressive near-duplicate demotion: first occurrence keeps its rank,
   // later ones decay by a fixed factor each. Nothing is removed.
-  const seen: Memory[] = [];
+  // Each candidate is tokenized once; re-tokenizing per pair dominated recall time.
+  const seen: NearDuplicateKey[] = [];
   const adjusted = scored.map((entry) => {
-    const clusterIndex = seen.findIndex((m) => isNearDuplicate(m.content, entry.memory.content));
+    const key = nearDuplicateKey(entry.memory.content);
+    const clusterIndex = seen.findIndex((k) => isNearDuplicateKey(k, key));
     if (clusterIndex === -1) {
-      seen.push(entry.memory);
+      seen.push(key);
       return { ...entry, finalScore: entry.score };
     }
     const penalty = Math.min(1, entry.score * RANK_WEIGHTS.duplicatePenalty * Math.pow(DUPLICATE_DECAY_FACTOR, clusterIndex));
@@ -1055,9 +1059,12 @@ export async function recall(input: RecallInput = {}): Promise<MemoryWithRelatio
     const ftsQuery = buildFtsQuery(input.query);
     const ftsResults = ftsQuery
       ? db.query<{ rowid: number; rank: number }, (string | number | null)[]>(
-          `SELECT rowid, rank FROM memories_fts
-            WHERE memories_fts MATCH ? AND rowid IN (SELECT id FROM memories WHERE ${filterSql})
-            ORDER BY rank LIMIT 50`
+          // A JOIN, not `rowid IN (SELECT …)`: FTS5 takes an IN list as a rowid
+          // constraint and re-runs the MATCH once per id (~1 s at 10k memories).
+          `SELECT f.rowid AS rowid, f.rank AS rank FROM memories_fts f
+             JOIN memories ON memories.id = f.rowid
+            WHERE memories_fts MATCH ? AND ${filterSql}
+            ORDER BY f.rank LIMIT 50`
         ).all(ftsQuery, ...filterParams)
       : [];
     // FTS5 rank is BM25 negated: more negative = better, best hit first.
