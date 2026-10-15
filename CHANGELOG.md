@@ -16,7 +16,7 @@
 - **AWS secret keys are found by label normalization plus a proximity pass** (TS and Python, identical). A label is lowercased and stripped of `_`, `-` and spaces only to decide a match; any label containing `aws` or `secret` counts (`AWS_SECRET_ACCESS_KEY`, `aws_secret_access_key`, `SecretAccessKey` in IAM and STS JSON, `AwsSecretAccessKey`, `Aws_Secret_Access_Key`, terraform `secret_key`, labels of any length), except `secretary` and labels that are exactly `accesskeyid`, `secretkeyid` or `keyid`. Separators include `:`, `=`, `=>`, `->`, whitespace and a YAML next-line value (indent up to 16). A second pass catches a value near an aws/secret word (`aws-<key>`, `aws secret, <key>`, `AWS_SECRET_ACCESS_KEY(<key>)`, `s3://bucket/aws/<key>/x`). Values of 40–48 characters match. Redacted output now keeps the label and separator; only the value is replaced. STS `ASIA…` key ids and `SessionToken` / `session-token` values are redacted too, value only, so JSON stays valid.
 - `upgrade-plugin.sh` matches backup names with bash `[[ =~ ]]` instead of GNU `find -regextype` (works on macOS) and never touches symlinks.
 
-- The generic `api_key` / `secret_key` / `access_token` pattern no longer goes quadratic on long input: the gap before the quoted value is bounded (`[^\n'"]{0,200}?` instead of `.*?`).
+- The generic `api_key` / `secret_key` / `access_token` pattern no longer goes quadratic on long input: the gap before the quoted value is bounded (`[^\n]{0,200}?` instead of `.*?`; it may cross a quote, so `os.environ.get('X', '<key>')` defaults are still caught).
 
 ### Tests
 - Plant-secret and bypass regressions for each fix, including forced scrubber failures; Hermes pytest now runs in CI.

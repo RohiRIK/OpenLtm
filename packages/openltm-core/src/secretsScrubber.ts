@@ -118,7 +118,7 @@ const PATTERNS: Pattern[] = [
   },
   {
     id: "generic-api-key",
-    regex: /(?:api[_-]?key|secret[_-]?key|access[_-]?token)[^a-zA-Z][^\n'"]{0,200}?['"][A-Za-z0-9_\-]{20,}['"]/gi,
+    regex: /(?:api[_-]?key|secret[_-]?key|access[_-]?token)[^a-zA-Z][^\n]{0,200}?['"][A-Za-z0-9_\-]{20,}['"]/gi,
     replacement: "[REDACTED:generic-api-key]",
   },
 ];

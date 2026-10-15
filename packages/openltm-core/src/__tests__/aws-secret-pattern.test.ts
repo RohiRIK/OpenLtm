@@ -84,6 +84,7 @@ describe("generic-api-key still redacts", () => {
     'api_key = "abcdefghijklmnopqrstuvwxyz123456"',
     "secret_key: 'abcdefghijklmnopqrstuvwxyz123456'",
     'access_token = "abcdefghijklmnopqrstuvwxyz123456"',
+    "api_key = os.environ.get('X', 'abcdefghijklmnopqrstuvwxyz123456')", // getenv_sq
   ])("%s", (text) => {
     expect(scrubSecrets(text).redactions).toContain("generic-api-key");
   });

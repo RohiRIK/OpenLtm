@@ -377,3 +377,11 @@ def test_scrubber_linear_on_200k_input(text):
 def test_scrub_is_idempotent(key):
     once = scrub_secrets(_AWS_FX[key[0]][key[1]]).scrubbed
     assert scrub_secrets(once).scrubbed == once
+
+
+def test_generic_key_getenv_default_redacted():
+    """getenv_sq: the gap before the quoted value may cross another quote."""
+    text = "api_key = os.environ.get('X', 'abcdefghijklmnopqrstuvwxyz123456')"
+    r = scrub_secrets(text)
+    assert "generic-api-key" in r.redactions
+    assert "abcdefghijklmnopqrstuvwxyz123456" not in r.scrubbed

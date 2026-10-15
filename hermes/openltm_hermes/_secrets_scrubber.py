@@ -136,7 +136,7 @@ PATTERNS: Final[tuple[Pattern, ...]] = (
     ),
     Pattern(
         id="generic-api-key",
-        regex=re.compile(r"(?:api[_-]?key|secret[_-]?key|access[_-]?token)[^a-zA-Z][^\n'\"]{0,200}?['\"][A-Za-z0-9_\-]{20,}['\"]", re.IGNORECASE),
+        regex=re.compile(r"(?:api[_-]?key|secret[_-]?key|access[_-]?token)[^a-zA-Z][^\n]{0,200}?['\"][A-Za-z0-9_\-]{20,}['\"]", re.IGNORECASE),
         replacement="[REDACTED:generic-api-key]",
     ),
 )
