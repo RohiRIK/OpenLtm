@@ -27,8 +27,9 @@ const VALUE = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLE";
 describe("aws-secret-key pattern", () => {
   it.each(Object.entries(fx.redact))("redacts %s", (_k, text) => {
     const r = scrubSecrets(text);
-    expect(r.scrubbed).toContain("[REDACTED:aws-secret-key]");
+    expect(r.scrubbed).toMatch(/\[REDACTED:aws-(secret-key|session-token)\]/);
     expect(r.scrubbed).not.toContain(VALUE);
+    expect(r.scrubbed).not.toContain(SESSION_TOKEN.slice(0, 40));
   });
   it.each(Object.entries(fx.keep))("leaves %s alone (no aws-secret-key)", (_k, text) => {
     expect(scrubSecrets(text).redactions).not.toContain("aws-secret-key");
@@ -47,5 +48,20 @@ describe("STS temporary credentials", () => {
 describe("label normalization only decides; text is never rewritten", () => {
   it("keeps the original label and separator and replaces only the value", () => {
     expect(scrubSecrets(`Aws_Secret_Access_Key = "${VALUE}KEY"`).scrubbed).toBe('Aws_Secret_Access_Key = "[REDACTED:aws-secret-key]"');
+  });
+});
+
+describe("byte preservation across every redact fixture", () => {
+  const esc = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const MARKERS: Record<string, string> = {
+    "[REDACTED:aws-secret-key]": "[0-9a-zA-Z/+]{40,48}",
+    "[REDACTED:aws-access-key]": "(?:AKIA|ASIA)[0-9A-Z]{16}",
+    "[REDACTED:aws-session-token]": "[A-Za-z0-9/+=]{100,}",
+  };
+  it.each(Object.entries(fx.redact))("%s: only secret values change", (_k, text) => {
+    const out = scrubSecrets(text).scrubbed;
+    const parts = out.split(/(\[REDACTED:(?:aws-secret-key|aws-access-key|aws-session-token)\])/);
+    const pattern = parts.map(p => MARKERS[p] ?? esc(p)).join("");
+    expect(new RegExp(`^${pattern}$`).test(text)).toBe(true);
   });
 });

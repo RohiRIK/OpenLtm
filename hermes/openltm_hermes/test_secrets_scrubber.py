@@ -322,8 +322,9 @@ _AWS_FX = _json.loads(
 @pytest.mark.parametrize("key", sorted(_AWS_FX["redact"]))
 def test_aws_secret_redacted(key):
     r = scrub_secrets(_AWS_FX["redact"][key])
-    assert "[REDACTED:aws-secret-key]" in r.scrubbed
+    assert "[REDACTED:aws-secret-key]" in r.scrubbed or "[REDACTED:aws-session-token]" in r.scrubbed
     assert "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLE" not in r.scrubbed
+    assert _SESSION_TOKEN[:40] not in r.scrubbed
 
 
 @pytest.mark.parametrize("key", sorted(_AWS_FX["keep"]))
@@ -341,3 +342,20 @@ def test_sts_block_redacts_asia_and_session_token():
 def test_label_normalization_only_decides_value_span_replaced():
     v = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
     assert scrub_secrets(f'Aws_Secret_Access_Key = "{v}"').scrubbed == 'Aws_Secret_Access_Key = "[REDACTED:aws-secret-key]"'
+
+
+_MARKERS = {
+    "[REDACTED:aws-secret-key]": r"[0-9a-zA-Z/+]{40,48}",
+    "[REDACTED:aws-access-key]": r"(?:AKIA|ASIA)[0-9A-Z]{16}",
+    "[REDACTED:aws-session-token]": r"[A-Za-z0-9/+=]{100,}",
+}
+
+
+@pytest.mark.parametrize("key", sorted(_AWS_FX["redact"]))
+def test_aws_redaction_preserves_other_bytes(key):
+    import re as _re
+    text = _AWS_FX["redact"][key]
+    out = scrub_secrets(text).scrubbed
+    parts = _re.split(r"(\[REDACTED:(?:aws-secret-key|aws-access-key|aws-session-token)\])", out)
+    pattern = "".join(_MARKERS.get(p, _re.escape(p)) for p in parts)
+    assert _re.fullmatch(pattern, text, _re.S)
