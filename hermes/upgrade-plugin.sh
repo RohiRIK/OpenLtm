@@ -146,7 +146,7 @@ prune_backups() {
     [[ "${d##*/}" =~ $re ]] || continue
     all+="$d"$'\n'
   done
-  all="$(printf '%s' "$all" | sort -V)"
+  all="$(printf '%s' "$all" | LC_ALL=C sort)"
   [ -n "$all" ] || return 0
   n="$(printf '%s\n' "$all" | wc -l)"
   while IFS= read -r b; do

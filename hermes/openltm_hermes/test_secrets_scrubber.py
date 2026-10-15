@@ -291,3 +291,23 @@ class TestSecretsScrubberIntegration:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+# --- aws-secret-key pattern; shared fixture with core's aws-secret-pattern.test.ts ---
+import json as _json
+from pathlib import Path as _Path
+
+_AWS_FX = _json.loads(
+    (_Path(__file__).resolve().parents[2] / "packages/openltm-core/src/__tests__/fixtures/aws-secret-cases.json").read_text()
+)
+
+
+@pytest.mark.parametrize("key", sorted(_AWS_FX["redact"]))
+def test_aws_secret_redacted(key):
+    r = scrub_secrets(_AWS_FX["redact"][key])
+    assert "[REDACTED:aws-secret-key]" in r.scrubbed
+    assert "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLE" not in r.scrubbed
+
+
+@pytest.mark.parametrize("key", sorted(_AWS_FX["keep"]))
+def test_aws_secret_not_overmatched(key):
+    assert "aws-secret-key" not in scrub_secrets(_AWS_FX["keep"][key]).redactions

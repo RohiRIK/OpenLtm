@@ -38,7 +38,10 @@ PATTERNS: Final[tuple[Pattern, ...]] = (
     Pattern(
         id="aws-secret-key",
         # 40-char base64 string near aws/secret context
-        regex=re.compile(r"(?:aws|secret|SECRET)[^a-zA-Z0-9]{0,20}[0-9a-zA-Z/+]{40}(?![0-9a-zA-Z/+])"),
+        # Name may continue (AWS_SECRET_ACCESS_KEY, aws_secret_access_key); value 40-48
+        # chars so a slightly over-long paste still matches; the aws/secret anchor
+        # keeps bare 40+ char strings out. Keep in parity with secretsScrubber.ts.
+        regex=re.compile(r"(?:aws|AWS|secret|SECRET)[A-Za-z_]{0,20}[^a-zA-Z0-9]{0,20}[0-9a-zA-Z/+]{40,48}(?![0-9a-zA-Z/+])"),
         replacement="[REDACTED:aws-secret-key]",
     ),
     Pattern(

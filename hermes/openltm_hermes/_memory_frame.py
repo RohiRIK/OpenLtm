@@ -38,6 +38,7 @@ _LOOKALIKE = {
     "\u0430": "a", "\u0410": "a", "\u03b1": "a", "\u0441": "c", "\u0421": "c", "\u043e": "o",
     "\u041e": "o", "\u03bf": "o", "\u0440": "p", "\u0420": "p", "\u043c": "m", "\u041c": "m",
     "\u0443": "y", "\u0423": "y", "\u0501": "d", "\u0434": "d",
+    "\u0269": "i", "\u03f2": "c", "\u1e37": "l",
 }
 _MARKER = "[recalled memory tag removed]"
 
@@ -63,7 +64,8 @@ def _decode_entity_unit(unit: str) -> str:
 
 def _fold_char(ch: str) -> str:
     out = []
-    for c in unicodedata.normalize("NFKC", ch):
+    ch = _LOOKALIKE.get(ch, ch)  # before NFKD, which turns some confusables (U+03F2) into others
+    for c in unicodedata.normalize("NFKD", ch):  # NFKD: split accents off so they drop as Mn
         c = _LOOKALIKE.get(c, c)
         cat = unicodedata.category(c)
         if cat in ("Cf", "Mn", "Me"):

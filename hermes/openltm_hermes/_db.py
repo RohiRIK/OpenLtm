@@ -694,15 +694,6 @@ def flag_stale(conn: sqlite3.Connection, memory_id: int, reason: str) -> dict:
     return {"ok": True, "id": memory_id, "reason": _egress_reason(reason)}
 
 
-def _egress_reason(reason: str | None) -> str | None:
-    """Echo a caller-supplied reason scrubbed; a stub if scrubbing fails (never raw)."""
-    if reason is None:
-        return None
-    try:
-        return scrub_or_refuse(reason)
-    except ScrubRefusedError:
-        return "[scrub-failed]"
-
 
 def get_stale_memories(conn: sqlite3.Connection) -> list[dict]:
     """Get all memories flagged as stale."""

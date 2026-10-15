@@ -29,7 +29,10 @@ const PATTERNS: Pattern[] = [
   {
     id: "aws-secret-key",
     // 40-char base64 string near aws/secret context
-    regex: /(?:aws|secret|SECRET)[^a-zA-Z0-9]{0,20}[0-9a-zA-Z/+]{40}(?![0-9a-zA-Z/+])/g,
+    // Name may continue (AWS_SECRET_ACCESS_KEY, aws_secret_access_key); value 40-48
+    // chars so a slightly over-long paste still matches, while the aws/secret
+    // anchor keeps bare 40+ char strings out.
+    regex: /(?:aws|AWS|secret|SECRET)[A-Za-z_]{0,20}[^a-zA-Z0-9]{0,20}[0-9a-zA-Z/+]{40,48}(?![0-9a-zA-Z/+])/g,
     replacement: "[REDACTED:aws-secret-key]",
   },
   {

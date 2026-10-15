@@ -13,6 +13,7 @@
 - **Hermes embeddings fail closed**: the learn, dedup and query embed paths use `scrub_or_refuse` and skip the embed on refusal; the identity fallback that embedded raw text if the scrubber could not be imported is gone.
 - **Tool output is scrubbed per item**: Hermes `openltm_recall`, `openltm_graph`, `openltm_context` and `openltm_stale list`, and OpenCode `ltm_recall` and `ltm_context`. An item that cannot be scrubbed becomes `[scrub-failed]`.
 - The neutralizer now rewrites only the matched span and returns the rest of the text untouched, and also catches format and combining characters, variation selectors, dash variants, runs of spaces, common homoglyphs (Cyrillic, `I`/`l`), `<\/` and `‹`/`〈`/`﹤`.
+- **AWS secret keys in `AWS_SECRET_ACCESS_KEY=…` and `aws_secret_access_key = "…"` form are redacted** (TS and Python): the name may continue after `aws`/`secret`, and values of 40–48 characters match, so a slightly over-long paste is caught too. Bare strings without an aws/secret label are still left alone.
 - `upgrade-plugin.sh` matches backup names with bash `[[ =~ ]]` instead of GNU `find -regextype` (works on macOS) and never touches symlinks.
 
 ### Tests

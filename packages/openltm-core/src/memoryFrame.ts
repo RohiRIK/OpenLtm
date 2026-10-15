@@ -33,6 +33,7 @@ const LOOKALIKE: Record<string, string> = {
   "\u0430": "a", "\u0410": "a", "\u03b1": "a", "\u0441": "c", "\u0421": "c", "\u043e": "o",
   "\u041e": "o", "\u03bf": "o", "\u0440": "p", "\u0420": "p", "\u043c": "m", "\u041c": "m",
   "\u0443": "y", "\u0423": "y", "\u0501": "d", "\u0434": "d",
+  "\u0269": "i", "\u03f2": "c", "\u1e37": "l",
 };
 const DROP_RE = /^[\p{Cf}\p{Mn}\p{Me}]$/u;
 const DASH_RE = /^\p{Pd}$/u;
@@ -56,7 +57,8 @@ function decodeEntityUnit(unit: string): string {
 
 function foldChar(ch: string): string {
   let out = "";
-  for (let c of ch.normalize("NFKC")) {
+  ch = LOOKALIKE[ch] ?? ch; // before NFKD, which turns some confusables (U+03F2) into others
+  for (let c of ch.normalize("NFKD")) { // NFKD: split accents off so they drop as Mn
     c = LOOKALIKE[c] ?? c;
     if (DROP_RE.test(c)) continue; // zero-width, BOM, tag chars, variation selectors, combining marks
     if (DASH_RE.test(c)) c = "-";
