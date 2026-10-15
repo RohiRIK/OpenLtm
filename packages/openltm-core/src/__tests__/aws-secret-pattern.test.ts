@@ -85,8 +85,11 @@ describe("generic-api-key still redacts", () => {
     "secret_key: 'abcdefghijklmnopqrstuvwxyz123456'",
     'access_token = "abcdefghijklmnopqrstuvwxyz123456"',
     "api_key = os.environ.get('X', 'abcdefghijklmnopqrstuvwxyz123456')", // getenv_sq
+    `api_key = cfg['k'] or "abcdefghijklmnopqrstuvwxyz123456"`,
+    "secret_key: 'a', backup: 'abcdefghijklmnopqrstuvwxyz123456'", // errs on the safe side
   ])("%s", (text) => {
     expect(scrubSecrets(text).redactions).toContain("generic-api-key");
+    expect(scrubSecrets(text).scrubbed).not.toContain("abcdefghijklmnopqrstuvwxyz123456");
   });
 });
 

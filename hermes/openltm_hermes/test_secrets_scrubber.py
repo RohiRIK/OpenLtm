@@ -379,9 +379,13 @@ def test_scrub_is_idempotent(key):
     assert scrub_secrets(once).scrubbed == once
 
 
-def test_generic_key_getenv_default_redacted():
-    """getenv_sq: the gap before the quoted value may cross another quote."""
-    text = "api_key = os.environ.get('X', 'abcdefghijklmnopqrstuvwxyz123456')"
+@pytest.mark.parametrize("text", [
+    "api_key = os.environ.get('X', 'abcdefghijklmnopqrstuvwxyz123456')",  # getenv_sq
+    "api_key = cfg['k'] or \"abcdefghijklmnopqrstuvwxyz123456\"",
+    "secret_key: 'a', backup: 'abcdefghijklmnopqrstuvwxyz123456'",  # errs on the safe side
+])
+def test_generic_key_gap_crosses_quotes(text):
+    """The gap before the quoted value may cross another quote."""
     r = scrub_secrets(text)
     assert "generic-api-key" in r.redactions
     assert "abcdefghijklmnopqrstuvwxyz123456" not in r.scrubbed
