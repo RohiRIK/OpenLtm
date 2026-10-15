@@ -1,5 +1,5 @@
 import type { ToolDefinition } from "@opencode-ai/plugin";
-import { recall, learn, forget, relate, getContextMerge } from "@rohirik/openltm-core";
+import { recall, learn, forget, relate, getContextMerge, scrubForEgress } from "@rohirik/openltm-core";
 
 export function buildTools(_dbPath: string): ToolDefinition[] {
   return [
@@ -22,7 +22,7 @@ export function buildTools(_dbPath: string): ToolDefinition[] {
           limit: limit as number | undefined,
           category: category as string | undefined,
         });
-        return results.map(m => ({ id: m.id, content: m.content, category: m.category, importance: m.importance }));
+        return results.map(m => ({ id: m.id, content: scrubForEgress(m.content), category: m.category, importance: m.importance }));
       },
     },
 
@@ -101,8 +101,19 @@ export function buildTools(_dbPath: string): ToolDefinition[] {
       },
       async execute({ project }: Record<string, unknown>) {
         const result = getContextMerge(project as string);
-        return result;
+        return deepScrub(result);
       },
     },
   ];
+}
+
+/** Scrub every string in a tool result before it reaches the model; stub past depth 32. */
+function deepScrub(value: unknown, depth = 0): unknown {
+  if (depth > 32) return "[scrub-failed]";
+  if (typeof value === "string") return scrubForEgress(value);
+  if (Array.isArray(value)) return value.map(v => deepScrub(v, depth + 1));
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, deepScrub(v, depth + 1)]));
+  }
+  return value;
 }

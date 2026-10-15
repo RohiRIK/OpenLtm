@@ -131,17 +131,29 @@ upgrade_symlink() {
   fi
 }
 
-# Keep only the newest $KEEP_BACKUPS openltm-* backups (names sort by time).
+# Keep only the newest $KEEP_BACKUPS backups made by this script (names sort by
+# time). Only directories named exactly openltm-YYYYMMDD-HHMMSS[-N] are touched,
+# and the backup passed as $1 (the one just made) is never deleted, even when
+# OPENLTM_KEEP_BACKUPS=0.
 prune_backups() {
-  local all n i=0 b
+  local keep_path="${1:-}" all n i=0 b
   [ -d "$BACKUP_ROOT" ] || return 0
-  all="$(find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d -name 'openltm-[0-9]*' | sort -V)"
+  # Portable (no GNU-only find flags, works on macOS): match names with bash [[ =~ ]].
+  local re='^openltm-[0-9]{8}-[0-9]{6}(-[0-9]+)?$' d
+  all=""
+  for d in "$BACKUP_ROOT"/openltm-*; do
+    [ -d "$d" ] && [ ! -L "$d" ] || continue
+    [[ "${d##*/}" =~ $re ]] || continue
+    all+="$d"$'\n'
+  done
+  all="$(printf '%s' "$all" | LC_ALL=C sort)"
   [ -n "$all" ] || return 0
   n="$(printf '%s\n' "$all" | wc -l)"
   while IFS= read -r b; do
     [ $((n - i)) -gt "$KEEP_BACKUPS" ] || break
-    case "$b" in "$BACKUP_ROOT"/openltm-*) run rm -rf -- "$b" ;; esac
     i=$((i + 1))
+    [ -n "$keep_path" ] && [ "$b" = "$keep_path" ] && continue
+    case "$b" in "$BACKUP_ROOT"/openltm-*) run rm -rf -- "$b" ;; esac
   done <<<"$all"
 }
 
@@ -173,7 +185,7 @@ install_copy() {
     echo "backed up:   $backup"
   fi
   mv "$stage" "$PLUGIN_DIR"
-  prune_backups
+  prune_backups "$backup"
 }
 
 link_to_source() {
@@ -185,7 +197,7 @@ link_to_source() {
   fi
   run mkdir -p "$(dirname "$PLUGIN_DIR")"
   run ln -s "$SOURCE_REAL" "$PLUGIN_DIR"
-  [ "$DRY_RUN" = 1 ] || prune_backups
+  [ "$DRY_RUN" = 1 ] || prune_backups "$backup"
   if [ "$DRY_RUN" = 0 ] && [ "$KIND" = copy ]; then echo "backed up:   $backup"; fi
 }
 

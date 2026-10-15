@@ -1,5 +1,29 @@
 # Changelog
 
+## [2.18.1] — 2026-10-15
+
+### Security
+- **OpenCode prefill and compaction scrub memory text before it reaches the prompt.** `prefill.ts` renders each line as `oneLine(scrubForEgress(content))`, and the OpenCode compaction hook scrubs every memory, so a legacy row stored before write-time scrubbing can no longer leak a key into `<recalled-memory>`.
+- **Hermes `openltm_learn` scrubs content and title before storing and embedding them.** It fails closed like the TS `scrubOrRefuse` (new `scrub_or_refuse` in `_secrets_scrubber.py`): if scrubbing errors, nothing is stored. The embedder only ever sees the scrubbed text, so a key never goes to a cloud embedder.
+- **Hermes prefetch and reviewed project context scrub every title and content line**; a line that cannot be scrubbed is dropped, never emitted raw.
+- **The recalled-memory tag neutralizer catches look-alike tags** (TS and Python): text is NFKC-normalized (fullwidth `＜／＞`), HTML entities are decoded (`&lt;`, `&#60;`, `&#x3c;`, double-encoded), U+FEFF and zero-width characters are removed, and `recalled-memory`, `recalled_memory` and `recalled memory` match in any case. A match becomes `[recalled memory tag removed]`, which cannot read as a tag. Clean text is left byte-identical.
+- **`hermes/upgrade-plugin.sh` prunes only its own backups** (`openltm-YYYYMMDD-HHMMSS[-N]` directories) and never deletes the backup it just made, even with `OPENLTM_KEEP_BACKUPS=0`.
+
+- **Hermes `_db.learn` scrubs content, title and tags itself**, so every caller is covered (`openltm_learn`, `sync_turn`, `on_session_end`, `on_memory_write`). Tags are scrubbed before they are lowercased. Stale reasons are scrubbed too. Nothing is stored if the scrubber fails.
+- **Hermes embeddings fail closed**: the learn, dedup and query embed paths use `scrub_or_refuse` and skip the embed on refusal; the identity fallback that embedded raw text if the scrubber could not be imported is gone.
+- **Tool output is scrubbed per item**: Hermes `openltm_recall`, `openltm_graph`, `openltm_context` and `openltm_stale list`, and OpenCode `ltm_recall` and `ltm_context`. An item that cannot be scrubbed becomes `[scrub-failed]`.
+- The neutralizer now rewrites only the matched span and returns the rest of the text untouched, and also catches format and combining characters, variation selectors, dash variants, runs of spaces, common homoglyphs (Cyrillic, `I`/`l`), `<\/` and `‹`/`〈`/`﹤`.
+- **AWS secret keys are found by label normalization plus a proximity pass** (TS and Python, identical). A label is lowercased and stripped of `_`, `-` and spaces only to decide a match; any label containing `aws` or `secret` counts (`AWS_SECRET_ACCESS_KEY`, `aws_secret_access_key`, `SecretAccessKey` in IAM and STS JSON, `AwsSecretAccessKey`, `Aws_Secret_Access_Key`, terraform `secret_key`, labels of any length), except `secretary` and labels that are exactly `accesskeyid`, `secretkeyid` or `keyid`. Separators include `:`, `=`, `=>`, `->`, whitespace and a YAML next-line value (indent up to 16). A second pass catches a value near an aws/secret word (`aws-<key>`, `aws secret, <key>`, `AWS_SECRET_ACCESS_KEY(<key>)`, `s3://bucket/aws/<key>/x`). Values of 40–48 characters match. Redacted output now keeps the label and separator; only the value is replaced. STS `ASIA…` key ids and `SessionToken` / `session-token` values are redacted too, value only, so JSON stays valid.
+- `upgrade-plugin.sh` matches backup names with bash `[[ =~ ]]` instead of GNU `find -regextype` (works on macOS) and never touches symlinks.
+
+- The generic `api_key` / `secret_key` / `access_token` pattern no longer goes quadratic on long input: the gap before the quoted value is bounded (`[^\n]{0,200}?` instead of `.*?`; it may cross a quote, so `os.environ.get('X', '<key>')` defaults are still caught).
+
+### Tests
+- Plant-secret and bypass regressions for each fix, including forced scrubber failures; Hermes pytest now runs in CI.
+
+### Changed
+- `bun.lock` workspace versions match the package versions.
+
 ## [2.18.0] — 2026-10-14
 
 ### Added

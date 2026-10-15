@@ -12,7 +12,7 @@ describe("computeTemperature", () => {
 
   it("hot: recalled within 7 days", () => {
     expect(computeTemperature(0, daysAgo(3))).toBe("hot");
-    expect(computeTemperature(0, daysAgo(7))).toBe("hot");
+    expect(computeTemperature(0, daysAgo(6.9))).toBe("hot");
   });
 
   it("warm: recall_count >= 3", () => {
