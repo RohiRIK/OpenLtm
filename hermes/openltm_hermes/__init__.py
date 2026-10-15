@@ -381,11 +381,18 @@ class OpenLtmpMemoryProvider(MemoryProvider):
                 results = db_mod.recall(self._conn, query=query, limit=8)
             if not results:
                 return ""
+            from ._secrets_scrubber import scrub_line_for_egress
             lines = []
             for r in results:
-                title = r.get("title") or r.get("content", "")[:60]
+                # Scrub the full text before truncating so a key cut at 60
+                # chars cannot slip past the patterns; drop on scrub failure.
+                title = scrub_line_for_egress(r.get("title") or r.get("content", ""))
+                if title is None:
+                    continue
                 cat = r.get("category", "")
-                lines.append(f"- [{cat}] {title}")
+                lines.append(f"- [{cat}] {title if r.get('title') else title[:60]}")
+            if not lines:
+                return ""
             from ._memory_frame import frame_recalled_memory
             return "## OpenLTM Recall\n" + frame_recalled_memory("\n".join(lines))
         except Exception as e:
@@ -492,10 +499,18 @@ class OpenLtmpMemoryProvider(MemoryProvider):
                 return json.dumps(compact)
 
             elif tool_name == "openltm_learn":
+                # Scrub before anything is stored or embedded; fail closed like
+                # the TS scrubOrRefuse so a scrubber error never stores raw text.
+                from ._secrets_scrubber import ScrubRefusedError, scrub_or_refuse
+                try:
+                    safe_content = scrub_or_refuse(args["content"])
+                    safe_title = scrub_or_refuse(args.get("title"))
+                except ScrubRefusedError as e:
+                    return json.dumps({"error": str(e)})
                 result = db_mod.learn(
                     self._conn,
-                    args["content"],
-                    title=args.get("title"),
+                    safe_content,
+                    title=safe_title,
                     category=args.get("category", "pattern"),
                     importance=args.get("importance", 3),
                     tags=args.get("tags"),
@@ -505,7 +520,7 @@ class OpenLtmpMemoryProvider(MemoryProvider):
                 # Compute embedding in background if provider available
                 if self._embedder and result.get("action") == "created":
                     try:
-                        vec = self._embedder.embed(args["content"])
+                        vec = self._embedder.embed(safe_content)
                         if vec:
                             from ._providers import embedding_to_blob
                             db_mod.store_embedding(self._conn, result["id"], embedding_to_blob(vec),

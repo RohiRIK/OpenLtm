@@ -123,3 +123,37 @@ describe("ltm_learn tool roundtrip", () => {
     expect(memories.some(m => m.id === result.id)).toBe(true);
   });
 });
+
+describe("egress scrub — legacy raw rows never reach the prompt", () => {
+  const KEY = "AKIAIOSFODNN7EXAMPLE";
+  const project = "test-opencode-leak-proj";
+
+  async function plantLegacyRow(): Promise<void> {
+    const { learn, getDb } = await import("@rohirik/openltm-core");
+    const res = learn({ content: "Legacy deploy note placeholder", category: "gotcha", importance: 4, project_scope: project, skipExport: true });
+    const id = (res as { id: number }).id;
+    // Simulate a row stored before write-time scrubbing existed.
+    getDb().run("UPDATE memories SET content = ? WHERE id = ?", [`Legacy deploy note uses ${KEY}`, id]);
+  }
+
+  it("system.transform prefill redacts a planted key", async () => {
+    await plantLegacyRow();
+    const { plugin } = await import("../index.js");
+    const hooks = await plugin.server({ project: { path: `/tmp/${project}`, name: project }, sessionID: "leak-1" });
+    const output = { system: [] as string[] };
+    await hooks["experimental.chat.system.transform"]!({ sessionID: "leak-1", model: "claude-3" }, output);
+    const text = output.system.join("\n");
+    expect(text).toContain("Legacy deploy note");
+    expect(text).not.toContain(KEY);
+  });
+
+  it("session.compacting redacts a planted key", async () => {
+    const { plugin } = await import("../index.js");
+    const hooks = await plugin.server({ project: { path: `/tmp/${project}`, name: project }, sessionID: "leak-2" });
+    const output = { context: [] as string[], prompt: undefined as string | undefined };
+    await hooks["experimental.session.compacting"]!({ sessionID: "leak-2" } as never, output as never);
+    const text = output.context.join("\n");
+    expect(text).toContain("Legacy deploy note");
+    expect(text).not.toContain(KEY);
+  });
+});

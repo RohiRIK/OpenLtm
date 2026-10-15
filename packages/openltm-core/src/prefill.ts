@@ -18,6 +18,7 @@ import { getDataDir, getRegistryPath } from "./paths.js";
 import { legacyLastSegment, loadProjectRegistry, resolveProjectName } from "./project.js";
 import { createProjectDataProbe } from "./projectProbe.js";
 import { frameRecalledMemory } from "./memoryFrame.js";
+import { scrubForEgress } from "./secretsScrubber.js";
 
 export interface PrefillOptions {
   project: string;
@@ -241,5 +242,5 @@ export function buildPrefillContext(opts: PrefillOptions): string {
 }
 
 function renderLine(memory: Pick<Memory, "id" | "content" | "category" | "importance">): string {
-  return `- [${memory.id}] (${memory.category}/${memory.importance}) ${oneLine(memory.content)}`;
+  return `- [${memory.id}] (${memory.category}/${memory.importance}) ${oneLine(scrubForEgress(memory.content))}`;
 }

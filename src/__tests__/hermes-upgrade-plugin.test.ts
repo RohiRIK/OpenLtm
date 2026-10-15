@@ -208,6 +208,33 @@ describe("hermes/upgrade-plugin.sh", () => {
     expect(left).not.toContain("openltm-20200101-000000");
   });
 
+  it("prune touches only exact openltm-YYYYMMDD-HHMMSS[-N] backups, never user dirs", () => {
+    const root = join(home, "plugin-backups");
+    mkdirSync(root, { recursive: true });
+    const user = ["openltm-2024", "openltm-1-mine", "openltm-20200101-000000-old", "openltm-20200101-0000000", "openltm-mine"];
+    for (const b of user) mkdirSync(join(root, b));
+    mkdirSync(join(root, "openltm-20200101-000000"));
+    installOldCopy();
+    expect(runEnv({ HERMES_HOME: home, OPENLTM_KEEP_BACKUPS: "1" }).code).toBe(0);
+    const left = readdirSync(root).sort();
+    for (const b of user) expect(left).toContain(b);
+    expect(left).not.toContain("openltm-20200101-000000");
+    expect(left.filter(b => /^openltm-\d{8}-\d{6}(-\d+)?$/.test(b))).toHaveLength(1);
+  });
+
+  it("OPENLTM_KEEP_BACKUPS=0 still keeps the backup it just made", () => {
+    const root = join(home, "plugin-backups");
+    mkdirSync(join(root, "openltm-20200101-000000"), { recursive: true });
+    installOldCopy();
+    const r = runEnv({ HERMES_HOME: home, OPENLTM_KEEP_BACKUPS: "0" });
+    expect(r.code).toBe(0);
+    const left = readdirSync(root);
+    expect(left).toHaveLength(1);
+    expect(left[0]).toMatch(/^openltm-\d{8}-\d{6}(-\d+)?$/);
+    expect(left[0]).not.toBe("openltm-20200101-000000");
+    expect(readFileSync(join(root, left[0], "plugin.yaml"), "utf8")).toContain("0.0.1");
+  });
+
   it("refuses an empty or / HERMES_HOME and an unset HOME", () => {
     for (const h of ["", "/", "//"]) {
       const r = runEnv({ HERMES_HOME: h });

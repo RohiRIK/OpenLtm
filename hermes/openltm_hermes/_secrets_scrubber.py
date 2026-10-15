@@ -6,6 +6,8 @@ to prevent secrets from leaking via embedding provider requests. Must never thro
 
 from __future__ import annotations
 
+from typing import Optional
+
 import re
 from dataclasses import dataclass
 from typing import Final
@@ -125,3 +127,33 @@ def scrub_secrets(text: str) -> ScrubResult:
 def scrub_secrets_for_embedding(text: str) -> str:
     """Convenience wrapper: return only the scrubbed text for embedding calls."""
     return scrub_secrets(text).scrubbed
+
+class ScrubRefusedError(ValueError):
+    """Raised when text cannot be scrubbed; the caller must not store or send it raw."""
+
+
+def scrub_or_refuse(text: Optional[str]) -> Optional[str]:
+    """Fail-closed scrub for writes, twin of the TS scrubOrRefuse.
+
+    Returns the redacted text (None/empty pass through). Unlike scrub_secrets,
+    any error raises ScrubRefusedError instead of returning the raw input.
+    """
+    if text is None or text == "":
+        return text
+    if not isinstance(text, str):
+        raise ScrubRefusedError("refusing to store non-string text")
+    try:
+        scrubbed = text
+        for pattern in PATTERNS:
+            scrubbed = pattern.regex.sub(pattern.replacement, scrubbed)
+        return scrubbed
+    except Exception as e:  # pragma: no cover - defensive
+        raise ScrubRefusedError("secret scrubber failed; refusing to store raw text") from e
+
+
+def scrub_line_for_egress(text: Optional[str]) -> Optional[str]:
+    """Scrub one line bound for a prompt; None means drop the line (never emit it raw)."""
+    try:
+        return scrub_or_refuse(text or "")
+    except ScrubRefusedError:
+        return None

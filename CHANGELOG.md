@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.18.1] — 2026-10-15
+
+### Security
+- **OpenCode prefill and compaction scrub memory text before it reaches the prompt.** `prefill.ts` renders each line as `oneLine(scrubForEgress(content))`, and the OpenCode compaction hook scrubs every memory, so a legacy row stored before write-time scrubbing can no longer leak a key into `<recalled-memory>`.
+- **Hermes `openltm_learn` scrubs content and title before storing and embedding them.** It fails closed like the TS `scrubOrRefuse` (new `scrub_or_refuse` in `_secrets_scrubber.py`): if scrubbing errors, nothing is stored. The embedder only ever sees the scrubbed text, so a key never goes to a cloud embedder.
+- **Hermes prefetch and reviewed project context scrub every title and content line**; a line that cannot be scrubbed is dropped, never emitted raw.
+- **The recalled-memory tag neutralizer catches look-alike tags** (TS and Python): text is NFKC-normalized (fullwidth `＜／＞`), HTML entities are decoded (`&lt;`, `&#60;`, `&#x3c;`, double-encoded), U+FEFF and zero-width characters are removed, and `recalled-memory`, `recalled_memory` and `recalled memory` match in any case. A match becomes `[recalled memory tag removed]`, which cannot read as a tag. Clean text is left byte-identical.
+- **`hermes/upgrade-plugin.sh` prunes only its own backups** (`openltm-YYYYMMDD-HHMMSS[-N]` directories) and never deletes the backup it just made, even with `OPENLTM_KEEP_BACKUPS=0`.
+
+### Tests
+- Plant-secret and bypass regressions for each fix; Hermes pytest now runs in CI.
+
 ## [2.18.0] — 2026-10-14
 
 ### Added

@@ -459,7 +459,15 @@ def format_strict_project_context(conn: sqlite3.Connection, *, project_scope: st
     items = strict_project_context(conn, project_scope=project_scope, limit=limit)
     if not items:
         return ""
+    from ._secrets_scrubber import scrub_line_for_egress
+
     lines = [f"## Reviewed Project Memory ({project_scope})"]
     for item in items:
-        lines.append(f"- [{item['category']}] {item['content']}")
+        title = item.get("title") if isinstance(item, dict) else None
+        content = scrub_line_for_egress(item["content"])
+        if content is None:
+            continue  # never emit a line we could not scrub
+        safe_title = scrub_line_for_egress(title) if title else None
+        prefix = f"{safe_title}: " if safe_title else ""
+        lines.append(f"- [{item['category']}] {prefix}{content}")
     return "\n".join(lines)
