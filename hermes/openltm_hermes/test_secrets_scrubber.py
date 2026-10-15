@@ -311,3 +311,15 @@ def test_aws_secret_redacted(key):
 @pytest.mark.parametrize("key", sorted(_AWS_FX["keep"]))
 def test_aws_secret_not_overmatched(key):
     assert "aws-secret-key" not in scrub_secrets(_AWS_FX["keep"][key]).redactions
+
+
+def test_sts_block_redacts_asia_and_session_token():
+    r = scrub_secrets(_AWS_FX["redact"]["sts_json"])
+    assert "ASIAIOSFODNN7EXAMPLE" not in r.scrubbed
+    assert "FwoGZXIvYXdzE" not in r.scrubbed
+    assert {"aws-access-key", "aws-secret-key", "aws-session-token"} <= set(r.redactions)
+
+
+def test_label_normalization_only_decides_value_span_replaced():
+    v = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+    assert scrub_secrets(f'Aws_Secret_Access_Key = "{v}"').scrubbed == 'Aws_Secret_Access_Key = "[REDACTED:aws-secret-key]"'

@@ -17,23 +17,43 @@ export const SCRUB_FAILED_PLACEHOLDER = "[REDACTED:scrub-failed]";
 interface Pattern {
   id: string;
   regex: RegExp;
-  replacement: string;
+  replacement: string | ((match: string, ...groups: string[]) => string);
+}
+
+/**
+ * Label normalization for AWS secret keys: lowercase and strip "_", "-" and spaces,
+ * used ONLY to decide whether a label names an AWS secret. Matches any label
+ * containing "aws" or "secret" (aws_secret=, AWS_SECRET_ACCESS_KEY, SecretAccessKey,
+ * Aws_Secret_Access_Key, terraform secret_key, MY_..._AWS_SECRET_ACCESS_KEY), but not
+ * "secretary" or *_id labels (secret_key_id, AccessKeyId).
+ * Keep in parity with _secrets_scrubber.py.
+ */
+export function isAwsSecretLabel(label: string): boolean {
+  const n = label.toLowerCase().replace(/[_\-\s]/g, "");
+  if (!n.includes("aws") && !n.includes("secret")) return false;
+  if (n.includes("secretary") || n.endsWith("id")) return false;
+  return true;
 }
 
 const PATTERNS: Pattern[] = [
   {
     id: "aws-access-key",
-    regex: /AKIA[0-9A-Z]{16}/g,
+    regex: /(?:AKIA|ASIA)[0-9A-Z]{16}/g, // long-term (AKIA) and STS temporary (ASIA) key ids
     replacement: "[REDACTED:aws-access-key]",
   },
   {
     id: "aws-secret-key",
-    // 40-char base64 string near aws/secret context
-    // Name may continue (AWS_SECRET_ACCESS_KEY, aws_secret_access_key); value 40-48
-    // chars so a slightly over-long paste still matches, while the aws/secret
-    // anchor keeps bare 40+ char strings out.
-    regex: /(?:aws|AWS|secret|SECRET)[A-Za-z_]{0,20}[^a-zA-Z0-9]{0,20}[0-9a-zA-Z/+]{40,48}(?![0-9a-zA-Z/+])/g,
-    replacement: "[REDACTED:aws-secret-key]",
+    // label, separator (":" / "=" / whitespace, optional quotes), 40-48 char value.
+    // The label decides via isAwsSecretLabel; only the VALUE span is replaced.
+    regex: /(?<![A-Za-z0-9_])([A-Za-z][A-Za-z0-9_-]{0,63})(["']?[ \t]*[:=][ \t]*["']?|["']?[ \t]+["']?)([0-9a-zA-Z/+]{40,48})(?![0-9a-zA-Z/+])/g,
+    replacement: (m: string, label: string, sep: string) =>
+      isAwsSecretLabel(label) ? `${label}${sep}[REDACTED:aws-secret-key]` : m,
+  },
+  {
+    id: "aws-session-token",
+    // STS SessionToken / AWS_SESSION_TOKEN values are long base64 blobs.
+    regex: /[Ss][Ee][Ss][Ss][Ii][Oo][Nn]_?[Tt][Oo][Kk][Ee][Nn][^a-zA-Z0-9]{0,20}[A-Za-z0-9/+=]{100,}/g,
+    replacement: "[REDACTED:aws-session-token]",
   },
   {
     id: "github-token",
@@ -114,7 +134,7 @@ export function scrubSecrets(text: string): ScrubResult {
 
     for (const pattern of PATTERNS) {
       pattern.regex.lastIndex = 0;
-      const next = scrubbed.replace(pattern.regex, pattern.replacement);
+      const next = scrubbed.replace(pattern.regex, pattern.replacement as never);
       if (next !== scrubbed) found.add(pattern.id);
       scrubbed = next;
     }

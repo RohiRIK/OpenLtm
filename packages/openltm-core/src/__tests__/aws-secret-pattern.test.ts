@@ -24,3 +24,18 @@ describe("aws-secret-key pattern", () => {
     expect(scrubSecrets(text).redactions).not.toContain("aws-secret-key");
   });
 });
+
+describe("STS temporary credentials", () => {
+  it("redacts ASIA key ids and the SessionToken in an STS block", () => {
+    const r = scrubSecrets(fx.redact.sts_json);
+    expect(r.scrubbed).not.toContain("ASIAIOSFODNN7EXAMPLE");
+    expect(r.scrubbed).not.toContain("FwoGZXIvYXdzE");
+    expect(r.redactions).toEqual(expect.arrayContaining(["aws-access-key", "aws-secret-key", "aws-session-token"]));
+  });
+});
+
+describe("label normalization only decides; text is never rewritten", () => {
+  it("keeps the original label and separator and replaces only the value", () => {
+    expect(scrubSecrets(`Aws_Secret_Access_Key = "${VALUE}KEY"`).scrubbed).toBe('Aws_Secret_Access_Key = "[REDACTED:aws-secret-key]"');
+  });
+});

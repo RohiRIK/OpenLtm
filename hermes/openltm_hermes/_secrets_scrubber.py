@@ -25,24 +25,47 @@ class Pattern:
     """Secret detection pattern."""
     id: str
     regex: re.Pattern
-    replacement: str
+    replacement: object  # str, or a callable taking the match (re.sub semantics)
+
+
+def is_aws_secret_label(label: str) -> bool:
+    """Label normalization (lowercase, strip _ - spaces) used ONLY to decide a match.
+
+    Any label containing "aws" or "secret" counts, except "secretary" and *_id
+    labels (secret_key_id, AccessKeyId). Keep in parity with secretsScrubber.ts.
+    """
+    n = re.sub(r"[_\-\s]", "", label.lower())
+    if "aws" not in n and "secret" not in n:
+        return False
+    if "secretary" in n or n.endswith("id"):
+        return False
+    return True
+
+
+def _aws_secret_repl(m: "re.Match[str]") -> str:
+    label, sep = m.group(1), m.group(2)
+    return f"{label}{sep}[REDACTED:aws-secret-key]" if is_aws_secret_label(label) else m.group(0)
 
 
 # Pre-compiled patterns for performance — order matters (specific before generic)
 PATTERNS: Final[tuple[Pattern, ...]] = (
     Pattern(
         id="aws-access-key",
-        regex=re.compile(r"AKIA[0-9A-Z]{16}"),
+        regex=re.compile(r"(?:AKIA|ASIA)[0-9A-Z]{16}"),  # AKIA long-term, ASIA STS temporary
         replacement="[REDACTED:aws-access-key]",
     ),
     Pattern(
         id="aws-secret-key",
-        # 40-char base64 string near aws/secret context
-        # Name may continue (AWS_SECRET_ACCESS_KEY, aws_secret_access_key); value 40-48
-        # chars so a slightly over-long paste still matches; the aws/secret anchor
-        # keeps bare 40+ char strings out. Keep in parity with secretsScrubber.ts.
-        regex=re.compile(r"(?:aws|AWS|secret|SECRET)[A-Za-z_]{0,20}[^a-zA-Z0-9]{0,20}[0-9a-zA-Z/+]{40,48}(?![0-9a-zA-Z/+])"),
-        replacement="[REDACTED:aws-secret-key]",
+        # label, separator (":" / "=" / whitespace, optional quotes), 40-48 char value.
+        # The label decides via is_aws_secret_label; only the VALUE span is replaced.
+        regex=re.compile(r"(?<![A-Za-z0-9_])([A-Za-z][A-Za-z0-9_-]{0,63})([\"']?[ \t]*[:=][ \t]*[\"']?|[\"']?[ \t]+[\"']?)([0-9a-zA-Z/+]{40,48})(?![0-9a-zA-Z/+])"),
+        replacement=_aws_secret_repl,
+    ),
+    Pattern(
+        id="aws-session-token",
+        # STS SessionToken / AWS_SESSION_TOKEN values are long base64 blobs.
+        regex=re.compile(r"[Ss][Ee][Ss][Ss][Ii][Oo][Nn]_?[Tt][Oo][Kk][Ee][Nn][^a-zA-Z0-9]{0,20}[A-Za-z0-9/+=]{100,}"),
+        replacement="[REDACTED:aws-session-token]",
     ),
     Pattern(
         id="github-token",
