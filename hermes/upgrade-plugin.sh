@@ -138,8 +138,15 @@ upgrade_symlink() {
 prune_backups() {
   local keep_path="${1:-}" all n i=0 b
   [ -d "$BACKUP_ROOT" ] || return 0
-  all="$(find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d -regextype posix-extended \
-    -regex '.*/openltm-[0-9]{8}-[0-9]{6}(-[0-9]+)?' | sort -V)"
+  # Portable (no GNU-only find flags, works on macOS): match names with bash [[ =~ ]].
+  local re='^openltm-[0-9]{8}-[0-9]{6}(-[0-9]+)?$' d
+  all=""
+  for d in "$BACKUP_ROOT"/openltm-*; do
+    [ -d "$d" ] && [ ! -L "$d" ] || continue
+    [[ "${d##*/}" =~ $re ]] || continue
+    all+="$d"$'\n'
+  done
+  all="$(printf '%s' "$all" | sort -V)"
   [ -n "$all" ] || return 0
   n="$(printf '%s\n' "$all" | wc -l)"
   while IFS= read -r b; do

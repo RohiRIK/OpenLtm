@@ -156,4 +156,15 @@ describe("egress scrub — legacy raw rows never reach the prompt", () => {
     expect(text).toContain("Legacy deploy note");
     expect(text).not.toContain(KEY);
   });
+
+  it("ltm_recall and ltm_context tool output redact a planted key", async () => {
+    const { plugin } = await import("../index.js");
+    const hooks = await plugin.server({ project: { path: `/tmp/${project}`, name: project }, sessionID: "leak-3" });
+    const recallTool = (hooks.tool ?? []).find(t => t.name === "ltm_recall")!;
+    const out = JSON.stringify(await recallTool.execute({ query: "Legacy", project }));
+    expect(out).toContain("Legacy deploy note");
+    expect(out).not.toContain(KEY);
+    const ctxTool = (hooks.tool ?? []).find(t => t.name === "ltm_context");
+    if (ctxTool) expect(JSON.stringify(await ctxTool.execute({ project }))).not.toContain(KEY);
+  });
 });

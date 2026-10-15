@@ -26,6 +26,7 @@ from typing import Any, Dict, List, Optional
 
 from agent.memory_provider import MemoryProvider
 
+from ._secrets_scrubber import scrub_payload
 from .auto_capture import (
     evaluate_session as _evaluate_session,
 )
@@ -367,8 +368,8 @@ class OpenLtmpMemoryProvider(MemoryProvider):
             if self._embedder:
                 try:
                     # Scrub secrets before embedding the query
-                    from ._secrets_scrubber import scrub_secrets_for_embedding
-                    scrubbed_query = scrub_secrets_for_embedding(query)
+                    from ._secrets_scrubber import scrub_or_refuse
+                    scrubbed_query = scrub_or_refuse(query)  # raises -> no embed
                     query_embedding = self._embedder.embed(scrubbed_query)
                 except Exception as e:
                     logger.debug("OpenLTM prefetch embed failed: %s", e)
@@ -461,8 +462,8 @@ class OpenLtmpMemoryProvider(MemoryProvider):
                 if self._embedder and args.get("query"):
                     try:
                         # Scrub secrets before embedding the query
-                        from ._secrets_scrubber import scrub_secrets_for_embedding
-                        scrubbed_query = scrub_secrets_for_embedding(args["query"])
+                        from ._secrets_scrubber import scrub_or_refuse
+                        scrubbed_query = scrub_or_refuse(args["query"])  # raises -> no embed
                         query_embedding = self._embedder.embed(scrubbed_query)
                     except Exception:
                         pass
@@ -490,13 +491,13 @@ class OpenLtmpMemoryProvider(MemoryProvider):
                 for r in results:
                     compact.append({
                         "id": r["id"],
-                        "content": r["content"][:300],
+                        "content": scrub_payload(r["content"])[:300],
                         "category": r["category"],
                         "importance": r["importance"],
-                        "tags": r.get("tags", []),
+                        "tags": scrub_payload(r.get("tags", [])),
                         "project_scope": r.get("project_scope"),
                     })
-                return json.dumps(compact)
+                return json.dumps(scrub_payload(compact))
 
             elif tool_name == "openltm_learn":
                 # Scrub before anything is stored or embedded; fail closed like
@@ -505,6 +506,9 @@ class OpenLtmpMemoryProvider(MemoryProvider):
                 try:
                     safe_content = scrub_or_refuse(args["content"])
                     safe_title = scrub_or_refuse(args.get("title"))
+                    # Scrub tags before _db lowercases them (lowercasing first
+                    # would break case-sensitive patterns like AKIA).
+                    safe_tags = [scrub_or_refuse(str(t)) or "" for t in (args.get("tags") or [])] or None
                 except ScrubRefusedError as e:
                     return json.dumps({"error": str(e)})
                 result = db_mod.learn(
@@ -513,7 +517,7 @@ class OpenLtmpMemoryProvider(MemoryProvider):
                     title=safe_title,
                     category=args.get("category", "pattern"),
                     importance=args.get("importance", 3),
-                    tags=args.get("tags"),
+                    tags=safe_tags,
                     project=args.get("project"),
                     embedder=self._embedder,
                 )
@@ -546,7 +550,7 @@ class OpenLtmpMemoryProvider(MemoryProvider):
                 result["reviewed_project_memory"] = _project_memory.strict_project_context(
                     self._conn, project_scope=args["project"]
                 )
-                return json.dumps(result)
+                return json.dumps(scrub_payload(result))
 
             elif tool_name == "openltm_relate":
                 result = db_mod.relate(
@@ -565,12 +569,12 @@ class OpenLtmpMemoryProvider(MemoryProvider):
                 for r in results:
                     compact.append({
                         "id": r["id"],
-                        "content": r["content"][:200],
+                        "content": scrub_payload(r["content"])[:200],
                         "category": r["category"],
                         "depth": r["depth"],
                         "relations": [{"type": rel["relationship_type"], "target": rel["target_memory_id"] if rel["source_memory_id"] == r["id"] else rel["source_memory_id"]} for rel in r.get("relations", [])],
                     })
-                return json.dumps(compact)
+                return json.dumps(scrub_payload(compact))
 
             elif tool_name == "openltm_brain_stats":
                 result = db_mod.brain_stats(self._conn)
@@ -580,7 +584,7 @@ class OpenLtmpMemoryProvider(MemoryProvider):
                 action = args["action"]
                 if action == "list":
                     results = db_mod.get_stale_memories(self._conn)
-                    return json.dumps(results)
+                    return json.dumps(scrub_payload(results))
                 elif action == "flag":
                     result = db_mod.flag_stale(self._conn, args["memory_id"], args.get("reason", ""))
                     return json.dumps(result)

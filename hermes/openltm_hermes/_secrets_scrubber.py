@@ -157,3 +157,24 @@ def scrub_line_for_egress(text: Optional[str]) -> Optional[str]:
         return scrub_or_refuse(text or "")
     except ScrubRefusedError:
         return None
+
+
+SCRUB_FAILED_PLACEHOLDER = "[scrub-failed]"
+
+
+def scrub_payload(obj, _depth: int = 0):
+    """Deep-scrub a tool result before it leaves the plugin (twin of TS scrubMemoryPayload).
+
+    Every string in dicts/lists/tuples is scrubbed; a string that cannot be
+    scrubbed, or anything nested past depth 32, becomes a stub, never raw.
+    """
+    if _depth > 32:
+        return SCRUB_FAILED_PLACEHOLDER
+    if isinstance(obj, str):
+        out = scrub_line_for_egress(obj)
+        return SCRUB_FAILED_PLACEHOLDER if out is None else out
+    if isinstance(obj, dict):
+        return {k: scrub_payload(v, _depth + 1) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [scrub_payload(v, _depth + 1) for v in obj]
+    return obj

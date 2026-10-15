@@ -18,13 +18,9 @@ from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
-# Import secrets scrubber for pre-embedding redaction
-try:
-    from ._secrets_scrubber import scrub_secrets_for_embedding
-except ImportError:
-    # Fallback if module not available
-    def scrub_secrets_for_embedding(text: str) -> str:
-        return text
+# Secrets scrubber: required. No identity fallback — if it cannot be imported,
+# importing _db fails rather than storing or embedding raw text.
+from ._secrets_scrubber import ScrubRefusedError, scrub_or_refuse, scrub_secrets_for_embedding  # noqa: F401
 
 # ─── Tunable constants ───────────────────────────────────────────────────────
 
@@ -266,6 +262,13 @@ def learn(
        instead of inserting a duplicate. Between 0.82 and 0.90 we still insert
        but the caller can log a near-dup warning.
     """
+    # Scrub every write here so all callers (tools, sync_turn, session end,
+    # memory-write mirror) are covered. Fails closed: ScrubRefusedError
+    # propagates and nothing is stored.
+    content = scrub_or_refuse(content) or ""
+    title = scrub_or_refuse(title)
+    if tags:
+        tags = [scrub_or_refuse(t) or "" for t in tags]  # scrub before _attach_tags lowercases
     now = datetime.now(timezone.utc).isoformat()
     dedup = _dedup_key(content)
 
@@ -293,7 +296,7 @@ def learn(
     if embedder is not None:
         try:
             # Scrub secrets before embedding
-            scrubbed_content = scrub_secrets_for_embedding(content)
+            scrubbed_content = scrub_or_refuse(content)  # raises -> embed skipped
             new_vec = embedder.embed(scrubbed_content)
             if new_vec:
                 sims = vector_search(conn, new_vec, limit=1, project=project, category=category,
@@ -341,7 +344,7 @@ def learn(
     if embedder is not None:
         try:
             # Scrub secrets before embedding
-            scrubbed_content = scrub_secrets_for_embedding(content)
+            scrubbed_content = scrub_or_refuse(content)  # raises -> embed skipped
             vec = embedder.embed(scrubbed_content)
             if vec:
                 from ._providers import embedding_to_blob
@@ -444,7 +447,17 @@ def forget(conn: sqlite3.Connection, memory_id: int, reason: str | None = None) 
                  (memory_id, memory_id))
     conn.execute("DELETE FROM memories WHERE id = ?", (memory_id,))
     conn.commit()
-    return {"ok": True, "id": memory_id, "reason": reason}
+    return {"ok": True, "id": memory_id, "reason": _egress_reason(reason)}
+
+
+def _egress_reason(reason: str | None) -> str | None:
+    """Echo a caller-supplied reason scrubbed; a stub if scrubbing fails (never raw)."""
+    if reason is None:
+        return None
+    try:
+        return scrub_or_refuse(reason)
+    except ScrubRefusedError:
+        return "[scrub-failed]"
 
 
 def get_context(conn: sqlite3.Connection, project: str) -> dict:
@@ -668,6 +681,7 @@ def consolidate_memories(conn: sqlite3.Connection, id1: int, id2: int) -> dict:
 
 def flag_stale(conn: sqlite3.Connection, memory_id: int, reason: str) -> dict:
     """Flag a memory as stale (e.g., when referenced code changes)."""
+    reason = scrub_or_refuse(reason) or ""  # fail closed: never store a raw reason
     now = datetime.now(timezone.utc).isoformat()
     conn.execute(
         """UPDATE memories SET
@@ -677,7 +691,17 @@ def flag_stale(conn: sqlite3.Connection, memory_id: int, reason: str) -> dict:
         (now, reason, memory_id),
     )
     conn.commit()
-    return {"ok": True, "id": memory_id, "reason": reason}
+    return {"ok": True, "id": memory_id, "reason": _egress_reason(reason)}
+
+
+def _egress_reason(reason: str | None) -> str | None:
+    """Echo a caller-supplied reason scrubbed; a stub if scrubbing fails (never raw)."""
+    if reason is None:
+        return None
+    try:
+        return scrub_or_refuse(reason)
+    except ScrubRefusedError:
+        return "[scrub-failed]"
 
 
 def get_stale_memories(conn: sqlite3.Connection) -> list[dict]:

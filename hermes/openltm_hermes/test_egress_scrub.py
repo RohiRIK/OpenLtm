@@ -103,3 +103,124 @@ def test_scrub_or_refuse_redacts_and_passes_none():
     assert _secrets_scrubber.scrub_or_refuse(None) is None
     with pytest.raises(_secrets_scrubber.ScrubRefusedError):
         _secrets_scrubber.scrub_or_refuse(123)  # type: ignore[arg-type]
+
+
+# --- Sam's review of #48: scrub inside _db.learn, fail-closed embeds, tags, tool outputs ---
+
+class _Boom:
+    def sub(self, *a, **k):
+        raise RuntimeError("forced scrubber failure")
+
+
+@pytest.fixture
+def scrubber_throws(monkeypatch):
+    saved = [(pat, pat.regex) for pat in _secrets_scrubber.PATTERNS]
+    for pat in _secrets_scrubber.PATTERNS:
+        object.__setattr__(pat, "regex", _Boom())  # Pattern may be a frozen dataclass
+    yield
+    for pat, rx in saved:
+        object.__setattr__(pat, "regex", rx)
+
+
+def _dump(conn):
+    rows = conn.execute("SELECT content, COALESCE(title,''), COALESCE(stale_reason,'') FROM memories").fetchall()
+    tags = conn.execute("SELECT name FROM tags").fetchall()
+    return json.dumps([list(r) for r in rows] + [list(t) for t in tags])
+
+
+def test_db_learn_scrubs_for_every_caller(provider):
+    emb = RecordingEmbedder()
+    provider._embedder = emb
+    provider.sync_turn(f"Always use the key {KEY} for deploy, never npm.", "ok")
+    provider.on_session_end([
+        {"role": "assistant", "content": "What should I use?"},
+        {"role": "user", "content": f"No, use the key {KEY} instead of the old one."},
+    ])
+    provider.on_memory_write("add", "user", f"user prefers key {KEY}")
+    _db.learn(provider._conn, f"direct {KEY}", title=f"t {KEY}", tags=[f"k-{KEY}"])
+    dump = _dump(provider._conn)
+    assert provider._conn.execute("SELECT COUNT(*) FROM memories").fetchone()[0] >= 2
+    assert KEY not in dump and KEY.lower() not in dump
+    assert all(KEY not in c for c in emb.calls)
+
+
+def test_db_learn_refuses_when_scrubber_throws(provider, scrubber_throws):
+    emb = RecordingEmbedder()
+    with pytest.raises(_secrets_scrubber.ScrubRefusedError):
+        _db.learn(provider._conn, f"direct {KEY}", embedder=emb)
+    provider.on_memory_write("add", "user", f"user prefers key {KEY}")
+    provider.sync_turn(f"Always use the key {KEY} for deploy, never npm.", "ok")
+    assert provider._conn.execute("SELECT COUNT(*) FROM memories").fetchone()[0] == 0
+    assert emb.calls == []
+
+
+def test_learn_tags_scrubbed_before_lowercasing(provider):
+    out = json.loads(provider.handle_tool_call(
+        "openltm_learn", {"content": "tag test", "tags": [f"k-{KEY}"], "category": "gotcha"}))
+    assert out.get("action") == "created", out
+    names = [r[0] for r in provider._conn.execute("SELECT name FROM tags").fetchall()]
+    assert names and all(KEY.lower() not in n and KEY not in n for n in names)
+
+
+def test_learn_tags_refused_when_scrubber_throws(provider, scrubber_throws):
+    out = json.loads(provider.handle_tool_call(
+        "openltm_learn", {"content": "tag test", "tags": [f"k-{KEY}"]}))
+    assert "error" in out
+    assert provider._conn.execute("SELECT COUNT(*) FROM tags").fetchone()[0] == 0
+
+
+def test_embed_skipped_not_raw_when_scrub_refuses(provider, monkeypatch):
+    emb = RecordingEmbedder()
+    real = _db.scrub_or_refuse
+    calls = {"n": 0}
+
+    def flaky(text):
+        # Let the write-time scrub pass, then refuse on the embed path.
+        calls["n"] += 1
+        if calls["n"] > 2:
+            raise _secrets_scrubber.ScrubRefusedError("forced")
+        return real(text)
+
+    monkeypatch.setattr(_db, "scrub_or_refuse", flaky)
+    res = _db.learn(provider._conn, f"embed path {KEY}", embedder=emb)
+    assert res["action"] == "created"
+    assert emb.calls == []  # skipped, never embedded raw
+
+
+def _plant_legacy(conn, text="legacy deploy note"):
+    res = _db.learn(conn, text, category="gotcha", project="demo-project")
+    conn.execute("UPDATE memories SET content = ?, title = ? WHERE id = ?",
+                 (f"{text} {KEY}", f"title {KEY}", res["id"]))
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE name='memories_fts'").fetchone():
+        conn.execute("INSERT INTO memories_fts(memories_fts) VALUES('rebuild')")
+    conn.commit()
+    return res["id"]
+
+
+def test_tool_outputs_scrub_legacy_rows(provider):
+    mid = _plant_legacy(provider._conn)
+    other = _db.learn(provider._conn, "clean neighbour", category="pattern")["id"]
+    _db.relate(provider._conn, other, mid, "related_to")
+    recall = provider.handle_tool_call("openltm_recall", {"query": "legacy"})
+    graph = provider.handle_tool_call("openltm_graph", {"memory_id": other, "depth": 2})
+    ctx = provider.handle_tool_call("openltm_context", {"project": "demo-project"})
+    _db.flag_stale(provider._conn, mid, "old")
+    provider._conn.execute("UPDATE memories SET stale_reason = ? WHERE id = ?", (f"r {KEY}", mid))
+    stale = provider.handle_tool_call("openltm_stale", {"action": "list"})
+    assert "legacy deploy note" in recall
+    for out in (recall, graph, ctx, stale):
+        assert KEY not in out, out
+
+
+def test_tool_output_stubs_when_scrubber_throws(provider):
+    _plant_legacy(provider._conn)
+    saved = [(pat, pat.regex) for pat in _secrets_scrubber.PATTERNS]
+    for pat in _secrets_scrubber.PATTERNS:
+        object.__setattr__(pat, "regex", _Boom())
+    try:
+        out = provider.handle_tool_call("openltm_recall", {"query": "legacy"})
+        assert KEY not in out
+        assert "scrub-failed" in out
+    finally:
+        for pat, rx in saved:
+            object.__setattr__(pat, "regex", rx)

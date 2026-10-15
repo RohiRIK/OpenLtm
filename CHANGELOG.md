@@ -9,8 +9,17 @@
 - **The recalled-memory tag neutralizer catches look-alike tags** (TS and Python): text is NFKC-normalized (fullwidth `＜／＞`), HTML entities are decoded (`&lt;`, `&#60;`, `&#x3c;`, double-encoded), U+FEFF and zero-width characters are removed, and `recalled-memory`, `recalled_memory` and `recalled memory` match in any case. A match becomes `[recalled memory tag removed]`, which cannot read as a tag. Clean text is left byte-identical.
 - **`hermes/upgrade-plugin.sh` prunes only its own backups** (`openltm-YYYYMMDD-HHMMSS[-N]` directories) and never deletes the backup it just made, even with `OPENLTM_KEEP_BACKUPS=0`.
 
+- **Hermes `_db.learn` scrubs content, title and tags itself**, so every caller is covered (`openltm_learn`, `sync_turn`, `on_session_end`, `on_memory_write`). Tags are scrubbed before they are lowercased. Stale reasons are scrubbed too. Nothing is stored if the scrubber fails.
+- **Hermes embeddings fail closed**: the learn, dedup and query embed paths use `scrub_or_refuse` and skip the embed on refusal; the identity fallback that embedded raw text if the scrubber could not be imported is gone.
+- **Tool output is scrubbed per item**: Hermes `openltm_recall`, `openltm_graph`, `openltm_context` and `openltm_stale list`, and OpenCode `ltm_recall` and `ltm_context`. An item that cannot be scrubbed becomes `[scrub-failed]`.
+- The neutralizer now rewrites only the matched span and returns the rest of the text untouched, and also catches format and combining characters, variation selectors, dash variants, runs of spaces, common homoglyphs (Cyrillic, `I`/`l`), `<\/` and `‹`/`〈`/`﹤`.
+- `upgrade-plugin.sh` matches backup names with bash `[[ =~ ]]` instead of GNU `find -regextype` (works on macOS) and never touches symlinks.
+
 ### Tests
-- Plant-secret and bypass regressions for each fix; Hermes pytest now runs in CI.
+- Plant-secret and bypass regressions for each fix, including forced scrubber failures; Hermes pytest now runs in CI.
+
+### Changed
+- `bun.lock` workspace versions match the package versions.
 
 ## [2.18.0] — 2026-10-14
 

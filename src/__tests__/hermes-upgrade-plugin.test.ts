@@ -222,6 +222,23 @@ describe("hermes/upgrade-plugin.sh", () => {
     expect(left.filter(b => /^openltm-\d{8}-\d{6}(-\d+)?$/.test(b))).toHaveLength(1);
   });
 
+  it("prune never follows or deletes a symlink named like a backup, and does not need GNU find", () => {
+    const root = join(home, "plugin-backups");
+    const target = mkdtempSync(join(tmpdir(), "ltm-prune-target-"));
+    try {
+      writeFileSync(join(target, "precious"), "x");
+      mkdirSync(root, { recursive: true });
+      symlinkSync(target, join(root, "openltm-20190101-000000"));
+      installOldCopy();
+      expect(runEnv({ HERMES_HOME: home, OPENLTM_KEEP_BACKUPS: "0" }).code).toBe(0);
+      expect(lstatSync(join(root, "openltm-20190101-000000")).isSymbolicLink()).toBe(true);
+      expect(existsSync(join(target, "precious"))).toBe(true);
+      expect(readFileSync(SCRIPT, "utf8")).not.toContain("-regextype");
+    } finally {
+      rmSync(target, { recursive: true, force: true });
+    }
+  });
+
   it("OPENLTM_KEEP_BACKUPS=0 still keeps the backup it just made", () => {
     const root = join(home, "plugin-backups");
     mkdirSync(join(root, "openltm-20200101-000000"), { recursive: true });
