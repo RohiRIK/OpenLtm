@@ -65,3 +65,33 @@ describe("byte preservation across every redact fixture", () => {
     expect(new RegExp(`^${pattern}$`).test(text)).toBe(true);
   });
 });
+
+describe("scrubber stays linear on 200k adversarial input", () => {
+  const cases: Record<string, string> = {
+    generic_key_run: "secret_key! ".repeat(16_667),
+    markers_then_quote: "secret_key: [REDACTED:aws-secret-key] ".repeat(5_200) + "'",
+    dash_label_run: ("AWS_" + "_".repeat(19) + "-".repeat(19)).repeat(4_762),
+  };
+  it.each(Object.entries(cases))("%s finishes under 500 ms", (_k, text) => {
+    const t = performance.now();
+    scrubSecrets(text);
+    expect(performance.now() - t).toBeLessThan(500);
+  });
+});
+
+describe("generic-api-key still redacts", () => {
+  it.each([
+    'api_key = "abcdefghijklmnopqrstuvwxyz123456"',
+    "secret_key: 'abcdefghijklmnopqrstuvwxyz123456'",
+    'access_token = "abcdefghijklmnopqrstuvwxyz123456"',
+  ])("%s", (text) => {
+    expect(scrubSecrets(text).redactions).toContain("generic-api-key");
+  });
+});
+
+describe("idempotence: scrub(scrub(x)) === scrub(x)", () => {
+  it.each([...Object.entries(fx.redact), ...Object.entries(fx.keep)])("%s", (_k, text) => {
+    const once = scrubSecrets(text).scrubbed;
+    expect(scrubSecrets(once).scrubbed).toBe(once);
+  });
+});

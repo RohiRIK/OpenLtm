@@ -359,3 +359,21 @@ def test_aws_redaction_preserves_other_bytes(key):
     parts = _re.split(r"(\[REDACTED:(?:aws-secret-key|aws-access-key|aws-session-token)\])", out)
     pattern = "".join(_MARKERS.get(p, _re.escape(p)) for p in parts)
     assert _re.fullmatch(pattern, text, _re.S)
+
+
+@pytest.mark.parametrize("text", [
+    "secret_key! " * 16_667,
+    "secret_key: [REDACTED:aws-secret-key] " * 5_200 + "'",
+    ("AWS_" + "_" * 19 + "-" * 19) * 4_762,
+])
+def test_scrubber_linear_on_200k_input(text):
+    import time as _time
+    t = _time.perf_counter()
+    scrub_secrets(text)
+    assert _time.perf_counter() - t < 0.5
+
+
+@pytest.mark.parametrize("key", sorted([("redact", k) for k in _AWS_FX["redact"]] + [("keep", k) for k in _AWS_FX["keep"]]))
+def test_scrub_is_idempotent(key):
+    once = scrub_secrets(_AWS_FX[key[0]][key[1]]).scrubbed
+    assert scrub_secrets(once).scrubbed == once
