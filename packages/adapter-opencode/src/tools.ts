@@ -1,12 +1,26 @@
-import type { ToolDefinition } from "@opencode-ai/plugin";
-import { recall, learn, forget, relate, getContextMerge, scrubForEgress } from "@rohirik/openltm-core";
+import { recall, learn, forget, relate, getContextMerge, scrubForEgress, categorise } from "@rohirik/openltm-core";
+import type { MemoryCategory, RelationshipType } from "@rohirik/openltm-core";
 
-export function buildTools(_dbPath: string): ToolDefinition[] {
+/** A V2 tool with a JSON Schema input and no declared output: results reach the model as text content. */
+export interface LtmTool {
+  readonly name: string;
+  readonly description: string;
+  readonly input: { readonly type: "object"; readonly properties: Record<string, unknown>; readonly required?: string[] };
+  readonly options: { readonly codemode: false };
+  execute(input: unknown): Promise<{ content: string }>;
+}
+
+// codemode: false exposes each tool directly to the model, as in V1, instead of
+// behind OpenCode's `execute` code-mode tool.
+const options = { codemode: false } as const;
+
+export function buildTools(): LtmTool[] {
   return [
     {
       name: "ltm_recall",
       description: "Search long-term memories by query, category, or project scope. Call before starting any non-trivial task.",
-      parameters: {
+      options,
+      input: {
         type: "object",
         properties: {
           query: { type: "string", description: "Full-text search query" },
@@ -15,21 +29,23 @@ export function buildTools(_dbPath: string): ToolDefinition[] {
           category: { type: "string", enum: ["preference", "architecture", "gotcha", "pattern", "workflow", "constraint"] },
         },
       },
-      async execute({ query, project, limit, category }: Record<string, unknown>) {
+      async execute(input) {
+        const { query, project, limit, category } = input as Record<string, unknown>;
         const results = await recall({
           query: query as string | undefined,
           project: project as string | undefined,
           limit: limit as number | undefined,
-          category: category as string | undefined,
+          category: category as MemoryCategory | undefined,
         });
-        return results.map(m => ({ id: m.id, content: scrubForEgress(m.content), category: m.category, importance: m.importance }));
+        return text(results.map(m => ({ id: m.id, content: scrubForEgress(m.content), category: m.category, importance: m.importance })));
       },
     },
 
     {
       name: "ltm_learn",
       description: "Store or reinforce a memory. Call after discovering a non-obvious pattern, gotcha, or architectural decision. Always provide a title: a concise noun-phrase label (≤60 chars). Write the title and content in English, translating if the conversation is in another language.",
-      parameters: {
+      options,
+      input: {
         type: "object",
         properties: {
           content: { type: "string", description: "The insight, pattern, or decision to store" },
@@ -40,24 +56,28 @@ export function buildTools(_dbPath: string): ToolDefinition[] {
         },
         required: ["content"],
       },
-      async execute({ content, title, category, importance, project }: Record<string, unknown>) {
+      async execute(input) {
+        const { content, title, category, importance, project } = input as Record<string, unknown>;
+        // Like the MCP learn tool: an omitted category is auto-detected (heuristic only, no LLM).
+        const resolved = (category as MemoryCategory | undefined) ?? (await categorise(content as string, 0).catch(() => ({ category: "pattern" as const }))).category;
         const result = learn({
           content: content as string,
           title: title as string | undefined,
-          category: category as string | undefined,
+          category: resolved,
           importance: importance as number | undefined,
           project_scope: project as string | undefined,
           actor: "opencode:ltm_learn",
           skipExport: true,
         });
-        return { id: result.id, action: result.action, category: result.category };
+        return text({ id: result.id, action: result.action, category: resolved });
       },
     },
 
     {
       name: "ltm_forget",
       description: "Delete a memory by ID. Call when a memory is wrong or outdated.",
-      parameters: {
+      options,
+      input: {
         type: "object",
         properties: {
           id: { type: "number", description: "Memory ID to delete" },
@@ -65,16 +85,18 @@ export function buildTools(_dbPath: string): ToolDefinition[] {
         },
         required: ["id"],
       },
-      async execute({ id, reason }: Record<string, unknown>) {
+      async execute(input) {
+        const { id, reason } = input as Record<string, unknown>;
         forget({ id: id as number, reason: reason as string | undefined, actor: "opencode:ltm_forget" });
-        return { ok: true, id };
+        return text({ ok: true, id });
       },
     },
 
     {
       name: "ltm_relate",
       description: "Create a typed relationship between two memories.",
-      parameters: {
+      options,
+      input: {
         type: "object",
         properties: {
           source_id: { type: "number" },
@@ -83,28 +105,36 @@ export function buildTools(_dbPath: string): ToolDefinition[] {
         },
         required: ["source_id", "target_id", "relationship_type"],
       },
-      async execute({ source_id, target_id, relationship_type }: Record<string, unknown>) {
-        relate({ source_id: source_id as number, target_id: target_id as number, relationship_type: relationship_type as string });
-        return { ok: true };
+      async execute(input) {
+        const { source_id, target_id, relationship_type } = input as Record<string, unknown>;
+        relate({ source_id: source_id as number, target_id: target_id as number, relationship_type: relationship_type as RelationshipType });
+        return text({ ok: true });
       },
     },
 
     {
       name: "ltm_context",
       description: "Restore project context — goals, decisions, and gotchas. Call at session start.",
-      parameters: {
+      options,
+      input: {
         type: "object",
         properties: {
           project: { type: "string", description: "Project name" },
         },
         required: ["project"],
       },
-      async execute({ project }: Record<string, unknown>) {
+      async execute(input) {
+        const { project } = input as Record<string, unknown>;
         const result = getContextMerge(project as string);
-        return deepScrub(result);
+        return text(deepScrub(result));
       },
     },
   ];
+}
+
+/** The V2 host rejects `output` without an output schema, so results go to the model as JSON text. */
+function text(value: unknown): { content: string } {
+  return { content: JSON.stringify(value) };
 }
 
 /** Scrub every string in a tool result before it reaches the model; stub past depth 32. */

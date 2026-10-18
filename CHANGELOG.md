@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.20.0] — 2026-10-18
+
+### Changed
+- **The OpenCode plugin runs on OpenCode V2** (`@opencode/plugin` 2.0.32). OpenCode 2 rejects V1 plugin modules at load time, so `@rohirik/opencode-ltm` failed to load and its tools and memory injection were gone. The plugin now default-exports `{ id: "openltm", setup }`, adds its five `ltm_*` tools through `ctx.tool.transform` with JSON Schema inputs (as direct tools, not behind code mode), injects the Prior Knowledge block through the `context` session hook and keeps active memories through the `compaction` hook. The project is resolved from `ctx.location.directory`. **OpenCode 1.x users should pin `@rohirik/opencode-ltm@2.19.0`**; this version does not load there.
+
+### Fixed
+- **OpenCode `ltm_learn` without a category no longer fails.** The category is auto-detected (heuristic only) like the MCP `learn` tool, and the result reports the stored category.
+
 ## [2.19.0] — 2026-10-15
 
 ### Changed

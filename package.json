@@ -1,6 +1,6 @@
 {
   "name": "openltm",
-  "version": "2.19.0",
+  "version": "2.20.0",
   "description": "OpenLTM \u2014 Long-Term Memory for AI coding agents (Claude Code, OpenCode, Pi)",
   "private": true,
   "workspaces": [
@@ -12,7 +12,7 @@
     "bump": "bun run scripts/bump-version.ts",
     "verify-version": "bun run scripts/verify-version-sync.ts",
     "cleanup:bak": "bun run scripts/cleanup-bak.ts",
-    "typecheck": "bunx tsc --noEmit",
+    "typecheck": "bunx tsc --noEmit && bun run --cwd packages/adapter-opencode typecheck",
     "dev:mcp": "bun run src/mcp-server.ts",
     "dev:server": "LTM_DB_PATH=./data/openltm.db bun run src/graph-server.ts",
     "migrate": "LTM_DB_PATH=./data/openltm.db bun run src/migrate.ts",

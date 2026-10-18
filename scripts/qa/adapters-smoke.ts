@@ -98,10 +98,12 @@ try {
   // ── OpenCode (source, Bun) ──────────────────────────────────────────────────
   const opencode = spawnSync(process.execPath, ["-e", `
     const core = await import("@rohirik/openltm-core"); await core.waitForInit();
-    const { plugin } = await import(${JSON.stringify(join(ROOT, "packages", "adapter-opencode", "src", "index.ts"))});
-    const hooks = await plugin.server({ project: { path: ${JSON.stringify(repo)} }, sessionID: "oc" });
-    const out = { system: [] }; await hooks["experimental.chat.system.transform"]({ sessionID: "oc" }, out);
-    console.log(JSON.stringify({ system: out.system.join("\\n"), name: core.deriveProjectFromCwd(${JSON.stringify(repo)}) }));`],
+    const { default: plugin } = await import(${JSON.stringify(join(ROOT, "packages", "adapter-opencode", "src", "index.ts"))});
+    const hooks = new Map(), reg = { dispose: async () => {} };
+    await plugin.setup({ location: { directory: ${JSON.stringify(repo)} }, tool: { transform: async () => reg },
+      session: { hook: async (name, cb) => { hooks.set(name, cb); return reg; } } });
+    const out = { system: [] }; await hooks.get("context")(out);
+    console.log(JSON.stringify({ system: out.system.map(p => p.text).join("\\n"), name: core.deriveProjectFromCwd(${JSON.stringify(repo)}) }));`],
     { env, cwd: ROOT, encoding: "utf-8" });
   const ocode = (() => { try { return JSON.parse(opencode.stdout.trim().split("\n").pop()!); } catch { return { error: opencode.stdout + opencode.stderr }; } })();
   check(`OpenCode names the repo "${EXPECTED}" and injects its memories`, ocode.name === EXPECTED && String(ocode.system).includes("Pi smoke"), ocode);
