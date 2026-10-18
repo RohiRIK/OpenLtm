@@ -1,21 +1,22 @@
-import type { Plugin, PluginModule } from "@opencode-ai/plugin";
+import type { Plugin } from "@opencode/plugin";
 import { buildTools } from "./tools.js";
-import { buildSessionHooks } from "./sessionHooks.js";
-import { DB_PATH } from "@rohirik/openltm-core";
+import { registerSessionHooks } from "./sessionHooks.js";
 
-const server: Plugin = async ({ project }) => {
-  const dbPath = process.env["LTM_DB_PATH"] ?? DB_PATH;
-  // Resolve from the directory, like every other host (registry → repo root →
-  // folder name), so OpenCode and Claude Code share one project name. A display
-  // name cannot match the registry or a repo root.
-  const projectPath = project.path ?? process.cwd();
+// OpenCode V2 loads the module's default export and requires { id, setup }.
+// A type-only import keeps the runtime free of @opencode/plugin: the host
+// provides it, and a plugin may not bundle its own copy.
+const plugin: Plugin.Plugin = {
+  id: "openltm",
+  async setup(ctx) {
+    // Resolve from the directory, like every other host (registry → repo root →
+    // folder name), so OpenCode and Claude Code share one project name.
+    const directory = ctx.location.directory;
 
-  return {
-    tool: buildTools(dbPath),
-    // Before 2.17 the scope was project.name when the host set it — keep it while
-    // it is the only name holding memories.
-    ...buildSessionHooks({ dbPath, project: projectPath, legacyName: project.name }),
-  };
+    await ctx.tool.transform(editor => {
+      for (const tool of buildTools()) editor.add(tool);
+    });
+    await registerSessionHooks(ctx, { project: directory });
+  },
 };
 
-export const plugin: PluginModule = { server };
+export default plugin;

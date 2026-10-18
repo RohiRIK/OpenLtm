@@ -4,6 +4,8 @@ Long-Term Memory (LTM) plugin for [OpenCode](https://opencode.ai) — shares the
 
 ## Install
 
+Requires **OpenCode 2.x** (the V2 plugin API). For OpenCode 1.x, pin `@rohirik/opencode-ltm@2.19.0`.
+
 Add to `~/.config/opencode/opencode.json`:
 
 ```json

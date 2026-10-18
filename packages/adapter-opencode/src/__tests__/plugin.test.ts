@@ -28,99 +28,97 @@ afterAll(async () => {
   try { unlinkSync(`${dbPath}-wal`); } catch {}
 });
 
-describe("OpenCode LTM plugin — server()", () => {
-  it("returns tool array with 5 expected tools", async () => {
-    const { plugin } = await import("../index.js");
-    const hooks = await plugin.server({
-      project: { path: "/tmp/test-project", name: "test-project" },
-      sessionID: "test-session-1",
-    });
+type Part = { type: "text"; text: string };
+type Tool = { name: string; input: unknown; options?: { codemode?: boolean }; execute(input: unknown, ctx?: unknown): Promise<{ content?: string; output?: unknown }> };
 
-    expect(Array.isArray(hooks.tool)).toBe(true);
-    const toolNames = (hooks.tool ?? []).map(t => t.name);
-    expect(toolNames).toContain("ltm_recall");
-    expect(toolNames).toContain("ltm_learn");
-    expect(toolNames).toContain("ltm_forget");
-    expect(toolNames).toContain("ltm_relate");
-    expect(toolNames).toContain("ltm_context");
+/** Runs the plugin's setup against a stand-in V2 context and captures what it registers. */
+async function load(directory: string) {
+  const { default: plugin } = await import("../index.js");
+  const tools: Tool[] = [];
+  const hooks = new Map<string, (event: { system: Part[] }) => Promise<void> | void>();
+  const registration = { dispose: async () => {} };
+  const ctx = {
+    location: { directory, project: { id: "p", directory, canonical: directory } },
+    tool: { transform: async (cb: (editor: { add(t: Tool): void }) => void) => { cb({ add: t => tools.push(t) }); return registration; } },
+    session: { hook: async (name: string, cb: (event: { system: Part[] }) => Promise<void> | void) => { hooks.set(name, cb); return registration; } },
+  };
+  await plugin.setup(ctx as never);
+  const run = async (name: "context" | "compaction") => {
+    const event = { system: [] as Part[] };
+    await hooks.get(name)!(event);
+    return event.system;
+  };
+  const call = async (name: string, input: unknown) => {
+    const result = await tools.find(t => t.name === name)!.execute(input, {});
+    return JSON.parse(result.content!);
+  };
+  return { plugin, tools, hooks, run, call };
+}
+
+describe("OpenCode LTM plugin — V2 module", () => {
+  it("default-exports { id, setup } as OpenCode V2 requires", async () => {
+    const { default: plugin } = await import("../index.js");
+    expect(plugin.id).toBe("openltm");
+    expect(typeof plugin.setup).toBe("function");
   });
 
-  it("has experimental.chat.system.transform hook", async () => {
-    const { plugin } = await import("../index.js");
-    const hooks = await plugin.server({
-      project: { path: "/tmp/test-project" },
-      sessionID: "test-session-2",
-    });
-    expect(typeof hooks["experimental.chat.system.transform"]).toBe("function");
+  it("adds the 5 tools as direct (non code-mode) JSON Schema tools", async () => {
+    const { tools } = await load("/tmp/test-project");
+    expect(tools.map(t => t.name).sort()).toEqual(["ltm_context", "ltm_forget", "ltm_learn", "ltm_recall", "ltm_relate"]);
+    for (const t of tools) {
+      expect((t.input as { type: string }).type).toBe("object");
+      expect(t.options?.codemode).toBe(false);
+    }
   });
 
-  it("has experimental.session.compacting hook", async () => {
-    const { plugin } = await import("../index.js");
-    const hooks = await plugin.server({
-      project: { path: "/tmp/test-project" },
-      sessionID: "test-session-3",
-    });
-    expect(typeof hooks["experimental.session.compacting"]).toBe("function");
+  it("registers the context and compaction session hooks", async () => {
+    const { hooks } = await load("/tmp/test-project");
+    expect([...hooks.keys()].sort()).toEqual(["compaction", "context"]);
+  });
+
+  it("tool results carry content only (the host rejects output without an output schema)", async () => {
+    const { tools } = await load("/tmp/test-project");
+    const result = await tools.find(t => t.name === "ltm_recall")!.execute({ query: "anything" }, {});
+    expect(typeof result.content).toBe("string");
+    expect("output" in result).toBe(false);
   });
 });
 
-describe("system.transform — injects Prior Knowledge block", () => {
-  it("appends Prior Knowledge block when memories exist", async () => {
+describe("context hook — injects Prior Knowledge block", () => {
+  it("appends a text part when memories exist", async () => {
     const { learn } = await import("@rohirik/openltm-core");
     learn({ content: "Use bun not npm", category: "preference", importance: 3, project_scope: "test-opencode-proj", skipExport: true });
 
-    const { plugin } = await import("../index.js");
-    const hooks = await plugin.server({
-      project: { path: "/tmp/test-project", name: "test-opencode-proj" },
-      sessionID: "test-session-4",
-    });
-
-    const output = { system: [] as string[] };
-    await hooks["experimental.chat.system.transform"]!({ sessionID: "s4", model: "claude-3" }, output);
-
-    expect(output.system.length).toBeGreaterThan(0);
-    expect(output.system.some(s => s.includes("Prior Knowledge"))).toBe(true);
+    const { run } = await load("/tmp/test-opencode-proj");
+    const system = await run("context");
+    expect(system.length).toBeGreaterThan(0);
+    expect(system[0]!.type).toBe("text");
+    expect(system.some(p => p.text.includes("Prior Knowledge"))).toBe(true);
   });
 
-  it("does not append block when no memories exist for project", async () => {
-    const { plugin } = await import("../index.js");
-    const hooks = await plugin.server({
-      project: { path: "/tmp/empty-project", name: "empty-project-xyz" },
-      sessionID: "test-session-5",
-    });
-
-    const output = { system: [] as string[] };
-    await hooks["experimental.chat.system.transform"]!({ sessionID: "s5", model: "claude-3" }, output);
-
-    expect(output.system.length).toBe(0);
+  it("appends nothing when no memories exist for project", async () => {
+    const { run } = await load("/tmp/empty-project-xyz");
+    expect((await run("context")).length).toBe(0);
   });
 });
 
 describe("ltm_learn tool roundtrip", () => {
   it("stores memory and recalls it", async () => {
-    const { plugin } = await import("../index.js");
-    const hooks = await plugin.server({
-      project: { path: "/tmp/roundtrip-project", name: "roundtrip" },
-      sessionID: "test-session-6",
-    });
-
-    const learnTool = (hooks.tool ?? []).find(t => t.name === "ltm_learn")!;
-    const recallTool = (hooks.tool ?? []).find(t => t.name === "ltm_recall")!;
-
-    const result = await learnTool.execute({
-      content: "OpenCode adapter roundtrip test memory",
-      category: "pattern",
-      importance: 3,
-    }) as { id: number; action: string };
-
+    const { call } = await load("/tmp/roundtrip");
+    const result = await call("ltm_learn", { content: "OpenCode adapter roundtrip test memory", category: "pattern", importance: 3 }) as { id: number; action: string; category: string };
     expect(result.id).toBeGreaterThan(0);
     expect(result.action).toBe("created");
+    expect(result.category).toBe("pattern");
 
-    const memories = await recallTool.execute({
-      query: "OpenCode adapter roundtrip",
-    }) as Array<{ id: number; content: string }>;
-
+    const memories = await call("ltm_recall", { query: "OpenCode adapter roundtrip" }) as Array<{ id: number }>;
     expect(memories.some(m => m.id === result.id)).toBe(true);
+  });
+
+  it("auto-detects the category when it is omitted", async () => {
+    const { call } = await load("/tmp/roundtrip");
+    const result = await call("ltm_learn", { content: "Gotcha: the V2 host rejects tool output without an output schema" }) as { id: number; category: string };
+    expect(result.id).toBeGreaterThan(0);
+    expect(["preference", "architecture", "gotcha", "pattern", "workflow", "constraint"]).toContain(result.category);
   });
 });
 
@@ -136,35 +134,27 @@ describe("egress scrub — legacy raw rows never reach the prompt", () => {
     getDb().run("UPDATE memories SET content = ? WHERE id = ?", [`Legacy deploy note uses ${KEY}`, id]);
   }
 
-  it("system.transform prefill redacts a planted key", async () => {
+  it("context prefill redacts a planted key", async () => {
     await plantLegacyRow();
-    const { plugin } = await import("../index.js");
-    const hooks = await plugin.server({ project: { path: `/tmp/${project}`, name: project }, sessionID: "leak-1" });
-    const output = { system: [] as string[] };
-    await hooks["experimental.chat.system.transform"]!({ sessionID: "leak-1", model: "claude-3" }, output);
-    const text = output.system.join("\n");
+    const { run } = await load(`/tmp/${project}`);
+    const text = (await run("context")).map(p => p.text).join("\n");
     expect(text).toContain("Legacy deploy note");
     expect(text).not.toContain(KEY);
   });
 
-  it("session.compacting redacts a planted key", async () => {
-    const { plugin } = await import("../index.js");
-    const hooks = await plugin.server({ project: { path: `/tmp/${project}`, name: project }, sessionID: "leak-2" });
-    const output = { context: [] as string[], prompt: undefined as string | undefined };
-    await hooks["experimental.session.compacting"]!({ sessionID: "leak-2" } as never, output as never);
-    const text = output.context.join("\n");
+  it("compaction redacts a planted key", async () => {
+    const { run } = await load(`/tmp/${project}`);
+    const text = (await run("compaction")).map(p => p.text).join("\n");
     expect(text).toContain("Legacy deploy note");
     expect(text).not.toContain(KEY);
   });
 
   it("ltm_recall and ltm_context tool output redact a planted key", async () => {
-    const { plugin } = await import("../index.js");
-    const hooks = await plugin.server({ project: { path: `/tmp/${project}`, name: project }, sessionID: "leak-3" });
-    const recallTool = (hooks.tool ?? []).find(t => t.name === "ltm_recall")!;
-    const out = JSON.stringify(await recallTool.execute({ query: "Legacy", project }));
-    expect(out).toContain("Legacy deploy note");
-    expect(out).not.toContain(KEY);
-    const ctxTool = (hooks.tool ?? []).find(t => t.name === "ltm_context");
-    if (ctxTool) expect(JSON.stringify(await ctxTool.execute({ project }))).not.toContain(KEY);
+    const { tools } = await load(`/tmp/${project}`);
+    const recall = await tools.find(t => t.name === "ltm_recall")!.execute({ query: "Legacy", project });
+    expect(recall.content).toContain("Legacy deploy note");
+    expect(recall.content).not.toContain(KEY);
+    const ctx = await tools.find(t => t.name === "ltm_context")!.execute({ project });
+    expect(ctx.content).not.toContain(KEY);
   });
 });
