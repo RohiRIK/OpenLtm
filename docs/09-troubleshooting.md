@@ -97,6 +97,16 @@ SQLite allows one writer at a time. A lock usually means a previous process didn
 /openltm:admin migrate --legacy   # detect and migrate a legacy ~/.claude/memory database
 ```
 
+### "fail closed: checksum mismatch for applied version N"
+
+The migration runner records a sha256 of each migration file it applies and refuses to start if a recorded file has since changed. Earlier texts of migrations that shipped and were later edited without changing the schema (009, 015, 017, 023, 027) are recognized and re-recorded automatically. For any other mismatch, for example a database migrated by a pre-release build, `/openltm:doctor` names the versions, and
+
+```
+/openltm:admin migrate --accept-checksums
+```
+
+backs the database up, then re-records those checksums. No migration SQL runs and no memories change. Outside Claude Code: `LTM_DB_PATH=<path to openltm.db> bun packages/openltm-core/src/migrations.ts --accept-checksums`.
+
 `/openltm:admin migrate reset` drops and recreates the schema. It is **destructive** and requires explicit confirmation — only use it on a database you are willing to lose.
 
 ---

@@ -3,7 +3,7 @@
  * migrations.ts — Versioned schema migration runner for openltm.db
  * Uses bun:sqlite and Bun file APIs exclusively.
  *
- * CLI: bun migrations.ts [--status | --up | --down | --reset]
+ * CLI: bun migrations.ts [--status | --up | --down | --reset | --accept-checksums]
  */
 import { Database } from "bun:sqlite";
 import { readdirSync, existsSync, statSync, lstatSync, unlinkSync, chmodSync } from "fs";
@@ -647,27 +647,43 @@ export function reconcileMigration(db: Database, up: string): void {
 }
 
 /**
- * Integrity check that runs at the top of `runPendingMigrations`, before any
- * pending work is selected. For every applied version it recomputes
- * `sha256(file.content)` from the on-disk migration file and requires exact
- * equality with the recorded checksum. An edited or renamed migration file, or
- * a missing file for an applied version, stops the whole run. There is no
- * allowlist to bypass this — recorded state is never trusted.
+ * sha256 of earlier texts of migration files that shipped (in a release, or
+ * on main) and were later edited. Every edit was schema-neutral for a database
+ * that ran the earlier text: 009 and 023 changed comments only; 015 and 017
+ * moved their backfill / index into 024 / 025, which re-check idempotently;
+ * 027 gained a row-count guard. A database recorded with one of these is
+ * re-stamped with the current checksum instead of being refused. Only exact
+ * historical texts are listed — any other mismatch still fails closed.
  */
-export function verifyRecordedChecksums(
-  db: Database,
-  files: MigrationFile[],
-  applied: Set<number>,
-): void {
-  if (applied.size === 0) return;
+export const SUPERSEDED_CHECKSUMS: ReadonlyMap<number, readonly string[]> = new Map([
+  [9, ["db17d2b9b9be2115a1a031984d8fa7f1e49ca01aea304e213a952f4eab8306e9"]],
+  [15, ["d62ca21ab805732f6d756783f6d3795b2c4d6435ec520e9e218b871b1175ad23"]],
+  [17, ["b364e2a54fba90b6520526c379e49299d39cd006c80c5b2899cb86924ab77d45"]],
+  [23, ["aa905ecc51a39767f18c998c36c8b0b213edea2c2a2f6a7469e965b4126dbf67"]],
+  [27, ["6dc41f3e8be8a435bf43dcdab295ab1d5e3eb3aab83a774dcd559afb4c612616"]],
+]);
 
+export interface ChecksumMismatch {
+  version: number;
+  name: string;
+  recorded: string;
+  current: string;
+}
+
+/**
+ * Applied versions whose recorded checksum matches neither the on-disk file
+ * nor a `SUPERSEDED_CHECKSUMS` entry. Throws when an applied version has no
+ * migration file. Read-only.
+ */
+export function findChecksumMismatches(db: Database, files: MigrationFile[]): ChecksumMismatch[] {
   const fileByVersion = new Map(files.map((f) => [f.version, f] as const));
   const rows = db
     .query<{ version: number; checksum: string }, []>(
-      "SELECT version, checksum FROM _schema_version",
+      "SELECT version, checksum FROM _schema_version ORDER BY version",
     )
     .all();
 
+  const mismatches: ChecksumMismatch[] = [];
   for (const row of rows) {
     const file = fileByVersion.get(row.version);
     if (file === undefined) {
@@ -676,13 +692,74 @@ export function verifyRecordedChecksums(
       );
     }
     const current = computeChecksum(file.content);
-    if (current !== row.checksum) {
-      throw new Error(
-        `[migrations] fail closed: checksum mismatch for applied version ${row.version} ` +
-          `(${file.name}); recorded ${row.checksum} != current ${current}. Refusing to continue.`,
-      );
+    if (current === row.checksum) continue;
+    if (SUPERSEDED_CHECKSUMS.get(row.version)?.includes(row.checksum)) continue;
+    mismatches.push({ version: row.version, name: file.name, recorded: row.checksum, current });
+  }
+  return mismatches;
+}
+
+/**
+ * Integrity check that runs at the top of `runPendingMigrations`, before any
+ * pending work is selected. For every applied version it recomputes
+ * `sha256(file.content)` from the on-disk migration file and requires the
+ * recorded checksum to equal it, or to be a known earlier text of the same
+ * file (`SUPERSEDED_CHECKSUMS`, re-stamped here). Any other edited or renamed
+ * migration file, or a missing file for an applied version, stops the whole
+ * run. The only way past that is the explicit, backed-up
+ * `--accept-checksums` CLI step (`acceptChecksumMismatches`).
+ */
+export function verifyRecordedChecksums(
+  db: Database,
+  files: MigrationFile[],
+  applied: Set<number>,
+): void {
+  if (applied.size === 0) return;
+
+  const mismatches = findChecksumMismatches(db, files);
+  if (mismatches.length > 0) {
+    const list = mismatches.map((m) => `v${m.version} (${m.name})`).join(", ");
+    const m = mismatches[0]!;
+    throw new Error(
+      `[migrations] fail closed: checksum mismatch for applied version ${m.version} ` +
+        `(${m.name}); recorded ${m.recorded} != current ${m.current}. Refusing to continue. ` +
+        `Mismatched: ${list}. Run /openltm:doctor for details; ` +
+        `/openltm:admin migrate --accept-checksums re-records them after a backup.`,
+    );
+  }
+
+  // Re-stamp versions recorded with a superseded text, so the next run takes
+  // the exact-match path.
+  const restamp = db.prepare("UPDATE _schema_version SET checksum = ? WHERE version = ? AND checksum = ?");
+  for (const file of files) {
+    if (!applied.has(file.version)) continue;
+    for (const old of SUPERSEDED_CHECKSUMS.get(file.version) ?? []) {
+      restamp.run(computeChecksum(file.content), file.version, old);
     }
   }
+}
+
+/**
+ * Explicit recovery for a checksum mismatch `SUPERSEDED_CHECKSUMS` does not
+ * cover (for example a database migrated by a pre-release build). Backs the
+ * database up, then records the current checksum for every mismatched applied
+ * version. No migration SQL runs and no rows change. Returns the re-recorded
+ * versions and the backup path (null when nothing needed re-recording).
+ */
+export async function acceptChecksumMismatches(
+  db?: Database,
+): Promise<{ accepted: ChecksumMismatch[]; backupPath: string | null }> {
+  const _db = db ?? openDb();
+  ensureMigrationsTable(_db);
+  const mismatches = findChecksumMismatches(_db, await getMigrationFiles());
+  if (mismatches.length === 0) return { accepted: [], backupPath: null };
+
+  const backupPath = await backupDb(new Date(), _db);
+  const update = _db.prepare("UPDATE _schema_version SET checksum = ? WHERE version = ?");
+  _db.transaction(() => {
+    for (const m of mismatches) update.run(m.current, m.version);
+  })();
+  return { accepted: mismatches, backupPath };
 }
 
 // ── Core migration actions ─────────────────────────────────────────────────────
@@ -873,6 +950,11 @@ if (import.meta.main) {
             const date = s.applied_at ? `  (${s.applied_at})` : "";
             console.error(`  ${tag.padEnd(10)} v${String(s.version).padStart(3, "0")} ${s.name}${date}`);
           }
+          const mismatches = findChecksumMismatches(db, await getMigrationFiles());
+          for (const m of mismatches) {
+            console.error(`  [checksum mismatch] v${String(m.version).padStart(3, "0")} ${m.name}`);
+          }
+          if (mismatches.length > 0) console.error("  Run with --accept-checksums to re-record them (a backup is taken first).");
           console.error("");
         }
       } else if (arg === "--up") {
@@ -900,9 +982,19 @@ if (import.meta.main) {
             console.error(`Rolled back: v${String(r.version).padStart(3, "0")} ${r.name}`);
           }
         }
+      } else if (arg === "--accept-checksums") {
+        const { accepted, backupPath } = await acceptChecksumMismatches(db);
+        if (accepted.length === 0) {
+          console.error("No checksum mismatches.");
+        } else {
+          if (backupPath) console.error(`Backup: ${backupPath}`);
+          for (const m of accepted) {
+            console.error(`Re-recorded checksum: v${String(m.version).padStart(3, "0")} ${m.name}`);
+          }
+        }
       } else {
         console.error(`Unknown argument: ${arg}`);
-        console.error("Usage: bun migrations.ts [--status | --up | --down | --reset]");
+        console.error("Usage: bun migrations.ts [--status | --up | --down | --reset | --accept-checksums]");
         process.exit(1);
       }
     } catch (err) {

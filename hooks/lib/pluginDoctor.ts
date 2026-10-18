@@ -12,6 +12,7 @@ import { homedir } from "os";
 import { spawnSync } from "child_process";
 import { Database } from "bun:sqlite";
 import { getDbPath, CLAUDE_DIR } from "./resolveProject.js";
+import { getMigrationFiles, findChecksumMismatches } from "@rohirik/openltm-core";
 
 const HOME = homedir();
 // Keep in sync with the candidate list in hooks/bin/run-hook.sh
@@ -97,15 +98,16 @@ function checkManifest(): void {
   }
 
   if ("agents" in pluginJson) {
-    const agentsVal = pluginJson.agents as string;
-    const resolved = agentsVal.startsWith("/") ? agentsVal : join(PLUGIN_ROOT, agentsVal);
-    if (!existsSync(resolved)) {
+    // A directory string or an array of agent file paths.
+    const agentPaths = ([] as unknown[]).concat(pluginJson.agents).map(String);
+    const missing = agentPaths.filter(p => !existsSync(p.startsWith("/") ? p : join(PLUGIN_ROOT, p)));
+    if (missing.length > 0) {
       fail(
-        `plugin.json "agents" field points to missing directory: ${agentsVal}`,
-        'Remove the "agents" field or create the directory'
+        `plugin.json "agents" points to missing paths: ${missing.join(", ")}`,
+        'Remove them from "agents" or restore the files'
       );
     } else {
-      ok(`plugin.json "agents" field present and directory exists`);
+      ok(`plugin.json "agents" entries all exist`);
     }
   }
 }
@@ -138,13 +140,13 @@ function checkBun(): void {
   }
 }
 
-function checkDatabase(): void {
+async function checkDatabase(): Promise<void> {
   section("Database");
 
   const dbPath = getDbPath();
 
   if (!existsSync(dbPath)) {
-    fail(`openltm.db not found at ${dbPath}`, "Run /openltm:migrate to create the database");
+    fail(`openltm.db not found at ${dbPath}`, "Start a Claude Code session (the MCP server creates it) or run /openltm:admin migrate up");
     return;
   }
   ok(`openltm.db exists at ${dbPath}`);
@@ -161,24 +163,35 @@ function checkDatabase(): void {
     const row = db.query("SELECT count(*) as n FROM memories").get() as { n: number };
     ok(`memories table valid (${row.n} rows)`);
   } catch {
-    fail("memories table exists", "Run /openltm:migrate to apply schema");
+    fail("memories table exists", "Run /openltm:admin migrate up to apply schema");
   }
 
   try {
     const applied = (db.query(
       "SELECT count(*) as n FROM _schema_version"
     ).get() as { n: number }).n;
-    const migrationsDir = join(PLUGIN_ROOT, "migrations");
-    const total = existsSync(migrationsDir)
-      ? readdirSync(migrationsDir).filter(f => f.endsWith(".sql")).length
-      : 0;
+    const files = await getMigrationFiles();
+    const total = files.length;
     if (applied < total) {
-      fail(`Migrations: ${applied}/${total} applied`, "Run /openltm:migrate to apply pending migrations");
+      fail(`Migrations: ${applied}/${total} applied`, "Run /openltm:admin migrate up to apply pending migrations");
     } else {
       ok(`Migrations: ${applied}/${total} applied`);
     }
+    try {
+      const mismatches = findChecksumMismatches(db, files);
+      if (mismatches.length === 0) {
+        ok("Migration checksums match");
+      } else {
+        fail(
+          `Migration checksum mismatch: ${mismatches.map(m => `v${m.version} (${m.name})`).join(", ")}`,
+          "Run /openltm:admin migrate --accept-checksums (backs up the DB, then re-records the checksums; no data changes)"
+        );
+      }
+    } catch (e) {
+      fail("Every applied migration has a file", (e as Error).message);
+    }
   } catch {
-    warn("Could not read _schema_version table", "Run /openltm:migrate to ensure schema is up to date");
+    warn("Could not read _schema_version table", "Run /openltm:admin migrate up to ensure schema is up to date");
   } finally {
     db?.close();
   }
@@ -191,10 +204,10 @@ function checkMcp(): void {
   try {
     const pluginJson = JSON.parse(readFileSync(pluginPath, "utf-8")) as Record<string, unknown>;
     const mcp = pluginJson.mcpServers as Record<string, unknown> | undefined;
-    if (mcp?.ltm) {
-      ok("ltm MCP server registered in plugin.json");
+    if (mcp?.memory) {
+      ok("memory MCP server registered in plugin.json");
     } else {
-      fail("ltm MCP server not found in plugin.json mcpServers", "Re-install the plugin");
+      fail("memory MCP server not found in plugin.json mcpServers", "Re-install the plugin");
     }
   } catch {
     fail("plugin.json readable for MCP check", `Check ${pluginPath}`);
@@ -268,7 +281,7 @@ function checkPluginHooks(): void {
     for (const entry of entries) {
       for (const h of entry.hooks) {
         // Detect wrapper-style command: run-hook.sh <source.ts>
-        const wrapperMatch = h.command.match(/run-hook\.sh\s+\$\{CLAUDE_PLUGIN_ROOT\}\/(.+\.ts)$/);
+        const wrapperMatch = h.command.match(/run-hook\.sh"?\s+"?\$\{CLAUDE_PLUGIN_ROOT\}\/([^"]+\.ts)"?$/);
         // Legacy: direct bun invocation (pre-1.4.15)
         const legacyMatch = h.command.match(/^(\/[^\s]+\/bun)\s+run\s+\$\{CLAUDE_PLUGIN_ROOT\}\/(.+\.ts)$/);
 
@@ -439,7 +452,7 @@ console.log(`Plugin root: ${PLUGIN_ROOT}`);
 
 checkManifest();
 checkBun();
-checkDatabase();
+await checkDatabase();
 checkMcp();
 checkPluginHooks();
 checkSettingsHooks();

@@ -21,7 +21,9 @@ export type {
 export { addItem, getItems, exportContextMarkdown, trimProgress, promote } from "./context.js";
 
 // Migrations
-export { runPendingMigrations, getMigrationStatus, getMigrationFiles } from "./migrations.js";
+export {
+  runPendingMigrations, getMigrationStatus, getMigrationFiles, findChecksumMismatches,
+} from "./migrations.js";
 
 // DAO types
 export type {
