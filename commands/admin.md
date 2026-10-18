@@ -13,7 +13,7 @@ If no subcommand given, show:
 ```
 Usage: /openltm:admin <subcommand>
 
-  migrate [status|up|down|reset|--legacy]   — schema migrations + legacy DB detection
+  migrate [status|up|down|reset|--accept-checksums|--legacy] — schema migrations + legacy DB detection
   scan    [--project X] [--dry-run]         — scan memories for secrets and redact
   audit   [--memory-id N] [--op <op>] [--session <id>] [--since <iso>] [--limit N]
                                             — query the memory write audit log
@@ -31,11 +31,14 @@ Manage versioned LTM schema migrations and legacy DB path migration.
 | `up` | Apply next pending migration |
 | `down` | Rollback last applied migration |
 | `reset` | Rollback ALL (requires confirmation) |
+| `--accept-checksums` | Back up the DB, then re-record the checksum of each applied migration whose file changed (fixes a "checksum mismatch" refusal; no migration SQL runs, no data changes) |
 | `--legacy` | Trigger legacy `~/.claude/memory/openltm.db` → plugin data migration |
 
 ```bash
-bun run "${CLAUDE_PLUGIN_ROOT}/src/migrations.ts" --<arg>
+CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA}" bun run "${CLAUDE_PLUGIN_ROOT}/packages/openltm-core/src/migrations.ts" --<arg>
 ```
+
+For `--accept-checksums`, the arg is passed as-is (`--accept-checksums`).
 
 For `reset`: ask user to confirm with "yes" before running.
 
