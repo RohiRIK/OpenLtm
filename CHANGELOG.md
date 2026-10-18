@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.19.1] — 2026-10-18
+
+### Fixed
+- **A database migrated by an older release no longer fails with "checksum mismatch".** Migrations 009, 015, 017, 023 and 027 were edited after they shipped, so a database that applied an earlier text was refused at startup and OpenLTM went down. Those exact earlier texts are now recognized and re-recorded with the current checksum; the edits never changed the resulting schema. Any other mismatch still fails closed, and its error now names every mismatched version and the way out.
+- **`/openltm:admin migrate --accept-checksums`** recovers from a mismatch that is not on that list: it backs the database up, then re-records the checksums. No migration SQL runs and no data changes. `migrate status` lists mismatched versions.
+- **`/openltm:doctor` exists again.** Onboarding and the docs pointed to it, but the command file was gone, so Claude Code answered "Unknown command". It runs the plugin health check, which now also reports migration checksum mismatches. The check itself crashed on the `agents` array in `plugin.json`, looked for an MCP server named `ltm` instead of `memory`, flagged the quoted hook commands as unrecognised, and pointed to the removed `/openltm:migrate`; all fixed.
+- `/openltm:admin migrate` ran `src/migrations.ts`, which does not exist; it now runs the core migration runner.
+
 ## [2.19.0] — 2026-10-15
 
 ### Changed
