@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.20.1] — 2026-10-23
+
+### Security
+- **The graph dashboard requires Next.js 15.5.28** (`graph-app`). 15.5.26 is affected by GHSA-2464-fhr4-w9xw (critical: unauthenticated remote code execution in the Image Optimization API via SVG files) and CVE-2026-94482 (high: denial of service via crafted Server Actions requests). The Trivy scan on `main` failed on both.
+
+### Fixed
+- **`/openltm:doctor` rejects a malformed `agents` field** in `plugin.json` (null, numbers, nested arrays, empty strings) instead of coercing it to paths. The doctor tests now run in CI.
+- **Hermes: the memory provider prompt says how to call its tools.** They are direct provider tools, not routed through `tool_call` or imported in `execute_code`, and a fact counts as saved only after a tool receipt returns its memory ID.
+
 ## [2.20.0] — 2026-10-18
 
 ### Changed
