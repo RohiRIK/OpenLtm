@@ -105,6 +105,36 @@ Then a `git pull` + gateway restart = live update with zero install drift.
 3. OpenLtm core gates: `bun test && bun run typecheck` (unchanged by `hermes/`).
 4. Commit + bump + release per [`../CONTRIBUTING.md`](../CONTRIBUTING.md).
 
+## Provider-tool diagnostics (including scheduled jobs)
+
+OpenLTM's eight functions are **direct Hermes memory-provider tools**, not
+entries in the deferred-tool catalog. Call `openltm_brain_stats`,
+`openltm_recall` and `openltm_learn` using their supplied tool schemas. Do not
+send them through `tool_call`, search the deferred catalog for them, or import
+them from `hermes_tools` inside `execute_code`. A failure of those routes does
+not show that the memory provider or database is unavailable.
+
+For a scheduled consolidation job:
+
+1. Call `openltm_brain_stats` directly as the capability preflight. If the
+   required direct schemas are absent or that call fails, stop with the exact
+   error and retain the source queue; do not substitute the built-in `memory`
+   tool, which writes different stores.
+2. Recall before saving, then count a save only after the direct
+   `openltm_learn` response returns a real memory ID. Existing/reinforced IDs are
+   not newly created facts. A failed write remains unresolved.
+3. Derive saved/retained/cleared counts from actual receipts and filesystem
+   read-back, never intended classifications. No receipt means no saved claim;
+   no verified cleanup means no cleared claim.
+
+`hermes plugins doctor openltm --ci` checks discovery and provider registration.
+Its `0 tool(s), 0 hook(s)` count is normal for this plugin: `register(ctx)`
+registers a memory provider, whose tool schemas are exposed by Hermes when the
+`memory` toolset is enabled. It does not register ordinary plugin tools/hooks.
+The TypeScript `hooks/lib/pluginDoctor.ts` instead diagnoses the **Claude Code**
+installation; its MCP/hook/migration findings are not a Hermes health verdict.
+Doctor is advisory: inspect its reported failures, not just its process exit.
+
 ## Where the DB lives
 
 The plugin stores everything in `$HERMES_HOME/openltm.db` — `~/.hermes/openltm.db`

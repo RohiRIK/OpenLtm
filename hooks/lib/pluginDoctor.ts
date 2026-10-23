@@ -98,8 +98,19 @@ function checkManifest(): void {
   }
 
   if ("agents" in pluginJson) {
-    // A directory string or an array of agent file paths.
-    const agentPaths = ([] as unknown[]).concat(pluginJson.agents).map(String);
+    // Validate before checking paths: coercion can make null, numbers or nested
+    // arrays look valid when a similarly named file happens to exist.
+    const agents = pluginJson.agents;
+    const isPath = (value: unknown): value is string =>
+      typeof value === "string" && value.trim().length > 0;
+    const agentPaths = typeof agents === "string" ? [agents] : agents;
+    if (!Array.isArray(agentPaths) || !agentPaths.every(isPath)) {
+      fail(
+        'plugin.json "agents" must be a non-empty path string or an array of non-empty path strings',
+        'Use a directory path or an array of agent file paths; do not use null or other types'
+      );
+      return;
+    }
     const missing = agentPaths.filter(p => !existsSync(p.startsWith("/") ? p : join(PLUGIN_ROOT, p)));
     if (missing.length > 0) {
       fail(
