@@ -89,12 +89,12 @@ provider actually implements.
 `NousResearch/hermes-agent`, run `bun run catalog:check`, and open the PR. Full
 walkthrough in [`hermes/plugin-catalog/README.md`](../hermes/plugin-catalog/README.md).
 
-**Keep it fresh:** the pin trails the code by one commit by construction.
+**Keep it fresh:** the pin follows releases, not `main`. After each `vX.Y.Z` tag, run `catalog:sync vX.Y.Z` and open a re-pin PR; `catalog:drift` compares the entry with the latest `v*` tag, so it fails only when a release has not been re-pinned.
 
 ```bash
 bun run catalog:check    # validate (also cross-checks tools/hooks vs source)
 bun run catalog:sync     # repoint sha + version
-bun run catalog:drift    # fail if stale
+bun run catalog:drift    # fail if the entry trails the latest v* tag
 ```
 
 Users who want `main` rather than the pin can still install directly by git URL:

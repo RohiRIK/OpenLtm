@@ -10,7 +10,11 @@
  * Usage:
  *   bun run catalog:sync           # pin to HEAD (or its tag)
  *   bun run catalog:sync v2.15.0   # pin to a specific tag
- *   bun run catalog:sync --check   # report drift without writing
+ *   bun run catalog:sync --check   # fail if the entry trails the latest v* tag
+ *
+ * --check compares against the latest release tag, not HEAD: only tagged
+ * releases are ever pinned, and committing a re-pin moves HEAD, so a HEAD check
+ * could never pass.
  */
 import { readFileSync, writeFileSync } from "fs";
 import { join } from "path";
@@ -51,6 +55,14 @@ if (target) {
   }
   sha = git("rev-list", "-n", "1", target);
   console.log(`resolved ${target} → ${sha.slice(0, 7)}`);
+} else if (checkOnly) {
+  const tag = gitOptional("describe", "--tags", "--abbrev=0", "--match", "'v*'", "HEAD");
+  if (!tag) {
+    console.error("No v* release tag reachable from HEAD — run `git fetch --tags`.");
+    process.exit(1);
+  }
+  sha = git("rev-list", "-n", "1", tag);
+  console.log(`resolved latest release ${tag} → ${sha.slice(0, 7)}`);
 } else {
   sha = git("rev-parse", "HEAD");
   const describe = gitOptional("describe", "--tags", "--exact-match", "HEAD");
@@ -77,7 +89,9 @@ const before = readFileSync(entryPath, "utf-8");
 
 const after = before
   .replace(/^sha:\s*[0-9a-f]{40}$/m, `sha: ${sha}`)
-  .replace(/^version:\s*".*"$/m, `version: "${version}"`);
+  .replace(/^version:\s*".*"$/m, `version: "${version}"`)
+  // Raw asset URLs (the banner image) pin the same commit.
+  .replace(/(raw\.githubusercontent\.com\/RohiRIK\/OpenLtm\/)[0-9a-f]{40}\//g, `$1${sha}/`);
 
 if (before === after) {
   console.log(`Entry already pinned to ${sha.slice(0, 7)} (v${version}) — no change.`);
