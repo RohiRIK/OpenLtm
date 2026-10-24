@@ -96,6 +96,25 @@ describe("cli/memory — parseMemoryArgs", () => {
     expect(parseMemoryArgs(["context", "--project", "homelab"]).ok).toBe(true);
   });
 
+  it("learn and recall take their text as positional words", async () => {
+    const { parseMemoryArgs } = await import("../../cli/memory.js");
+    const learned = parseMemoryArgs(["learn", "WAL", "needs", "a", "checkpoint", "--category", "gotcha"]);
+    expect(learned.ok && learned.options["text"]).toBe("WAL needs a checkpoint");
+    const recalled = parseMemoryArgs(["recall", "docker", "rate", "limit", "--limit", "3"]);
+    expect(recalled.ok && recalled.options["query"]).toBe("docker rate limit");
+    // An explicit flag wins over positional words.
+    const both = parseMemoryArgs(["recall", "ignored", "--query", "docker"]);
+    expect(both.ok && both.options["query"]).toBe("docker");
+  });
+
+  it("a stray positional on forget/relate/context is a usage error, not ignored", async () => {
+    const { parseMemoryArgs } = await import("../../cli/memory.js");
+    const parsed = parseMemoryArgs(["forget", "12"]);
+    expect(parsed.ok).toBe(false);
+    if (parsed.ok) return;
+    expect(parsed.error).toContain("unexpected argument '12'");
+  });
+
   it("unknown memory subcommand is a usage error", async () => {
     const { parseMemoryArgs } = await import("../../cli/memory.js");
     const parsed = parseMemoryArgs(["destroy-everything"]);

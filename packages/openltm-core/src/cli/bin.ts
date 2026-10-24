@@ -29,6 +29,7 @@ function printHelp(): void {
       "    --opencode      Install into OpenCode",
       "    --pi            Install into Pi",
       "    --dry-run       Preview without writing files",
+      "    --version, -v   Print the version",
       "    --help, -h      Show this help",
       "",
       "  Sub-commands:",
@@ -36,6 +37,8 @@ function printHelp(): void {
       "                          forget, relate, context) — run 'memory --help'",
       "    janitor <cmd>         Curate the DB without graph-server (run, status,",
       "                          schedule, daemon) — run 'janitor --help'",
+      "    conflict [list]       List staged memory conflicts; resolve one with",
+      "                          'conflict accept|reject|coexist <id>'",
       "    hook --name <event>   Lifecycle hook entrypoint (SessionStart prefill,",
       "                          SessionEnd janitor-if-due, safe no-ops)",
       "    mcp-serve             Start the LTM MCP server (stdio)",
@@ -49,8 +52,14 @@ function printHelp(): void {
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
 
-  if (argv[0] === "--help" || argv[0] === "-h") {
+  if (argv[0] === "--help" || argv[0] === "-h" || argv[0] === "help") {
     printHelp();
+    process.exit(0);
+  }
+
+  if (argv[0] === "--version" || argv[0] === "-v") {
+    const { default: pkg } = await import("../../package.json", { with: { type: "json" } });
+    process.stdout.write(`${pkg.version}\n`);
     process.exit(0);
   }
 
@@ -147,6 +156,11 @@ async function main(): Promise<void> {
     else if (arg === "--help" || arg === "-h") {
       printHelp();
       process.exit(0);
+    } else {
+      // A typo (`--claud`) must not fall through to an auto-detect install.
+      process.stderr.write(`  ltm: unknown option '${arg}'\n`);
+      printHelp();
+      process.exit(1);
     }
   }
 
