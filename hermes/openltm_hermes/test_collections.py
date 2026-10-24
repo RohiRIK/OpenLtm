@@ -300,3 +300,26 @@ def test_record_vectors_and_hybrid_recall(provider):
     call(provider, "openltm_record", {"action": "put", "collection": "hosts", "data": {"host": "pve1", "notes": "web proxy now"}})
     vec = col._blob_to_vec(provider._conn.execute("SELECT embedding FROM records WHERE record_key='pve1'").fetchone()[0])
     assert vec[1] == 1.0 and vec[2] < 0.5
+
+
+def test_managed_indexes_match_core_naming(conn):
+    conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('collections.index_min_records', '3')") if conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE name='settings'").fetchone() else conn.execute(
+        "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT)")
+    conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('collections.index_min_records', '3')")
+    conn.commit()
+    c = define_hosts(conn)
+    for i in range(4):
+        col.put_record(conn, collection="hosts", data={"host": f"h{i}", "port": 8000 + i, "role": "db" if i % 2 else "web"})
+    res = col.query_records(conn, collection="hosts", where=[{"field": "port", "op": "gte", "value": 8002}], order_by="role")
+    assert sorted(r["key"] for r in res["records"]) == ["h2", "h3"]
+    assert sorted(col.managed_indexes(conn, c["id"])) == ["port", "role"]
+    plan = " ".join(r[3] for r in conn.execute(
+        f"EXPLAIN QUERY PLAN SELECT * FROM records r WHERE r.collection_id = {c['id']} AND json_extract(r.data, '$.port') >= 8002").fetchall())
+    assert f"idx_rec_{c['id']}_port" in plan
+    col.query_records(conn, collection="hosts", where=[{"field": "tags", "op": "contains", "value": "x"}])
+    assert "tags" not in col.managed_indexes(conn, c["id"])
+    col.evolve_collection(conn, name="hosts", fields=[f if f["name"] != "role" else {**f, "type": "string", "values": None} for f in HOSTS][:0] or
+                          [{k: v for k, v in f.items() if k != "values"} | {"type": "string"} if f["name"] == "role" else f for f in HOSTS],
+                          allow_breaking=True)
+    assert col.managed_indexes(conn, c["id"]) == ["port"]

@@ -13,6 +13,7 @@ import { buildFtsQuery } from "../db.js";
 import { LIMITS, type FieldSpec } from "./fieldSpec.js";
 import { CollectionError, collectionsById, resolveCollection, _toRecordView, type Collection, type RecordRow, type RecordView } from "./store.js";
 import { FILTER_OPS, type FilterOp } from "./toolSchema.js";
+import { ensureIndexes, indexedExpr } from "./indexes.js";
 
 export { FILTER_OPS, type FilterOp };
 
@@ -72,8 +73,12 @@ function checkValueType(f: FieldSpec | undefined, op: FilterOp, v: unknown): voi
   }
 }
 
-/** Compile one filter to a SQL fragment + params. */
-function compileFilter(c: Collection, filter: Filter): { sql: string; params: (string | number)[] } {
+/**
+ * Compile one filter to a SQL fragment + params. A field with a managed index
+ * uses the index's literal expression (built from the validated field name,
+ * never from filter text) so SQLite can use it; other paths are bound.
+ */
+function compileFilter(c: Collection, filter: Filter, indexed: Set<string>): { sql: string; params: (string | number)[] } {
   const field = c.fields.find((f) => f.name === filter.field);
   const meta = META_COLUMNS[filter.field];
   if (!field && !meta) {
@@ -81,8 +86,9 @@ function compileFilter(c: Collection, filter: Filter): { sql: string; params: (s
       `"${filter.field}" is not a field of "${c.name}" (fields: ${c.fields.map((f) => f.name).join(", ")}; also created_at, updated_at, origin, key)`);
   }
   const path = `$.${filter.field}`;
-  const expr = meta ?? "json_extract(r.data, ?)";
-  const exprParams: (string | number)[] = meta ? [] : [path];
+  const literal = !meta && field && indexed.has(field.name);
+  const expr = meta ?? (literal ? indexedExpr(field.name, "r") : "json_extract(r.data, ?)");
+  const exprParams: (string | number)[] = meta || literal ? [] : [path];
   const { op, value } = filter;
 
   if (op === "exists") {
@@ -123,13 +129,18 @@ export function queryRecords(input: QueryRecordsInput, db: Database = getDb()): 
   if (c.status !== "active" && !input.include_archived) {
     throw new CollectionError("archived", `collection "${c.name}" is archived`);
   }
-  const where: string[] = ["r.collection_id = ?"];
-  const params: (string | number)[] = [c.id];
-  if (!input.include_archived) where.push("r.status = 'active'");
-  for (const raw of input.where ?? []) {
+  const filters: Filter[] = (input.where ?? []).map((raw) => {
     const parsed = filterSchema.safeParse(raw);
     if (!parsed.success) throw new CollectionError("invalid_query", `invalid filter: ${parsed.error.issues.map((i) => i.message).join("; ")}`);
-    const f = compileFilter(c, parsed.data);
+    return parsed.data;
+  });
+  const indexed = ensureIndexes(db, c, [...filters.map((f) => f.field), ...(input.order_by ? [input.order_by] : [])]);
+  // A literal collection id lets SQLite match the managed indexes' WHERE clause (c.id is our own integer).
+  const where: string[] = indexed.size > 0 ? [`r.collection_id = ${Math.trunc(c.id)}`] : ["r.collection_id = ?"];
+  const params: (string | number)[] = indexed.size > 0 ? [] : [c.id];
+  if (!input.include_archived) where.push("r.status = 'active'");
+  for (const filter of filters) {
+    const f = compileFilter(c, filter, indexed);
     where.push(f.sql);
     params.push(...f.params);
   }
@@ -149,8 +160,11 @@ export function queryRecords(input: QueryRecordsInput, db: Database = getDb()): 
     if (!field && !meta) throw new CollectionError("invalid_query", `cannot order by "${input.order_by}": not a field of "${c.name}"`);
     const dir = input.order === "asc" ? "ASC" : "DESC";
     // The path is a bound parameter here too; it is pushed after the WHERE params.
-    orderSql = meta ? `${meta} ${dir}, r.id ${dir}` : `json_extract(r.data, ?) ${dir}, r.id ${dir}`;
-    if (!meta) params.push(`$.${input.order_by}`);
+    const literal = !meta && indexed.has(input.order_by);
+    orderSql = meta ? `${meta} ${dir}, r.id ${dir}`
+      : literal ? `${indexedExpr(input.order_by, "r")} ${dir}, r.id ${dir}`
+      : `json_extract(r.data, ?) ${dir}, r.id ${dir}`;
+    if (!meta && !literal) params.push(`$.${input.order_by}`);
   }
   const max = LIMITS.maxQueryLimit;
   const lim = Math.min(Math.max(1, Math.floor(input.limit ?? 20)), max);

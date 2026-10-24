@@ -13,6 +13,8 @@ import {
   listCollections, putRecord, resolveCollection, setCollectionStatus, type Collection,
 } from "./store.js";
 import { MEMORY_ORIGINS, type MemoryOrigin } from "../origin.js";
+import { getDb } from "../shared-db.js";
+import { managedIndexes } from "./indexes.js";
 
 export interface CollectionToolArgs {
   action: (typeof COLLECTION_ACTIONS)[number];
@@ -90,7 +92,7 @@ export function runCollectionTool(args: CollectionToolArgs, ctx: ToolContext): T
         const name = need(args.name, "name", "describe");
         const c = listCollections({ project: ctx.project, includeArchived: true }).find((x) => x.id === resolveCollection(name, ctx.project)?.id);
         if (!c) throw new CollectionError("unknown_collection", `no collection "${name}"`);
-        return { ok: true, collection: describeCollection(c) };
+        return { ok: true, collection: { ...describeCollection(c), indexes: managedIndexes(getDb(), c.id) } };
       }
       case "define": {
         if (args.scope === "project" && !ctx.project) {

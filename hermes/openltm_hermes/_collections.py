@@ -689,6 +689,9 @@ def evolve_collection(
             "UPDATE collections SET fields=?, description=?, version=?, updated_at=datetime('now') WHERE id=?",
             (_dumps(new_fields), desc, version, current["id"]),
         )
+        # A removed or retyped field's managed index no longer matches its values.
+        new_types = {f["name"]: f["type"] for f in new_fields}
+        _drop_indexes(conn, current["id"], [f["name"] for f in current["fields"] if new_types.get(f["name"]) != f["type"]])
         nxt = {**current, "fields": new_fields, "version": version, "description": desc}
         reindexed = _rebuild_search_text(conn, nxt) if (search_changed or breaking) else 0
         collection = _to_collection(conn.execute("SELECT * FROM collections WHERE id=?", (current["id"],)).fetchone())
@@ -822,6 +825,67 @@ def collection_index_lines(conn: sqlite3.Connection, project: Optional[str], max
     return ["collections (query with the record tool):", *shown, *more]
 
 
+# ─── Managed indexes (same names and expressions as core's collections/indexes.ts) ─
+
+MAX_INDEXES = 3
+INDEX_MIN_RECORDS = 2_000
+_INDEXABLE = frozenset({"string", "integer", "number", "boolean", "date", "enum", "url"})
+
+
+def _index_name(collection_id: int, field: str) -> str:
+    if not isinstance(collection_id, int) or isinstance(collection_id, bool) or collection_id <= 0 or not NAME_RE.match(field):
+        raise ValueError(f"refusing index DDL for collection {collection_id!r} field {field!r}")
+    return f"idx_rec_{collection_id}_{field}"
+
+
+def _indexed_expr(field: str, alias: Optional[str] = None) -> str:
+    if not NAME_RE.match(field):
+        raise ValueError(f"invalid field name {field!r}")
+    return f"json_extract({alias + '.' if alias else ''}data, '$.{field}')"
+
+
+def managed_indexes(conn: sqlite3.Connection, collection_id: int) -> list[str]:
+    prefix = f"idx_rec_{int(collection_id)}_"
+    rows = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='records' AND substr(name, 1, length(?1)) = ?1",
+        (prefix,),
+    ).fetchall()
+    return [r[0][len(prefix):] for r in rows]
+
+
+def _ensure_indexes(conn: sqlite3.Connection, c: dict, wanted: list[str]) -> set[str]:
+    """Index fields a query filters or sorts on, once the collection is large enough (never raises)."""
+    try:
+        have = managed_indexes(conn, c["id"])
+    except sqlite3.Error:
+        return set()
+    candidates = [n for n in dict.fromkeys(wanted)
+                  if n not in have and any(f["name"] == n and f["type"] in _INDEXABLE for f in c["fields"])]
+    if not candidates or len(have) >= MAX_INDEXES:
+        return set(have)
+    try:
+        n = conn.execute("SELECT count(*) FROM records WHERE collection_id=? AND status='active'", (c["id"],)).fetchone()[0]
+        if n < _limit(conn, "index_min_records", INDEX_MIN_RECORDS):
+            return set(have)
+        with _tx(conn):
+            for field in candidates[:MAX_INDEXES - len(have)]:
+                cid = int(c["id"])
+                conn.execute(f"CREATE INDEX IF NOT EXISTS {_index_name(cid, field)} ON records({_indexed_expr(field)}) WHERE collection_id = {cid}")
+                # Statistics, so the planner prefers it over idx_records_key's collection_id prefix.
+                conn.execute(f"ANALYZE {_index_name(cid, field)}")
+                have.append(field)
+    except (sqlite3.Error, ValueError):
+        pass
+    return set(have)
+
+
+def _drop_indexes(conn: sqlite3.Connection, collection_id: int, fields: list[str]) -> None:
+    have = set(managed_indexes(conn, collection_id))
+    for field in fields:
+        if field in have:
+            conn.execute(f"DROP INDEX IF EXISTS {_index_name(int(collection_id), field)}")
+
+
 # ─── Query ───────────────────────────────────────────────────────────────────
 
 _META_COLUMNS = {"created_at": "r.created_at", "updated_at": "r.updated_at", "origin": "r.origin", "key": "r.record_key"}
@@ -875,7 +939,7 @@ def _bind(v: Any) -> Any:
     return (1 if v else 0) if isinstance(v, bool) else v
 
 
-def _compile_filter(c: dict, flt: dict) -> tuple[str, list[Any]]:
+def _compile_filter(c: dict, flt: dict, indexed: set[str] = frozenset()) -> tuple[str, list[Any]]:
     name = flt["field"]
     field = next((f for f in c["fields"] if f["name"] == name), None)
     meta = _META_COLUMNS.get(name)
@@ -885,8 +949,9 @@ def _compile_filter(c: dict, flt: dict) -> tuple[str, list[Any]]:
             f'"{name}" is not a field of "{c["name"]}" (fields: {", ".join(f["name"] for f in c["fields"])}; also created_at, updated_at, origin, key)',
         )
     path = f"$.{name}"
-    expr = meta or "json_extract(r.data, ?)"
-    expr_params: list[Any] = [] if meta else [path]
+    literal = meta is None and field is not None and field["name"] in indexed
+    expr = meta or (_indexed_expr(field["name"], "r") if literal else "json_extract(r.data, ?)")
+    expr_params: list[Any] = [] if (meta or literal) else [path]
     op, value = flt["op"], flt.get("value")
     if op == "exists":
         return (f"{meta} IS NOT NULL", []) if meta else ("json_type(r.data, ?) IS NOT NULL", [path])
@@ -930,14 +995,17 @@ def query_records(
         raise CollectionError("unknown_collection", f'no collection "{collection}". collection(action="list") shows the existing ones.')
     if c["status"] != "active" and not include_archived:
         raise CollectionError("archived", f'collection "{c["name"]}" is archived')
-    clauses = ["r.collection_id = ?"]
-    params: list[Any] = [c["id"]]
-    if not include_archived:
-        clauses.append("r.status = 'active'")
     if where is not None and not isinstance(where, list):
         raise CollectionError("invalid_query", "where must be a list of filters")
-    for raw in where or []:
-        sql, p = _compile_filter(c, _check_filter_shape(raw))
+    filters = [_check_filter_shape(raw) for raw in where or []]
+    indexed = _ensure_indexes(conn, c, [f["field"] for f in filters] + ([order_by] if order_by else []))
+    # A literal collection id lets SQLite match the managed indexes' WHERE clause.
+    clauses = [f"r.collection_id = {int(c['id'])}"] if indexed else ["r.collection_id = ?"]
+    params: list[Any] = [] if indexed else [c["id"]]
+    if not include_archived:
+        clauses.append("r.status = 'active'")
+    for flt in filters:
+        sql, p = _compile_filter(c, flt, indexed)
         clauses.append(sql)
         params.extend(p)
     source = "records r"
@@ -956,8 +1024,13 @@ def query_records(
         if field is None and meta is None:
             raise CollectionError("invalid_query", f'cannot order by "{order_by}": not a field of "{c["name"]}"')
         direction = "ASC" if order == "asc" else "DESC"
-        order_sql = f"{meta} {direction}, r.id {direction}" if meta else f"json_extract(r.data, ?) {direction}, r.id {direction}"
-        if not meta:
+        literal = meta is None and order_by in indexed
+        if meta:
+            order_sql = f"{meta} {direction}, r.id {direction}"
+        elif literal:
+            order_sql = f"{_indexed_expr(order_by, 'r')} {direction}, r.id {direction}"
+        else:
+            order_sql = f"json_extract(r.data, ?) {direction}, r.id {direction}"
             params.append(f"$.{order_by}")
     try:
         lim = int(limit) if limit is not None else 20
@@ -1119,7 +1192,7 @@ def run_collection_tool(conn: sqlite3.Connection, args: dict, *, project: Option
             c = next((x for x in list_collections(conn, project, include_archived=True) if target and x["id"] == target["id"]), None)
             if c is None:
                 raise CollectionError("unknown_collection", f'no collection "{name}"')
-            return {"ok": True, "collection": _describe(c)}
+            return {"ok": True, "collection": {**_describe(c), "indexes": managed_indexes(conn, c["id"])}}
         if action == "define":
             if args.get("scope") == "project" and not project:
                 raise CollectionError("missing_argument", "scope=project needs a current project; pass project")
