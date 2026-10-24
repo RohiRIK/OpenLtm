@@ -1,7 +1,7 @@
 ---
 name: MemoryReview
 description: "Curation pass over OpenLTM memory: triage pending session-end proposals, stale-flagged memories, conflicting or superseded entries, and low-value duplicates, then accept, revalidate, relate, or forget them with the user's approval. Use when the user says 'review memories', 'clean up memory', 'curate LTM', 'what's pending', 'any memory proposals', 'prune stale memories', or after a refactor that may have invalidated what LTM knows."
-allowed-tools: mcp__plugin_openltm_memory__proposals, mcp__plugin_openltm_memory__recall, mcp__plugin_openltm_memory__learn, mcp__plugin_openltm_memory__graph, mcp__plugin_openltm_memory__context_items, mcp__plugin_openltm_memory__revalidate, mcp__plugin_openltm_memory__relate, mcp__plugin_openltm_memory__admin_audit, Read, Grep, Glob
+allowed-tools: mcp__plugin_openltm_memory__proposals, mcp__plugin_openltm_memory__collection, mcp__plugin_openltm_memory__recall, mcp__plugin_openltm_memory__learn, mcp__plugin_openltm_memory__graph, mcp__plugin_openltm_memory__context_items, mcp__plugin_openltm_memory__revalidate, mcp__plugin_openltm_memory__relate, mcp__plugin_openltm_memory__admin_audit, Read, Grep, Glob
 ---
 
 # MemoryReview — curate long-term memory
@@ -27,6 +27,7 @@ Run these and collect candidates:
 2. **Stale memories** — `stale {project}`. Each row carries `stale_reason`, which names the commit or files.
 3. **Conflicts and supersedes** — `recall {project, verbose: true, limit: 50}` (no query lists the project's top memories; add a query to focus an area). From those rows, note `contradicts` relations and `supersedes` targets that are still active. For a tangled area, `graph {memory_ids, depth: 2}` shows the chain.
 4. **Duplicates and low value** — memories in the same category that say the same thing; operational noise (one-off command output, transient state); facts derivable from the code or `git log`.
+5. **Collections** — `collection {action: "list"}`. Flag types an agent defined (`origin: agent-observation`) that the user has not seen, types with 0 records, and near-duplicate types (`server` and `servers`). Suggest **keep** or **archive**; agents cannot make breaking changes, so a type that needs a field removed or retyped is the owner's `ltm collection evolve --allow-breaking`.
 
 ## Step 3 — Present
 
@@ -42,7 +43,7 @@ One compact table per group, skipping empty groups:
 | # | id | content | stale because | suggest |
 ```
 
-Suggested actions: **accept / reject** (proposals) · **revalidate / rewrite / forget** (stale) · **supersede / forget** (conflicts, duplicates) · **keep**. Give a one-line reason for each. Then ask the user to approve, edit, or skip — accept batch answers such as "accept 1,3; reject 2; revalidate all stale".
+Suggested actions: **accept / reject** (proposals) · **revalidate / rewrite / forget** (stale) · **supersede / forget** (conflicts, duplicates) · **keep / archive** (collections) · **keep**. Give a one-line reason for each. Then ask the user to approve, edit, or skip — accept batch answers such as "accept 1,3; reject 2; revalidate all stale".
 
 ## Step 4 — Apply approved actions
 
@@ -54,6 +55,7 @@ Suggested actions: **accept / reject** (proposals) · **revalidate / rewrite / f
 | Conflict | Pick the winner with the user; `relate {winner, loser, supersedes}`; `forget` the loser only if approved |
 | Duplicate | `learn` the clearest wording (it reinforces the match); `relate … supersedes` the extras; `forget` extras only if approved |
 | Low value | `forget {id, reason}` only if approved |
+| Collection to retire | `collection {action: "archive", name}` only if approved (records are kept; the owner restores it with `ltm collection restore <name>`) |
 
 `forget` is the one tool this skill does not pre-approve, so the user also sees a permission prompt for each delete.
 
@@ -64,6 +66,7 @@ Memory review — <project>
 Proposals: 2 accepted, 1 rejected
 Stale: 3 revalidated, 1 rewritten
 Conflicts/duplicates: 2 superseded, 1 forgotten
+Collections: 1 archived, 3 kept
 Skipped: 4 (left for next pass)
 ```
 

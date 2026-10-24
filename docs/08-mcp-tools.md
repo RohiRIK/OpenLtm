@@ -24,12 +24,18 @@ If you ever need to call them yourself (e.g. from a custom hook or script), this
 | `context_add` | Record a goal, decision, gotcha, or progress note for a project. `project` is optional. |
 | `proposals` | List, accept, or reject memories proposed by end-of-session evaluation. |
 | `stats` | Counts over the store, or over one `project` plus globals: `active`, `byStatus`, `byCategory`, `byImportance`, `stale`, `private`, `embedded` (active memories with a vector; `0` means recall is full-text only) and `pendingProposals`. |
+| `collection` | `{action: list\|describe\|define\|evolve\|archive}`: structured types the agent defines (servers, releases, endpoints…). `define` refuses a near-duplicate of an existing type unless `force`; `evolve` is additive only. See [Collections](16-collections.md). |
+| `record` | `{action: put\|get\|query\|archive, collection}`: validated records in a collection. `put` upserts by the key field (`merge` updates only the given fields); `query` filters by field (`eq`, `neq`, `lt`, `lte`, `gt`, `gte`, `in`, `contains`, `exists`) and/or full-text `text`. Values that look like secrets are refused. See [Collections](16-collections.md). |
 
 ### Optional `project`
 
 `context`, `context_items` and `context_add` take an optional `project` (the LTM registry name). When it's omitted, the server uses the current project — the plugin resolves it from the server's working directory exactly like the hooks do (registry exact or longest-prefix match, else the git repo root's folder name, else the working directory's). If no project can be resolved (e.g. a host that supplies no default — `bunx @rohirik/openltm-core mcp-serve` now defaults to its working directory), the tool returns an error asking for `project`. `context` echoes the project it used: `{ project, goal, decisions, gotchas, progress, globals, scoped }` — context items as written by `context_add` and the hooks, memories egress-scrubbed. `learn` returns the `project_scope` it stored the memory under (`null` = cross-project).
 
 Hosts embedding the server pick the default with `buildMcpServer({ defaultProject: () => "<name>" })` / `startMcpServer({ defaultProject })`.
+
+### Records in `recall` and `context`
+
+`recall` also appends up to 3 matching collection records after the memories, each with `type: "record"`, when a `query` is given and no `category` (turn it off with `includeRecords: false`). `context` lists the collections that exist.
 
 ### `context_add`
 
@@ -60,7 +66,7 @@ Every tool carries a `title` and MCP [tool annotations](https://modelcontextprot
 | Tool | `readOnlyHint` | `destructiveHint` | `idempotentHint` |
 |------|:-:|:-:|:-:|
 | `recall`, `get`, `context`, `context_items`, `graph`, `admin_audit`, `stale`, `stats` | ✅ | — | — |
-| `learn`, `context_add` | ❌ | ❌ | ❌ |
+| `learn`, `context_add`, `collection`, `record` | ❌ | ❌ | ❌ |
 | `relate`, `revalidate` | ❌ | ❌ | ✅ |
 | `forget` | ❌ | ✅ | ✅ |
 | `proposals` | ❌ | ✅ (reject discards) | ❌ |

@@ -188,3 +188,7 @@ What happens on the first open:
 
 Each Hermes profile keeps its own DB; share only the one you point
 `LTM_DB_PATH` at.
+
+## Collections (2.22.0)
+
+The plugin exposes `openltm_collection` and `openltm_record`, the same contract as core's `collection` / `record` tools (see [Collections](16-collections.md)). `openltm_recall` appends matching records after the memories (`include_records: false` turns it off), `openltm_context` lists the collections, and the system prompt names them inside the recalled-memory frame. Tables are created with core's migration 031 DDL, so a database shared through `LTM_DB_PATH` works from both sides. With an embedder configured, records get vectors on `put` and recall fuses them with full-text hits.
