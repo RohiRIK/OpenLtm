@@ -19,6 +19,7 @@ import { legacyLastSegment, loadProjectRegistry, resolveProjectName } from "./pr
 import { createProjectDataProbe } from "./projectProbe.js";
 import { frameRecalledMemory } from "./memoryFrame.js";
 import { scrubForEgress } from "./secretsScrubber.js";
+import { collectionIndexLines } from "./collections/store.js";
 
 export interface PrefillOptions {
   project: string;
@@ -222,7 +223,8 @@ export function selectPrefillMemories(
 export function buildPrefillContext(opts: PrefillOptions): string {
   const maxLines = clampPositiveInt(opts.maxLines, 18);
   const { globals, scoped } = selectPrefillMemories(opts.project, opts);
-  if (globals.length === 0 && scoped.length === 0) return "";
+  const collections = collectionIndexLines(opts.project, 5).map((l) => scrubForEgress(l));
+  if (globals.length === 0 && scoped.length === 0 && collections.length === 0) return "";
 
   const lines: string[] = [];
 
@@ -237,6 +239,8 @@ export function buildPrefillContext(opts: PrefillOptions): string {
     for (const memory of globals) lines.push(renderLine(memory));
     lines.push("");
   }
+
+  if (collections.length > 0) lines.push(...collections, "");
 
   return `${opts.header ?? DEFAULT_HEADER}\n\n${frameRecalledMemory(trimLines(lines, Math.max(1, maxLines - 2)).join("\n"))}`;
 }

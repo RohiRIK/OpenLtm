@@ -278,3 +278,23 @@ describe("searchRecords", () => {
     expect(core.searchRecords("proxmox", { project: "beta" })).toEqual([]);
   });
 });
+
+describe("collectionIndexLines", () => {
+  it("lists visible collections with counts for session injection", () => {
+    expect(core.collectionIndexLines("p")).toEqual([]);
+    defineReleases();
+    core.putRecord({ collection: "releases", data: { version: "1" } });
+    const lines = core.collectionIndexLines("p");
+    expect(lines[0]).toContain("collections");
+    expect(lines[1]).toBe("- releases[version] (1 record): One row per OpenLtm release");
+  });
+
+  it("caps the list", () => {
+    for (const n of ["alpha_hosts", "beta_tools", "gamma_links"]) {
+      core.defineCollection({ name: n, description: n, fields: [{ name: `${n}_v`, type: "string" }], force: true });
+    }
+    const lines = core.collectionIndexLines(null, 2);
+    expect(lines).toHaveLength(4);
+    expect(lines[3]).toContain("1 more");
+  });
+});

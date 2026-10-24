@@ -42,7 +42,7 @@ export type { MemoryOrigin } from "./origin.js";
 // Collections: structured types the agent defines (migration 031)
 export {
   FIELD_TYPES, FILTER_OPS, LIMITS as COLLECTION_LIMITS, COLLECTION_ORIGINS, AUTHORITY_NOTE, CollectionError,
-  defineCollection, evolveCollection, listCollections, resolveCollection, setCollectionStatus,
+  defineCollection, evolveCollection, listCollections, resolveCollection, setCollectionStatus, collectionIndexLines,
   putRecord, getRecord, archiveRecord, queryRecords, searchRecords,
 } from "./collections/index.js";
 export type {

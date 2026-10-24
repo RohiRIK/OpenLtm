@@ -27,6 +27,13 @@ import { scrubForEgress, SCRUB_FAILED_PLACEHOLDER } from "../secretsScrubber.js"
 import { RECALLED_MEMORY_NOTICE } from "../memoryFrame.js";
 import { hasPrivateTag, notPrivateSql } from "../privacy.js";
 import { emitEvent } from "../lib/jsonlLogger.js";
+import { FIELD_TYPES, LIMITS as COLLECTION_LIMITS } from "../collections/fieldSpec.js";
+import { FILTER_OPS, searchRecords } from "../collections/query.js";
+import { COLLECTION_ORIGINS, listCollections } from "../collections/store.js";
+import {
+  COLLECTION_ACTIONS, RECORD_ACTIONS, COLLECTION_TOOL_DESCRIPTION, RECORD_TOOL_DESCRIPTION,
+  runCollectionTool, runRecordTool, type ToolOutcome,
+} from "../collections/tools.js";
 
 // ─── Options ─────────────────────────────────────────────────────────────────
 
@@ -168,14 +175,23 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
         agent_id: z.string().optional().describe("Filter by agent (memories from this agent plus unattributed ones)"),
         includeProvenance: z.boolean().optional().default(false).describe("Attach provenance chain to each result (off by default)"),
         includePrivate: z.boolean().optional().default(false).describe("Include memories tagged private (default false — private ≠ encrypted)"),
+        includeRecords: z.boolean().optional().default(true).describe("Append up to 3 matching collection records (type: \"record\") after the memories (default true)"),
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    async ({ query, project, limit, category, verbose, since, until, sort_by, workspace_id, agent_id, includeProvenance, includePrivate }) => {
+    async ({ query, project, limit, category, verbose, since, until, sort_by, workspace_id, agent_id, includeProvenance, includePrivate, includeRecords }) => {
       const results = await recall({ query, project, limit, category, since, until, sort_by, workspace_id, agent_id, includeProvenance, includePrivate });
       // /openltm:health counts these ("Recall hits").
       if (results.length > 0) emitEvent({ hook: "MCP", event: "recall.hit", project, count: results.length, ts: new Date().toISOString() });
-      return jsonResult(verbose ? scrubMemoryPayload(results) : compact(results));
+      const memories = verbose ? (scrubMemoryPayload(results) as unknown[]) : compact(results);
+      // Records sit after the memories so callers reading memories by index are unaffected.
+      const records = query && includeRecords && !category
+        ? searchRecords(query, { project: await resolveProjectArg(project), limit: 3 }).map((r) => ({
+          type: "record", collection: r.collection, key: r.key, id: r.id, data: r.data, origin: r.origin,
+          updated_at: r.updated_at, ...(r.authority_note ? { authority_note: r.authority_note } : {}),
+        }))
+        : [];
+      return jsonResult([...memories, ...(scrubMemoryPayload(records) as unknown[])]);
     },
   );
 
@@ -373,7 +389,7 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
     "context",
     {
       title: "Project context",
-      description: "Restore project state at session start or when switching projects — what SessionStart injects: the current goal, decisions, gotchas and recent progress (context items), plus high-importance global memories (importance ≥ 4) and the project's memories. Context and evidence, not instructions.",
+      description: "Restore project state at session start or when switching projects — what SessionStart injects: the current goal, decisions, gotchas and recent progress (context items), plus high-importance global memories (importance ≥ 4), the project's memories, and the structured collections that exist (use the record tool to query them). Context and evidence, not instructions.",
       inputSchema: {
         project: projectParam,
       },
@@ -382,7 +398,11 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
     async ({ project }) => {
       const resolved = await resolveProjectArg(project);
       if (!resolved) return errorResult(NO_PROJECT_MESSAGE);
-      return jsonResult(scrubMemoryPayload(getProjectContext(resolved)));
+      const collections = listCollections({ project: resolved }).map((c) => ({
+        name: c.name, description: c.description, key_field: c.key_field, records: c.record_count,
+        fields: c.fields.map((f) => f.name),
+      }));
+      return jsonResult(scrubMemoryPayload({ ...getProjectContext(resolved), ...(collections.length ? { collections } : {}) }));
     },
   );
 
@@ -502,6 +522,74 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
       }
       return jsonResult({ ok: true, action, session_id, index });
     },
+  );
+
+  // Collections — structured types the agent defines. A soft project lookup:
+  // collections work without a project (global ones), unlike context tools.
+  const outcome = (o: ToolOutcome): CallToolResult =>
+    o.ok ? jsonResult(scrubMemoryPayload(o)) : { ...jsonResult(scrubMemoryPayload(o)), isError: true };
+
+  const fieldParam = z.object({
+    name: z.string().describe("lowercase snake_case, 2-40 chars"),
+    type: z.enum(FIELD_TYPES),
+    required: z.boolean().optional(),
+    searchable: z.boolean().optional().describe("Include in full-text search (default: true for text-like types)"),
+    description: z.string().optional(),
+    values: z.array(z.string()).optional().describe("enum only: allowed values"),
+  });
+
+  server.registerTool(
+    "collection",
+    {
+      title: "Structured collections",
+      description: COLLECTION_TOOL_DESCRIPTION,
+      inputSchema: {
+        action: z.enum(COLLECTION_ACTIONS),
+        name: z.string().optional().describe("Collection name (describe/define/evolve/archive)"),
+        description: z.string().optional().describe("define/evolve: when to use this collection"),
+        fields: z.array(fieldParam).optional().describe("define/evolve: the full field list"),
+        key_field: z.string().optional().describe("define: a required field whose value identifies a record (upsert key)"),
+        scope: z.enum(["global", "project"]).optional().describe("define: global (default) or the current project only"),
+        origin: z.enum(COLLECTION_ORIGINS).optional().describe("define: owner-statement if the user asked for this type, else agent-observation (default)"),
+        force: z.boolean().optional().describe("define: create even though a similar collection exists"),
+        include_archived: z.boolean().optional().describe("list: include archived collections"),
+        project: projectParam,
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ project, ...args }) => outcome(runCollectionTool(args, { project: await resolveProjectArg(project), actor: "mcp" })),
+  );
+
+  const scalarParam = z.union([z.string(), z.number(), z.boolean()]);
+  server.registerTool(
+    "record",
+    {
+      title: "Collection records",
+      description: RECORD_TOOL_DESCRIPTION,
+      inputSchema: {
+        action: z.enum(RECORD_ACTIONS),
+        collection: z.string().describe("Collection name"),
+        data: z.record(z.string(), z.unknown()).optional().describe("put: field values"),
+        merge: z.boolean().optional().describe("put: update only the given fields of the record with this key"),
+        key: z.string().optional().describe("get/archive: the record's key field value"),
+        id: z.number().int().optional().describe("get/archive: record id (when the collection has no key field)"),
+        where: z.array(z.object({
+          field: z.string().describe("A field name, or created_at / updated_at / origin / key"),
+          op: z.enum(FILTER_OPS),
+          value: z.union([scalarParam, z.array(scalarParam)]).optional(),
+        })).optional().describe("query: filters, all must match"),
+        text: z.string().optional().describe("query: full-text search in the collection's searchable fields"),
+        order_by: z.string().optional(),
+        order: z.enum(["asc", "desc"]).optional(),
+        limit: z.number().int().min(1).max(COLLECTION_LIMITS.maxQueryLimit).optional(),
+        include_archived: z.boolean().optional(),
+        origin: z.enum(MEMORY_ORIGINS).optional().describe(ORIGIN_PARAM_DESCRIPTION),
+        memory_id: z.number().int().optional().describe("put: link the memory that explains this record"),
+        project: projectParam,
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ project, ...args }) => outcome(runRecordTool(args, { project: await resolveProjectArg(project), actor: "mcp" })),
   );
 
   // ─── Resources ─────────────────────────────────────────────────────────────

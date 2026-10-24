@@ -17,6 +17,7 @@ import type { McpServerOptions } from "../mcp/server.js";
 const TOOL_NAMES = [
   "recall", "get", "learn", "relate", "forget", "revalidate", "admin_audit",
   "context", "graph", "context_items", "context_add", "proposals", "stale", "stats",
+  "collection", "record",
 ];
 
 describe("mcp/server — buildMcpServer", () => {
@@ -120,7 +121,7 @@ describe("mcp/server — tools/list", () => {
     for (const name of ["recall", "get", "context", "context_items", "graph", "admin_audit", "stale", "stats"]) {
       expect(byName.get(name)!.annotations?.readOnlyHint).toBe(true);
     }
-    for (const name of ["learn", "relate", "forget", "revalidate", "context_add", "proposals"]) {
+    for (const name of ["learn", "relate", "forget", "revalidate", "context_add", "proposals", "collection", "record"]) {
       expect(byName.get(name)!.annotations?.readOnlyHint).toBe(false);
     }
     expect(byName.get("forget")!.annotations?.destructiveHint).toBe(true);
@@ -557,5 +558,57 @@ describe("mcp/server — tags scrub (write + compact egress)", () => {
     let arr: unknown = [`raw ${AWS}`];
     for (let i = 0; i < 40; i++) arr = [arr];
     expect(JSON.stringify(scrubMemoryPayload(arr))).not.toContain(AWS);
+  });
+});
+
+describe("mcp/server — collection + record tools", () => {
+  const AWS = "AKIAIOSFODNN7EXAMPLE";
+  it("define, put, query, recall and context round-trip through MCP", async () => {
+    const client = await connect({ defaultProject: () => "mcp-coll" });
+    const defined = json<{ ok: boolean; collection: { name: string; origin: string } }>(await call(client, "collection", {
+      action: "define", name: "hosts", description: "Homelab hosts and their roles",
+      fields: [{ name: "host", type: "string", required: true }, { name: "role", type: "string" }, { name: "port", type: "integer" }],
+      key_field: "host",
+    }));
+    expect(defined.collection).toMatchObject({ name: "hosts", origin: "agent-observation" });
+    json(await call(client, "record", { action: "put", collection: "hosts", data: { host: "pve1", role: "quokka hypervisor", port: 8006 } }));
+    const q = json<{ count: number; records: Array<{ key: string; data: { port: number } }> }>(
+      await call(client, "record", { action: "query", collection: "hosts", where: [{ field: "port", op: "eq", value: 8006 }] }));
+    expect(q.count).toBe(1);
+    expect(q.records[0]!.key).toBe("pve1");
+
+    const recalled = json<Array<{ type?: string; collection?: string; key?: string }>>(await call(client, "recall", { query: "quokka hypervisor" }));
+    expect(recalled.some((r) => r.type === "record" && r.collection === "hosts" && r.key === "pve1")).toBe(true);
+    const noRecords = json<Array<{ type?: string }>>(await call(client, "recall", { query: "quokka hypervisor", includeRecords: false }));
+    expect(noRecords.some((r) => r.type === "record")).toBe(false);
+
+    const ctx = json<{ collections?: Array<{ name: string; records: number }> }>(await call(client, "context", {}));
+    expect(ctx.collections).toContainEqual(expect.objectContaining({ name: "hosts", records: 1 }));
+  });
+
+  it("returns refusals as tool errors the model can act on", async () => {
+    const client = await connect();
+    const bad = await call(client, "record", { action: "put", collection: "hosts", data: { host: "x", nope: 1 } });
+    expect(bad.isError).toBe(true);
+    expect(JSON.parse(bad.content[0]!.text)).toMatchObject({ ok: false, error: "invalid_record" });
+    const secret = await call(client, "record", { action: "put", collection: "hosts", data: { host: "y", role: `uses ${AWS}` } });
+    expect(secret.isError).toBe(true);
+    expect(secret.content[0]!.text).not.toContain(AWS);
+    const dup = await call(client, "collection", { action: "define", name: "host", description: "dup", fields: [{ name: "host", type: "string", required: true }, { name: "role", type: "string" }] });
+    expect(JSON.parse(dup.content[0]!.text)).toMatchObject({ ok: false, error: "similar_exists" });
+    const missing = await call(client, "record", { action: "get", collection: "hosts" });
+    expect(JSON.parse(missing.content[0]!.text)).toMatchObject({ ok: false, error: "missing_argument" });
+  });
+
+  it("egress-scrubs a legacy secret already in a record", async () => {
+    const core = await import("../index.js");
+    const db = core.getDb();
+    const c = core.resolveCollection("hosts")!;
+    db.run("INSERT INTO records (collection_id, record_key, data, schema_version, search_text) VALUES (?, 'legacy', ?, 1, 'hosts legacy')",
+      [c.id, JSON.stringify({ host: "legacy", role: `raw ${AWS}` })]);
+    const client = await connect();
+    const got = await call(client, "record", { action: "get", collection: "hosts", key: "legacy" });
+    expect(got.content[0]!.text).not.toContain(AWS);
+    expect(got.content[0]!.text).toContain("[REDACTED:aws-access-key]");
   });
 });

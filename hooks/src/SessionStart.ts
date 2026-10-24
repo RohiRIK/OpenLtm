@@ -22,7 +22,7 @@ import { findLtmHooksInUserSettings, userSettingsPath } from "../lib/settingsHoo
 import { getContextMerge, getSimilarMemories, getContextMergeWithGraph,
          embedText, getDb, listMemoryIdsMissingEmbedding, exportContextMarkdown,
          waitForInit, getRecentConflicts, listStagedConflicts, emitEvent, listPendingProposals,
-         scrubForEgress, frameRecalledMemory } from "@rohirik/openltm-core";
+         scrubForEgress, frameRecalledMemory, collectionIndexLines } from "@rohirik/openltm-core";
 import { readConfigSync } from "../../src/config.js";
 import type { Config } from "../../src/config.js";
 
@@ -97,11 +97,13 @@ async function buildLtmSection(
     ({ globals, scoped } = applyInjectTopN(globals, scoped, topN));
     const graphInsights = (merged as { graphInsights?: string }).graphInsights;
 
-    if (globals.length === 0 && scoped.length === 0) return none;
+    const collections = collectionIndexLines(project).map((l) => scrubForEgress(l));
+    if (globals.length === 0 && scoped.length === 0 && collections.length === 0) return none;
 
     const lines: string[] = ["LTM index (use MCP get <id> for full memory):", ""];
     if (globals.length > 0) lines.push("globals:", ...globals.map(indexLine), "");
     if (scoped.length > 0)  lines.push("project:", ...scoped.map(indexLine), "");
+    if (collections.length > 0) lines.push(...collections, "");
     if (graphInsights) lines.push(...scrubForEgress(graphInsights).split("\n").slice(0, MAX_GRAPH_LINES), "");
     return { text: frameRecalledMemory(lines.join("\n")), ids: [...globals, ...scoped].map(m => m.id) };
   } catch (err) {

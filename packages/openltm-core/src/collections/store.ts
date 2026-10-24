@@ -429,3 +429,22 @@ export function collectionsById(db: Database = getDb()): Map<number, Collection>
 
 export { toView as _toRecordView };
 export type { RecordRow };
+
+/**
+ * Injection lines naming the collections visible from `project`, so a session
+ * knows which structured types exist before it writes prose about them.
+ * Empty when there are none (or the DB predates migration 031).
+ */
+export function collectionIndexLines(project: string | null, max = 10, db: Database = getDb()): string[] {
+  let list: CollectionSummary[];
+  try {
+    list = listCollections({ project }, db);
+  } catch {
+    return [];
+  }
+  if (list.length === 0) return [];
+  const shown = list.slice(0, max).map((c) =>
+    `- ${c.name}${c.key_field ? `[${c.key_field}]` : ""} (${c.record_count} record${c.record_count === 1 ? "" : "s"}): ${c.description.replace(/\s+/g, " ").slice(0, 120)}`);
+  const more = list.length > max ? [`- …and ${list.length - max} more (collection action=list)`] : [];
+  return ["collections (query with the record tool):", ...shown, ...more];
+}
