@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.20.3] — 2026-10-24
+
+### Fixed
+- **`bun run catalog:drift` can pass.** It compared the Hermes catalog entry with `HEAD`, and committing a re-pin moves `HEAD`, so it failed on every commit. It now compares with the latest `v*` release tag, the only thing that is ever pinned, and fails only when a release has not been re-pinned.
+- **`catalog:sync` also repoints the banner image URL**, which pinned the old commit.
+- The repo's Hermes catalog entry is pinned to v2.20.0 (it still said 2.16.2).
+
 ## [2.20.2] — 2026-10-24
 
 ### Fixed
