@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.22.0] — 2026-10-24
+
+### Added
+- **Agents can define their own structured types of information** (collections, migration 031). Facts with a fixed shape, such as hosts and ports, releases and whether each was tagged, or API endpoints, no longer have to be prose. An agent defines a *collection* (named, typed fields: `string`, `text`, `integer`, `number`, `boolean`, `date`, `enum`, `string[]`, `url`) and stores validated *records* in it, then finds them by field (`tagged = false`, `port > 8000`) or by text. A new type is a row, not a table: no agent-written SQL or DDL ever runs, and the migration checksum gate is untouched. See [Collections](docs/16-collections.md).
+- **`collection` and `record` tools on every host**: MCP (and Pi through it), OpenCode (`ltm_collection` / `ltm_record`), OpenClaw and Hermes (`openltm_collection` / `openltm_record`). `define` refuses a near-duplicate type (`server` next to `servers`) unless `force`; `evolve` allows additive changes only; `put` upserts by the key field and refuses secret-shaped values instead of storing a redacted placeholder. Errors come back with a stable code so the model can correct the call.
+- **Records in recall and context.** `recall` with a query appends up to 3 matching records after the memories (`type: "record"`, `includeRecords: false` turns it off), ranked by full-text search and, with an embeddings provider (local llama.cpp by default), by vector similarity too. `context`, the SessionStart index and the Hermes system prompt list the collections that exist, inside the recalled-memory frame.
+- **Records carry an origin and are labelled when they look like permission.** Records use the memory origin values; tools default to `agent-observation`, the CLI writes `owner-statement`. A `historical-approval` record, or one in a type whose names read like a permission (`approved`, `authorized`, `allowed`…), comes back with an `authority_note`: history, not a current permission.
+- **Managed indexes.** Past 2,000 active records (`collections.index_min_records`), the first query that filters or sorts on a scalar field indexes it for that collection (at most 3). About 15× faster lookups at 20,000 records.
+- **Owner CLI:** `ltm collection list | show | define | evolve | archive | restore` and `ltm record list | get | put | archive | export`. Only the CLI can make a breaking change (`evolve --allow-breaking`), after backing up the database and revalidating every record.
+- **Collections page in the graph app** (`/collections`): browse types and records, search, archive and restore.
+- **Hermes:** a Python port over the same tables and DDL, so a database shared through `LTM_DB_PATH` works from both sides; core and Hermes run one shared contract fixture.
+- Eval `07-collections-record` checks that an agent reuses an existing collection instead of writing prose or a near-duplicate type. The Ltm skill says when to use a record and when `learn`; MemoryReview reviews new, empty and duplicate collections.
+
 ## [2.21.0] — 2026-10-24
 
 ### Added
