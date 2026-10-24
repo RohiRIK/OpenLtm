@@ -344,3 +344,51 @@ export interface HealthHistory {
   points: HealthHistoryPoint[]; // 30 entries, oldest first
   current: number;              // current score
 }
+
+// ── Collections (agent-defined structured types) ─────────────────────────────
+
+export interface CollectionField {
+  name: string;
+  type: string;
+  required?: boolean;
+  searchable?: boolean;
+  description?: string;
+  values?: string[];
+}
+
+export interface CollectionSummary {
+  id: number;
+  name: string;
+  description: string;
+  project_scope: string | null;
+  fields: CollectionField[];
+  key_field: string | null;
+  version: number;
+  status: "active" | "archived";
+  origin: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  record_count: number;
+  indexes: string[];
+}
+
+export interface CollectionRecord {
+  id: number;
+  collection: string;
+  key: string | null;
+  data: Record<string, unknown>;
+  origin: string | null;
+  status: "active" | "archived";
+  schema_version: number;
+  memory_id: number | null;
+  created_at: string;
+  updated_at: string;
+  authority_note?: string;
+}
+
+export interface CollectionRecords {
+  collection: string;
+  count: number;
+  records: CollectionRecord[];
+}

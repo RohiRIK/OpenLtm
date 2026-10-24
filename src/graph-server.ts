@@ -23,6 +23,7 @@ import {
   startEmbeddingWorker, startJanitorScheduler,
   startLtmListener,
   getCapabilities, acquireJanitorLock, scrubOrRefuse,
+  listCollections, collectionsById, queryRecords, setCollectionStatus, managedIndexes, CollectionError, scrubForEgress,
 } from "@rohirik/openltm-core";
 import { applyMemoryUiUpdate, replaceMemoryTags } from "./memoryUiUpdate.js";
 import { detectCommunities, generateClusterLabel, assignClusterColors } from "./cluster.js";
@@ -35,6 +36,15 @@ import { getConfigPath } from "@rohirik/openltm-core";
 import type { Cluster } from "./graph-app/lib/types.js";
 
 const CLAUDE_DIR = join(homedir(), ".claude");
+
+/** Scrub every string before it leaves the server (records are refused secrets on write; this covers rows written around that). */
+function scrubDeep(value: unknown, depth = 0): unknown {
+  if (depth > 32) return "[scrub-failed]";
+  if (typeof value === "string") return scrubForEgress(value);
+  if (Array.isArray(value)) return value.map((v) => scrubDeep(v, depth + 1));
+  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, scrubDeep(v, depth + 1)]));
+  return value;
+}
 
 /** Parse a clamped integer from URL search params. */
 function parseClampedInt(params: URLSearchParams, key: string, defaultVal: number, min: number, max: number): number {
@@ -1110,6 +1120,46 @@ Bun.serve({
     // ============================================================
     // Phase 2: Pending memories routes
     // ============================================================
+
+    // ============================================================
+    // Collections (agent-defined structured types, migration 031)
+    // ============================================================
+
+    if (p === "/api/collections" && req.method === "GET") {
+      try {
+        const list = listCollections({ includeArchived: true, allScopes: true }, db)
+          .map((c) => ({ ...c, indexes: managedIndexes(db, c.id) }));
+        return Response.json(scrubDeep(list));
+      } catch {
+        return Response.json([]); // pre-031 database
+      }
+    }
+
+    const recordsMatch = p.match(/^\/api\/collections\/(\d+)\/records$/);
+    if (recordsMatch?.[1] && req.method === "GET") {
+      const c = collectionsById(db).get(parseInt(recordsMatch[1], 10));
+      if (!c) return Response.json({ error: "Unknown collection" }, { status: 404 });
+      try {
+        const text = url.searchParams.get("text")?.trim() || undefined;
+        const res = queryRecords({
+          collection: c.name, project: c.project_scope, text, include_archived: true,
+          limit: parseClampedInt(url.searchParams, "limit", 100, 1, 100),
+        }, db);
+        return Response.json(scrubDeep(res));
+      } catch (err) {
+        if (err instanceof CollectionError) return Response.json({ error: err.message }, { status: 400 });
+        throw err;
+      }
+    }
+
+    const collectionStatusMatch = p.match(/^\/api\/collections\/(\d+)\/(archive|restore)$/);
+    if (collectionStatusMatch?.[1] && req.method === "POST") {
+      const c = collectionsById(db).get(parseInt(collectionStatusMatch[1], 10));
+      if (!c) return Response.json({ ok: false, error: "Unknown collection" }, { status: 404 });
+      setCollectionStatus(c.name, c.project_scope, collectionStatusMatch[2] === "archive" ? "archived" : "active", db);
+      broadcast({ type: "refresh" });
+      return Response.json({ ok: true });
+    }
 
     if (p === "/api/pending" && req.method === "GET") {
       return Response.json(getPendingMemories());

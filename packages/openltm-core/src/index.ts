@@ -44,7 +44,7 @@ export {
   FIELD_TYPES, FILTER_OPS, LIMITS as COLLECTION_LIMITS, COLLECTION_ORIGINS, AUTHORITY_NOTE, CollectionError,
   defineCollection, evolveCollection, listCollections, resolveCollection, setCollectionStatus, collectionIndexLines,
   putRecord, getRecord, archiveRecord, queryRecords, searchRecords, recallRecords, embedRecord, backfillRecordEmbeddings,
-  managedIndexes, MAX_INDEXES as COLLECTION_MAX_INDEXES, INDEX_MIN_RECORDS as COLLECTION_INDEX_MIN_RECORDS,
+  collectionsById, managedIndexes, MAX_INDEXES as COLLECTION_MAX_INDEXES, INDEX_MIN_RECORDS as COLLECTION_INDEX_MIN_RECORDS,
   runCollectionTool, runRecordTool, COLLECTION_ACTIONS, RECORD_ACTIONS, COLLECTION_TOOL_DESCRIPTION, RECORD_TOOL_DESCRIPTION,
   COLLECTION_TOOL_JSON_SCHEMA, RECORD_TOOL_JSON_SCHEMA,
 } from "./collections/index.js";

@@ -167,14 +167,14 @@ function requireActive(name: string, project: string | null | undefined, db: Dat
   return c;
 }
 
-/** Collections visible from `project` (its own + global), with active record counts. */
-export function listCollections(opts: { project?: string | null; includeArchived?: boolean } = {}, db: Database = getDb()): CollectionSummary[] {
-  const rows = db.query<CollectionRow & { record_count: number }, [string]>(
+/** Collections visible from `project` (its own + global; every scope with allScopes), with active record counts. */
+export function listCollections(opts: { project?: string | null; includeArchived?: boolean; allScopes?: boolean } = {}, db: Database = getDb()): CollectionSummary[] {
+  const rows = db.query<CollectionRow & { record_count: number }, [string, number]>(
     `SELECT c.*, (SELECT count(*) FROM records r WHERE r.collection_id=c.id AND r.status='active') AS record_count
        FROM collections c
-      WHERE (c.project_scope IS NULL OR c.project_scope=?)
+      WHERE (?2 OR c.project_scope IS NULL OR c.project_scope=?1)
       ORDER BY c.name, c.project_scope IS NULL`,
-  ).all(opts.project ?? "");
+  ).all(opts.project ?? "", opts.allScopes ? 1 : 0);
   return rows
     .filter((r) => opts.includeArchived || r.status === "active")
     .map((r) => ({ ...toCollection(r), record_count: r.record_count }));
