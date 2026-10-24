@@ -1,0 +1,135 @@
+name: Release (one click)
+
+# Actions → "Release (one click)" → Run workflow on main. Releases the version
+# main carries: checks it, tags the commit, creates the GitHub Release, then
+# dispatches publish.yml at the tag (npm, then ClawHub; a tag pushed with
+# GITHUB_TOKEN fires no push events, so nothing runs twice). Last, opens a PR
+# pinning the repo's Hermes catalog entry to the tag. The upstream re-pin PR to
+# NousResearch/hermes-agent stays manual.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+  pull-requests: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    name: Check main and tag it
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+
+      - name: Read the version
+        id: version
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Releasing v${VERSION} from ${GITHUB_SHA}"
+
+      - name: Verify versions and changelog
+        run: bun run verify-version
+
+      - name: Refuse a version that is already tagged
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null; then
+            echo "::error::${TAG} already exists. Bump the version (bun run bump <version>) and merge that first."
+            exit 1
+          fi
+
+      - name: Require green CI on this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for check in "Typecheck & Test" "Hermes plugin (pytest)"; do
+            conclusion="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/check-runs" \
+              --jq "[.check_runs[] | select(.name == \"${check}\")] | sort_by(.completed_at) | last | .conclusion // \"missing\"")"
+            if [ "$conclusion" != "success" ]; then
+              echo "::error::CI check \"${check}\" on ${GITHUB_SHA} is ${conclusion}. Wait for CI on main to pass, then run this again."
+              exit 1
+            fi
+          done
+
+      - name: Tag the commit
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Release $TAG" "$GITHUB_SHA"
+          git push origin "refs/tags/${TAG}"
+
+      - name: Extract the changelog section
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: awk "/^## \[${TAG#v}\]/{flag=1; next} /^## \[/{flag=0} flag" CHANGELOG.md > release_notes.md
+
+      - name: Create the GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          body_path: release_notes.md
+          generate_release_notes: false
+
+      - name: Dispatch Publish (npm, then ClawHub) at the tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          gh workflow run publish.yml --repo "$GITHUB_REPOSITORY" --ref "$TAG"
+          echo "### ${TAG} released" >> "$GITHUB_STEP_SUMMARY"
+          echo "Publish (npm, then ClawHub) is running at ${TAG}. Watch it under Actions." >> "$GITHUB_STEP_SUMMARY"
+
+  catalog:
+    name: Open the Hermes catalog re-pin PR
+    needs: tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+
+      - name: Pin the catalog entry to the tag and open a PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.tag.outputs.tag }}
+        run: |
+          git fetch --tags --force
+          bun run catalog:sync "$TAG"
+          if git diff --quiet; then
+            echo "Catalog entry already pinned to ${TAG}"
+            exit 0
+          fi
+          BRANCH="release/catalog-${TAG}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git commit -am "chore(catalog): pin the Hermes catalog entry to ${TAG}"
+          git push origin "$BRANCH"
+          gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$BRANCH" \
+            --title "chore(catalog): pin the Hermes catalog entry to ${TAG}" \
+            --body "Opened by the one-click Release workflow after tagging ${TAG}. Runs \`bun run catalog:sync ${TAG}\` so \`catalog:drift\` stays green. The upstream re-pin PR to NousResearch/hermes-agent is still manual."
