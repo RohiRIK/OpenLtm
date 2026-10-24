@@ -38,10 +38,9 @@ Every task follows this workflow:
 
 Publishing the `@rohirik/*` npm packages is automated and **tokenless** (npm OIDC trusted publishing):
 
-1. Bump versions (above) and add a `## [X.Y.Z]` entry to `CHANGELOG.md`.
-2. Commit, then `git tag vX.Y.Z && git push origin main vX.Y.Z`.
-3. The tag push fires the **Release** workflow (creates the GitHub Release from the changelog) and the **Publish** workflow (publishes all four `@rohirik/*` packages to npm via OIDC, with provenance, then `@rohirik/openclaw-ltm` to ClawHub via OIDC).
-4. The **Hermes Plugin Catalog** pin does not follow tags: `bun run catalog:sync` and open a re-pin PR to `NousResearch/hermes-agent`.
+1. Bump versions (above) and add a `## [X.Y.Z]` entry to `CHANGELOG.md`; merge to `main`.
+2. The owner runs **Actions → Release (one click)** on `main` (`.github/workflows/release-button.yml`). It verifies versions, changelog and green CI on that commit, tags it, creates the GitHub Release from the changelog, dispatches **Publish** at the tag (all four `@rohirik/*` packages to npm via OIDC with provenance, then `@rohirik/openclaw-ltm` to ClawHub via OIDC), and opens a PR running `catalog:sync` for the tag. A hand-pushed `vX.Y.Z` tag still works but publishes npm only; ClawHub then needs a dispatch of `publish.yml` at the tag.
+3. The upstream **Hermes Plugin Catalog** re-pin is a PR to `NousResearch/hermes-agent`; it stays manual.
 
 No `NPM_TOKEN` or ClawHub token is stored — auth is via GitHub OIDC, configured as a Trusted Publisher per package on npmjs.com and on ClawHub. See `CONTRIBUTING.md` and `docs/11-publishing.md` for the full flow.
 
