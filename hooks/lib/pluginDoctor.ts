@@ -12,7 +12,7 @@ import { homedir } from "os";
 import { spawnSync } from "child_process";
 import { Database } from "bun:sqlite";
 import { getDbPath, CLAUDE_DIR } from "./resolveProject.js";
-import { getMigrationFiles, findChecksumMismatches } from "@rohirik/openltm-core";
+import { getMigrationFiles, findChecksumMismatches, loadConfig, loadProvider, llamaCppBaseUrl } from "@rohirik/openltm-core";
 
 const HOME = homedir();
 // Keep in sync with the candidate list in hooks/bin/run-hook.sh
@@ -203,6 +203,77 @@ async function checkDatabase(): Promise<void> {
     }
   } catch {
     warn("Could not read _schema_version table", "Run /openltm:admin migrate up to ensure schema is up to date");
+  } finally {
+    db?.close();
+  }
+}
+
+const EMBEDDINGS_GUIDE = "docs/15-local-embeddings.md";
+
+/**
+ * Is semantic recall actually on? Without a reachable provider recall silently
+ * stays on full-text search, so this is the check that tells the user why
+ * "search by meaning" finds nothing. Only a fixed probe string is embedded.
+ */
+async function checkEmbeddings(): Promise<void> {
+  section("Embeddings (semantic recall)");
+
+  let embeddings: Awaited<ReturnType<typeof loadConfig>>["embeddings"];
+  let provider: Awaited<ReturnType<typeof loadProvider>>;
+  try {
+    embeddings = (await loadConfig()).embeddings;
+    provider = await loadProvider(embeddings);
+  } catch (e) {
+    warn("Could not load the embedding configuration", `Check config.json: ${(e as Error).message}`);
+    return;
+  }
+
+  if (provider.name === "disabled") {
+    warn("Embeddings are disabled: recall uses full-text search only", `Optional. For search by meaning, run a local llama.cpp server (${EMBEDDINGS_GUIDE})`);
+    return;
+  }
+
+  const where = provider.name === "llamacpp" ? ` at ${llamaCppBaseUrl(embeddings)}` : "";
+  if (!(await provider.available())) {
+    warn(
+      `${provider.name} embedding server not reachable${where}: recall uses full-text search only`,
+      provider.name === "llamacpp"
+        ? `llama-server -m bge-m3.gguf --embeddings --pooling mean --port 8080 (${EMBEDDINGS_GUIDE})`
+        : `Check the ${provider.name} provider settings (docs/04-configuration.md#embeddings)`,
+    );
+    return;
+  }
+
+  const vector = await provider.generate("openltm doctor probe");
+  if (!vector) {
+    fail(
+      `${provider.name}${where} is up but returned no embedding for model "${provider.model}"`,
+      provider.name === "llamacpp"
+        ? `Start llama-server with --embeddings and an embedding model such as bge-m3 (${EMBEDDINGS_GUIDE})`
+        : `Check the model name and API key (docs/04-configuration.md#embeddings)`,
+    );
+    return;
+  }
+  ok(`${provider.name}${where} returns ${vector.length}-d vectors (model ${provider.model})`);
+
+  const dbPath = getDbPath();
+  if (!existsSync(dbPath)) return;
+  let db: InstanceType<typeof Database> | undefined;
+  try {
+    db = new Database(dbPath, { readonly: true });
+    const { total, embedded } = db.query(
+      `SELECT COUNT(*) AS total,
+              SUM(CASE WHEN id IN (SELECT memory_id FROM memory_embeddings WHERE model = ?) THEN 1 ELSE 0 END) AS embedded
+         FROM memories WHERE status = 'active'`,
+    ).get(provider.model) as { total: number; embedded: number | null };
+    const done = embedded ?? 0;
+    if (total === 0 || done === total) {
+      ok(`Embedded memories: ${done}/${total}`);
+    } else {
+      warn(`Embedded memories: ${done}/${total} have a ${provider.model} vector`, "The janitor backfills the rest on its next run, or now: bunx @rohirik/openltm-core janitor run");
+    }
+  } catch {
+    // An older schema without memory_embeddings: the Database section reports pending migrations.
   } finally {
     db?.close();
   }
@@ -464,6 +535,7 @@ console.log(`Plugin root: ${PLUGIN_ROOT}`);
 checkManifest();
 checkBun();
 await checkDatabase();
+await checkEmbeddings();
 checkMcp();
 checkPluginHooks();
 checkSettingsHooks();

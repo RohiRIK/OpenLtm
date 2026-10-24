@@ -7,6 +7,7 @@
  * against a real database, and stub only the host API.
  */
 import { afterAll, beforeAll, describe, expect, it, mock } from "bun:test";
+import { Database } from "bun:sqlite";
 import { readFileSync, unlinkSync } from "fs";
 import { join } from "path";
 
@@ -87,14 +88,17 @@ afterAll(() => {
 });
 
 describe("OpenClaw adapter — registration", () => {
-  it("registers the eight OpenLTM tools", async () => {
+  it("registers the eleven OpenLTM tools", async () => {
     const api = await register();
     expect(api.tools.map((t) => t.name).sort()).toEqual([
       "openltm_brain_stats",
       "openltm_context",
+      "openltm_context_add",
       "openltm_forget",
+      "openltm_get",
       "openltm_graph",
       "openltm_learn",
+      "openltm_proposals",
       "openltm_recall",
       "openltm_relate",
       "openltm_stale",
@@ -165,6 +169,50 @@ describe("OpenClaw adapter — behaviour over the real bridge", () => {
     const stale = api.tools.find((t) => t.name === "openltm_stale")!;
     const out = await text(stale, "t4", { action: "list" });
     expect(out).not.toContain("unavailable");
+  });
+
+  it("lists a stale-flagged memory and clears its flag", async () => {
+    const api = await register();
+    const learn = api.tools.find((t) => t.name === "openltm_learn")!;
+    const stale = api.tools.find((t) => t.name === "openltm_stale")!;
+    const learned = JSON.parse(await text(learn, "s1", {
+      content: "OpenClaw stale probe: the bridge config lives in openclaw.plugin.json",
+      category: "architecture",
+    })) as { id: number };
+    const db = new Database(dbPath);
+    db.run("UPDATE memories SET stale_flagged_at = datetime('now'), stale_reason = 'probe' WHERE id = ?", [learned.id]);
+    db.close();
+
+    expect(await text(stale, "s2", { action: "list" })).toContain("OpenClaw stale probe");
+    expect(JSON.parse(await text(stale, "s3", { action: "clear", memory_id: learned.id }))).toEqual({ id: learned.id, revalidated: true });
+    expect(await text(stale, "s4", { action: "list" })).not.toContain("OpenClaw stale probe");
+  });
+
+  it("brain_stats counts the whole store, not a recall sample", async () => {
+    const api = await register();
+    const stats = JSON.parse(await text(api.tools.find((t) => t.name === "openltm_brain_stats")!, "s5", {})) as {
+      active: number; byCategory: Record<string, number>;
+    };
+    expect(stats.active).toBeGreaterThan(0);
+    expect(stats.byCategory["constraint"]).toBeGreaterThan(0);
+  });
+
+  it("get, context_add and proposals reach the core tools", async () => {
+    const api = await register();
+    const recalled = await text(api.tools.find((t) => t.name === "openltm_recall")!, "g1", { query: "pin the host version" });
+    const id = Number(/\[(\d+)\]/.exec(recalled)![1]);
+    const got = JSON.parse(await text(api.tools.find((t) => t.name === "openltm_get")!, "g2", { id })) as { ok: boolean };
+    expect(got.ok).toBe(true);
+
+    const added = JSON.parse(await text(api.tools.find((t) => t.name === "openltm_context_add")!, "g3", {
+      type: "decision", content: "OpenClaw context_add probe", project: "openclaw-ltm",
+    })) as { ok: boolean };
+    expect(added.ok).toBe(true);
+    const ctx = await text(api.tools.find((t) => t.name === "openltm_context")!, "g4", { project: "openclaw-ltm" });
+    expect(ctx).toContain("OpenClaw context_add probe");
+
+    const proposals = JSON.parse(await text(api.tools.find((t) => t.name === "openltm_proposals")!, "g5", { action: "list" })) as { count: number };
+    expect(typeof proposals.count).toBe("number");
   });
 
   it("context returns a tool result, not a bare string", async () => {

@@ -20,10 +20,12 @@ Plugin `openltm`, MCP server key `memory`: in Claude Code each tool is `mcp__plu
 | `context_add` | `{type: goal\|decision\|gotcha\|progress, content, project?}` — record project state (a new `goal` replaces the old one). |
 | `graph` | Trace decision chains — pass `memory_ids` from `recall`. |
 | `relate` | Link two memories (`supports`, `contradicts`, `refines`, `depends_on`, `related_to`, `supersedes`). |
+| `stale` | `{project?}` — memories a commit flagged stale, with the reason. |
 | `revalidate` | Clear a stale flag — code changed but the memory is still true. |
 | `forget` | Delete a wrong or obsolete memory. Irreversible — confirm with the user first. |
 | `proposals` | `{action: list\|accept\|reject, session_id?, index?}` — memories proposed at session end. |
 | `admin_audit` | A memory's provenance / write history. |
+| `stats` | `{project?}` — counts by status, category and importance, plus stale, private, embedded and pending totals. `embedded: 0` means recall is full-text only. |
 
 `project` is optional on `context`, `context_items`, and `context_add` — it defaults to the current project. `ltm_*` / `openltm_*` tool names belong to the OpenCode, Pi, OpenClaw, and Hermes adapters; on Claude Code use the names above.
 

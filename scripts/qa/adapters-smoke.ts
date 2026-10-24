@@ -91,7 +91,7 @@ try {
     const lines = preps.length ? await preps[0]() : [];
     console.log(JSON.stringify({ tools: [...tools.keys()], learned, ctx, prefill: lines.join("\\n") }));
     process.exit(0);`, repo);
-  check("OpenClaw (Node, dist) registers its 8 tools", Array.isArray(oc.tools) && oc.tools.length === 8, oc);
+  check("OpenClaw (Node, dist) registers its 11 tools", Array.isArray(oc.tools) && oc.tools.length === 11, oc);
   check(`OpenClaw's context tool resolves "${EXPECTED}" from a mixed-case cwd`, String(oc.ctx).includes(`"project":"${EXPECTED}"`) || String(oc.ctx).includes("OpenClaw smoke"), oc.ctx ?? oc);
   check("OpenClaw prompt preparation injects Prior Knowledge", String(oc.prefill).includes("Prior Knowledge") && String(oc.prefill).includes("OpenClaw smoke"), oc.prefill ?? oc);
 

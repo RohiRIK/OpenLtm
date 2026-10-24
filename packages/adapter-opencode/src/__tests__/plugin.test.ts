@@ -62,9 +62,12 @@ describe("OpenCode LTM plugin — V2 module", () => {
     expect(typeof plugin.setup).toBe("function");
   });
 
-  it("adds the 5 tools as direct (non code-mode) JSON Schema tools", async () => {
+  it("adds the 11 tools as direct (non code-mode) JSON Schema tools", async () => {
     const { tools } = await load("/tmp/test-project");
-    expect(tools.map(t => t.name).sort()).toEqual(["ltm_context", "ltm_forget", "ltm_learn", "ltm_recall", "ltm_relate"]);
+    expect(tools.map(t => t.name).sort()).toEqual([
+      "ltm_context", "ltm_context_add", "ltm_forget", "ltm_get", "ltm_learn", "ltm_proposals",
+      "ltm_recall", "ltm_relate", "ltm_revalidate", "ltm_stale", "ltm_stats",
+    ]);
     for (const t of tools) {
       expect((t.input as { type: string }).type).toBe("object");
       expect(t.options?.codemode).toBe(false);
@@ -119,6 +122,44 @@ describe("ltm_learn tool roundtrip", () => {
     const result = await call("ltm_learn", { content: "Gotcha: the V2 host rejects tool output without an output schema" }) as { id: number; category: string };
     expect(result.id).toBeGreaterThan(0);
     expect(["preference", "architecture", "gotcha", "pattern", "workflow", "constraint"]).toContain(result.category);
+  });
+});
+
+describe("curation tools", () => {
+  it("get returns the full memory and refuses a private one", async () => {
+    const { call } = await load("/tmp/curation");
+    const pub = await call("ltm_learn", { content: "OpenCode get probe memory", category: "pattern" }) as { id: number };
+    expect((await call("ltm_get", { id: pub.id }) as { ok: boolean; memory: { content: string } }).memory.content).toBe("OpenCode get probe memory");
+    expect(await call("ltm_get", { id: 9_999_999 })).toEqual({ ok: false, error: "not_found", id: 9_999_999 });
+
+    const { learn } = await import("@rohirik/openltm-core");
+    const priv = learn({ content: "OpenCode private probe memory", category: "pattern", tags: ["private"], skipExport: true }) as { id: number };
+    expect(await call("ltm_get", { id: priv.id })).toEqual({ ok: false, error: "private", id: priv.id });
+  });
+
+  it("lists a stale memory and revalidates it", async () => {
+    const { call } = await load("/tmp/curation");
+    const { getDb } = await import("@rohirik/openltm-core");
+    const mem = await call("ltm_learn", { content: "OpenCode stale probe memory", category: "architecture", project: "curation" }) as { id: number };
+    getDb().run("UPDATE memories SET stale_flagged_at = datetime('now'), stale_reason = 'probe' WHERE id = ?", [mem.id]);
+
+    const listed = await call("ltm_stale", { project: "curation" }) as { count: number; memories: Array<{ id: number; stale_reason: string }> };
+    expect(listed.memories.find(m => m.id === mem.id)?.stale_reason).toBe("probe");
+    expect((await call("ltm_stats", { project: "curation" }) as { stale: number }).stale).toBeGreaterThan(0);
+    expect(await call("ltm_revalidate", { id: mem.id })).toEqual({ id: mem.id, revalidated: true });
+    expect((await call("ltm_stale", { project: "curation" }) as { memories: Array<{ id: number }> }).memories.some(m => m.id === mem.id)).toBe(false);
+  });
+
+  it("context_add is restored by ltm_context", async () => {
+    const { call } = await load("/tmp/curation");
+    expect(await call("ltm_context_add", { type: "decision", content: "OpenCode context_add probe", project: "curation" })).toEqual({ ok: true, project: "curation", type: "decision" });
+    expect(JSON.stringify(await call("ltm_context", { project: "curation" }))).toContain("OpenCode context_add probe");
+  });
+
+  it("proposals asks for session_id and index before accept", async () => {
+    const { call } = await load("/tmp/curation");
+    expect(typeof (await call("ltm_proposals", { action: "list" }) as { count: number }).count).toBe("number");
+    expect((await call("ltm_proposals", { action: "accept" }) as { ok: boolean }).ok).toBe(false);
   });
 });
 

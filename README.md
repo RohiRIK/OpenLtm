@@ -8,7 +8,7 @@
 
 **Long-Term Memory for AI coding agents** — Claude Code, OpenCode, Pi, OpenClaw, and Hermes
 
-[![Version](https://img.shields.io/badge/version-2.20.3-blue?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.21.0-blue?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Runtime](https://img.shields.io/badge/runtime-Bun-f472b6?style=flat-square&logo=bun)](https://bun.sh)
 [![Database](https://img.shields.io/badge/database-SQLite-003B57?style=flat-square&logo=sqlite)](https://sqlite.org)
@@ -51,6 +51,8 @@ llama-server -m bge-m3.gguf --embeddings --pooling mean --port 8080
 export LTM_LLAMA_CPP_URL=http://127.0.0.1:8080
 export LTM_EMBED_MODEL=bge-m3
 ```
+
+Five-minute setup, including running the server in the background: [Local embeddings](docs/15-local-embeddings.md). `/openltm:doctor` tells you whether semantic recall is actually on.
 
 Full detail, including which write paths scrub secrets and which don't: [Security notes](#security-notes).
 

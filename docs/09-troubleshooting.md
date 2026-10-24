@@ -79,6 +79,10 @@ If the `ltm_*` tools are missing **inside** the OpenCode TUI:
 
 ---
 
+## Recall only finds exact words
+
+Search by meaning needs an embedding server; without one, recall quietly runs on full-text search only. Run `/openltm:doctor` and read the **Embeddings (semantic recall)** section: it says whether the server answers, and how many memories have a vector. Setup and fixes: [Local embeddings](15-local-embeddings.md).
+
 ## "Database is locked"
 
 SQLite allows one writer at a time. A lock usually means a previous process didn't release the WAL.

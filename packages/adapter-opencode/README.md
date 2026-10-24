@@ -20,7 +20,7 @@ OpenCode automatically installs and updates the plugin on startup.
 
 - **Session start**: injects a `## Prior Knowledge` block into the system prompt with relevant memories for the current project
 - **Pre-compaction**: saves session context before conversation compaction
-- **5 tools**: `ltm_recall`, `ltm_learn`, `ltm_forget`, `ltm_relate`, `ltm_context`
+- **11 tools**: `ltm_recall`, `ltm_get`, `ltm_learn`, `ltm_forget`, `ltm_relate`, `ltm_context`, `ltm_context_add`, `ltm_stale`, `ltm_revalidate`, `ltm_proposals`, `ltm_stats`. They match the MCP tools of the same name (see [MCP Tools](https://github.com/RohiRIK/OpenLtm/blob/main/docs/08-mcp-tools.md)); `ltm_context` and `ltm_context_add` take an explicit `project`.
 
 ## Shared memory
 

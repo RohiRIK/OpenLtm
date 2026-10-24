@@ -24,8 +24,8 @@ Default to the current project. Ask only if the user hinted at something else ("
 Run these and collect candidates:
 
 1. **Pending proposals** — `proposals {action: "list"}`. Each has a `session_id` and `index`.
-2. **Stale memories** — `recall {project, verbose: true, limit: 50}` (no query lists the project's top memories; add a query to focus an area). Keep rows where `stale_flagged_at` is set; `stale_reason` names the commit or files.
-3. **Conflicts and supersedes** — from those rows, note `contradicts` relations and `supersedes` targets that are still active. For a tangled area, `graph {memory_ids, depth: 2}` shows the chain.
+2. **Stale memories** — `stale {project}`. Each row carries `stale_reason`, which names the commit or files.
+3. **Conflicts and supersedes** — `recall {project, verbose: true, limit: 50}` (no query lists the project's top memories; add a query to focus an area). From those rows, note `contradicts` relations and `supersedes` targets that are still active. For a tangled area, `graph {memory_ids, depth: 2}` shows the chain.
 4. **Duplicates and low value** — memories in the same category that say the same thing; operational noise (one-off command output, transient state); facts derivable from the code or `git log`.
 
 ## Step 3 — Present

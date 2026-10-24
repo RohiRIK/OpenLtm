@@ -18,7 +18,8 @@ export type {
 } from "./db.js";
 
 // Context items
-export { addItem, getItems, exportContextMarkdown, trimProgress, promote } from "./context.js";
+export { addItem, getItems, getProjectContext, exportContextMarkdown, trimProgress, promote } from "./context.js";
+export type { ProjectContext } from "./context.js";
 
 // Migrations
 export {
@@ -32,7 +33,11 @@ export type {
 export { getRecentConflicts } from "./dao/conflicts.js";
 export { insertProvenance, insertAudit, queryAudit, listProvenance, snapshotMemory, listProvenanceBatch } from "./dao/provenanceAudit.js";
 export { setEmbedding, getEmbedding, deleteEmbedding, listMemoryIdsMissingEmbedding } from "./dao/embeddings.js";
-export { listByProject, upsertGoal, appendProgress, addDecision, addGotcha } from "./dao/contextItems.js";
+export { listByProject, upsertGoal, appendProgress, addDecision, addGotcha, addContextItem } from "./dao/contextItems.js";
+
+// Stale flags and store statistics
+export { listStaleMemories, memoryStats } from "./stats.js";
+export type { StaleMemory, ListStaleOptions, MemoryStats } from "./stats.js";
 
 // Utilities
 export { scrubSecrets, scrubOrRefuse, scrubForEgress, isEgressScrubFailed, SCRUB_FAILED_PLACEHOLDER, _forceScrubThrowForTesting } from "./secretsScrubber.js";
@@ -83,6 +88,7 @@ export { isNearDuplicate, jaccardSimilarity, tokenize, tokenizeAll } from "./sim
 
 // Embedding providers
 export * from "./providers/index.js";
+export { loadConfig } from "./config.js";
 export { WriteQueue, writeQueue } from "./lib/writeQueue.js";
 export { emitEvent, readRecentEvents, getLogPath, _resetForTesting } from "./lib/jsonlLogger.js";
 export type { LtmEvent } from "./lib/jsonlLogger.js";

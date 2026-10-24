@@ -19,6 +19,7 @@ Read top to bottom for a guided path, or jump to what you need.
 | 12 | [Comparison](12-comparison.md) | How other LTM tools solve the same problem, and how self-improvement differs |
 | 13 | [Janitor](13-janitor.md) | Run the janitor without graph-server: CLI, SessionEnd hook, systemd/launchd timers |
 | 14 | [Memory versus authority](memory-versus-authority.md) | Conceptual separation of LTM from action approval |
+| 15 | [Local embeddings](15-local-embeddings.md) | Turn on search by meaning with a local llama.cpp server, in five minutes |
 
 **Top-level docs** live at the repository root: [README](../README.md) · [Changelog](../CHANGELOG.md) · [Contributing](../CONTRIBUTING.md).
 

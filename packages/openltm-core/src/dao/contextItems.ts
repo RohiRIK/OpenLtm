@@ -103,3 +103,20 @@ export function addDecision(project: string, content: string): void {
 export function addGotcha(project: string, content: string): void {
   insertPermanent(project, "gotcha", content);
 }
+
+const CONTEXT_WRITERS: Record<ContextItemType, (project: string, content: string) => unknown> = {
+  goal: upsertGoal,
+  decision: addDecision,
+  gotcha: addGotcha,
+  progress: (project, content) => appendProgress(project, content),
+};
+
+/**
+ * Record a goal, decision, gotcha or progress note (a goal replaces the current
+ * one) and resolve once it is committed, so a following read sees it. Every
+ * host's context_add tool goes through here.
+ */
+export async function addContextItem(type: ContextItemType, project: string, content: string): Promise<void> {
+  await CONTEXT_WRITERS[type](project, content);
+  await writeQueue.enqueue(() => undefined);
+}

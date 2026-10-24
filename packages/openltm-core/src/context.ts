@@ -6,7 +6,7 @@
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import { getDb, DB_PATH } from "./shared-db.js";
-import { learn } from "./db.js";
+import { learn, getContextMerge, type Memory } from "./db.js";
 import { scrubOrRefuse } from "./secretsScrubber.js";
 import { getDataDir, getProjectsDir } from "./paths.js";
 import { isSafeProjectDirName, migrateLegacyContextFiles } from "./project.js";
@@ -179,4 +179,37 @@ export function promote(itemId: number): number | null {
   });
   db.prepare("UPDATE context_items SET memory_id = ? WHERE id = ?").run(result.id, itemId);
   return result.id;
+}
+
+/** Progress lines a project context returns (most recent last), like SessionStart's summary. */
+const CONTEXT_RECENT_PROGRESS = 5;
+
+export interface ProjectContext {
+  project: string;
+  goal: string | null;
+  decisions: string[];
+  gotchas: string[];
+  progress: string[];
+  globals: Memory[];
+  scoped: Memory[];
+}
+
+/**
+ * What SessionStart injects for a project: its goal, decisions, gotchas and
+ * recent progress, plus high-importance globals and the project's memories.
+ * Not scrubbed — every host scrubs the result on egress.
+ */
+export function getProjectContext(project: string): ProjectContext {
+  const items = getItems(project);
+  const ofType = (type: ContextType) => items.filter((i) => i.type === type).map((i) => i.content);
+  const merged = getContextMerge(project);
+  return {
+    project,
+    goal: ofType("goal").at(-1) ?? null,
+    decisions: ofType("decision"),
+    gotchas: ofType("gotcha"),
+    progress: ofType("progress").slice(-CONTEXT_RECENT_PROGRESS),
+    globals: merged.globals,
+    scoped: merged.scoped,
+  };
 }
