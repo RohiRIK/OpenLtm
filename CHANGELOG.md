@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.20.2] — 2026-10-24
+
+### Fixed
+- **The `ltm` CLI no longer keeps its database in the bunx cache.** Without `LTM_DB_PATH`, a published install (`bunx @rohirik/openltm-core memory …`, `janitor …`, `mcp-serve`) put a new database in `node_modules/data/` — for bunx a per-version cache, so the memories were gone after the next upgrade and never reached the database the installer prints as "Shared DB". A new database now goes to the shared Claude plugin data dir (`~/.claude/plugins/data/openltm-OpenLtm/openltm.db`); one that already exists under `node_modules/data/` stays in use, and a monorepo checkout keeps `data/openltm.db`.
+- **An unknown option is a usage error.** `ltm --claud` or `ltm --version` used to fall through to an auto-detect install. The CLI now prints help and exits 1.
+- **`ltm memory recall docker rate limit` searches for the words.** Positional words were dropped, so `recall` listed everything and `learn` asked for `--text`. `learn` and `recall` now take their text as positional words too; a stray word on `forget`, `relate` or `context` is a usage error instead of being ignored.
+
+### Added
+- `ltm --version` / `-v`, and `ltm help`. The help now lists the `conflict` sub-command.
+
 ## [2.20.1] — 2026-10-23
 
 ### Security

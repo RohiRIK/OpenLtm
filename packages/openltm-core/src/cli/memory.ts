@@ -42,12 +42,20 @@ const RELATIONSHIP_TYPES: readonly string[] = ["supports", "contradicts", "refin
 
 // ── Parsing ───────────────────────────────────────────────────────────────────
 
-/** Scan argv for `--flag value` pairs and bare `--flag` booleans. */
-function scanFlags(argv: string[]): Record<string, string | true> {
+/**
+ * Scan argv for `--flag value` pairs and bare `--flag` booleans. Anything else
+ * is returned as positional so callers can use it or reject it, never drop it.
+ */
+function scanFlags(argv: string[]): { flags: Record<string, string | true>; positional: string[] } {
   const flags: Record<string, string | true> = {};
+  const positional: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    if (!arg?.startsWith("--")) continue;
+    if (arg === undefined) continue;
+    if (!arg.startsWith("--")) {
+      positional.push(arg);
+      continue;
+    }
     const name = arg.slice(2);
     const next = argv[i + 1];
     if (next !== undefined && !next.startsWith("--")) {
@@ -57,7 +65,7 @@ function scanFlags(argv: string[]): Record<string, string | true> {
       flags[name] = true;
     }
   }
-  return flags;
+  return { flags, positional };
 }
 
 function asInt(value: string | true | undefined): number | undefined {
@@ -82,12 +90,18 @@ export function parseMemoryArgs(argv: string[]): ParsedMemoryArgs | MemoryArgsEr
     return { ok: false, error: "missing subcommand — expected one of: learn, recall, forget, relate, context" };
   }
 
-  const flags = scanFlags(argv.slice(1));
+  const { flags, positional } = scanFlags(argv.slice(1));
   const json = flags["json"] === true;
+  // `learn` and `recall` take their text as positional words too
+  // (`ltm memory recall docker rate limit`); elsewhere a stray word is a typo.
+  const words = positional.length > 0 ? positional.join(" ") : undefined;
+  if (words && command !== "learn" && command !== "recall") {
+    return { ok: false, error: `${command}: unexpected argument '${positional[0]}' — options take the form --name <value>` };
+  }
 
   switch (command) {
     case "learn": {
-      const text = typeof flags["text"] === "string" ? flags["text"] : undefined;
+      const text = typeof flags["text"] === "string" ? flags["text"] : words;
       if (!text) return { ok: false, error: "learn: --text <content> is required" };
       const category = typeof flags["category"] === "string" ? flags["category"] : undefined;
       if (category && !CATEGORIES.includes(category)) {
@@ -127,7 +141,7 @@ export function parseMemoryArgs(argv: string[]): ParsedMemoryArgs | MemoryArgsEr
         command: "recall",
         json,
         options: {
-          query: typeof flags["query"] === "string" ? flags["query"] : undefined,
+          query: typeof flags["query"] === "string" ? flags["query"] : words,
           category,
           project: typeof flags["project"] === "string" ? flags["project"] : undefined,
           limit,
@@ -270,9 +284,9 @@ export function printMemoryHelp(): string {
     "  ltm memory <command> [options]",
     "",
     "  Commands:",
-    "    learn    --text <content> [--title <t>] [--category <c>] [--importance 1-5]",
+    "    learn    <content> | --text <content> [--title <t>] [--category <c>] [--importance 1-5]",
     "             [--project <scope>] [--tags a,b] [--files f1,f2] [--json]",
-    "    recall   [--query <q>] [--category <c>] [--project <scope>] [--limit N]",
+    "    recall   [<q> | --query <q>] [--category <c>] [--project <scope>] [--limit N]",
     "             [--tags a,b] [--json]",
     "    forget   --id <n> [--reason <r>] [--json]",
     "    relate   --from <id> --to <id> --type <rel> [--json]",

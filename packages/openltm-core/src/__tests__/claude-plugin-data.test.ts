@@ -59,3 +59,25 @@ describe("sharedDbPath (no LTM_DB_PATH, no CLAUDE_PLUGIN_DATA)", () => {
     expect(sharedDbPath(join(root, "own", "openltm.db"))).toBe(join(root, "own", "openltm.db"));
   });
 });
+
+describe("fallbackDbPath (where getDbPath lands without env vars)", () => {
+  it("a monorepo checkout keeps its dev database at <root>/data", async () => {
+    const { fallbackDbPath } = await import("../paths.js");
+    process.env["CLAUDE_CONFIG_DIR"] = join(root, "claude");
+    mkdirSync(join(root, "repo", "packages", "openltm-core"), { recursive: true });
+    expect(fallbackDbPath(join(root, "repo"))).toBe(join(root, "repo", "data", "openltm.db"));
+  });
+  it("a published install (bunx cache, node_modules) uses the plugin data dir, not node_modules/data", async () => {
+    const { fallbackDbPath } = await import("../paths.js");
+    process.env["CLAUDE_CONFIG_DIR"] = join(root, "claude");
+    mkdirSync(join(root, "node_modules"), { recursive: true });
+    expect(fallbackDbPath(join(root, "node_modules"))).toBe(join(root, "claude", "plugins", "data", "openltm-OpenLtm", "openltm.db"));
+  });
+  it("a published install keeps a database that already exists under node_modules/data", async () => {
+    const { fallbackDbPath } = await import("../paths.js");
+    process.env["CLAUDE_CONFIG_DIR"] = join(root, "claude");
+    mkdirSync(join(root, "node_modules", "data"), { recursive: true });
+    writeFileSync(join(root, "node_modules", "data", "openltm.db"), "");
+    expect(fallbackDbPath(join(root, "node_modules"))).toBe(join(root, "node_modules", "data", "openltm.db"));
+  });
+});

@@ -1,7 +1,8 @@
 /**
  * paths.ts (openltm-core) — Path resolution without any host-specific defaults.
  *
- * Database:  LTM_DB_PATH env var > CLAUDE_PLUGIN_DATA env var > dev fallback.
+ * Database:  LTM_DB_PATH env var > CLAUDE_PLUGIN_DATA env var > dev fallback
+ *            (monorepo checkout) or the Claude plugin data dir (published install).
  * Data dir:  LTM_DATA_DIR > CLAUDE_PLUGIN_DATA > directory of the database.
  *   <dataDir>/projects/registry.json   cwd → project name
  *   <dataDir>/projects/<name>/         per-project context markdown
@@ -13,7 +14,7 @@
 import { dirname, join } from "path";
 import { existsSync } from "fs";
 import { homedir } from "os";
-import { getLegacyClaudeDir, sharedDbPath } from "./project.js";
+import { getClaudePluginDataDir, getLegacyClaudeDir, sharedDbPath } from "./project.js";
 
 /**
  * An env value, unless empty or an unexpanded `${…}` placeholder from a host
@@ -31,7 +32,20 @@ export function getDbPath(): string {
   if (explicit) return explicit;
   const pluginData = envPath("CLAUDE_PLUGIN_DATA");
   if (pluginData) return join(pluginData, "openltm.db");
-  return sharedDbPath(join(import.meta.dir, "..", "..", "..", "data", "openltm.db"));
+  return fallbackDbPath();
+}
+
+/**
+ * The database when no env var names one. In the monorepo that is
+ * `<root>/data/openltm.db`. In a published install `<root>` is node_modules —
+ * for bunx a per-version cache — so a database created there would vanish on
+ * the next upgrade: keep one that already exists, otherwise use the shared
+ * Claude plugin data dir (where `ltm --claude` points the agents too).
+ */
+export function fallbackDbPath(root: string = join(import.meta.dir, "..", "..", "..")): string {
+  const devDb = join(root, "data", "openltm.db");
+  if (existsSync(devDb) || existsSync(join(root, "packages", "openltm-core"))) return sharedDbPath(devDb);
+  return join(getClaudePluginDataDir(), "openltm.db");
 }
 
 /**
