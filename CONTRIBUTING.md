@@ -95,10 +95,11 @@ Both must pass before a PR is reviewable. For changes to hooks, the MCP server, 
 ## Releasing (maintainers)
 
 1. `bun run bump <version>` and add a `CHANGELOG.md` entry under `## [<version>]`.
-2. Commit and push to `main`.
-3. Tag and push: `git tag v<version> && git push origin v<version>`.
-4. The **Release** workflow creates the GitHub Release from the changelog; the **Publish** workflow then publishes the `@rohirik/*` packages to npm, and its `clawhub` job publishes `@rohirik/openclaw-ltm` to ClawHub. Both use OIDC — no stored tokens.
-5. **Hermes Plugin Catalog** is not automatic: run `bun run catalog:sync && bun run catalog:check` and open a re-pin PR against `NousResearch/hermes-agent` (see [`docs/11-publishing.md`](docs/11-publishing.md#3-hermes-plugin-catalog--live)).
+2. Merge to `main` and wait for CI to pass. Several merged PRs can go out in one release.
+3. **Actions → Release (one click) → Run workflow** on `main`. It checks that every version reference matches and the changelog has the section, that the version is not tagged yet and that CI passed on that commit; then it tags the commit, creates the GitHub Release, dispatches Publish at the tag (the `@rohirik/*` packages to npm, then `@rohirik/openclaw-ltm` to ClawHub), and opens a PR pinning `hermes/plugin-catalog/openltm.yaml` to the tag. Merge that PR. All OIDC — no stored tokens.
+4. **Hermes Plugin Catalog** upstream is still manual: open a re-pin PR against `NousResearch/hermes-agent` (see [`docs/11-publishing.md`](docs/11-publishing.md#3-hermes-plugin-catalog--live)).
+
+Pushing a `v<version>` tag by hand still works, but publishes npm only: dispatch `publish.yml` at the tag for ClawHub (see [`docs/11-publishing.md`](docs/11-publishing.md#publishing-to-clawhub--dispatch-after-npm)).
 
 ---
 
