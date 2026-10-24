@@ -62,11 +62,11 @@ describe("OpenCode LTM plugin — V2 module", () => {
     expect(typeof plugin.setup).toBe("function");
   });
 
-  it("adds the 11 tools as direct (non code-mode) JSON Schema tools", async () => {
+  it("adds the 13 tools as direct (non code-mode) JSON Schema tools", async () => {
     const { tools } = await load("/tmp/test-project");
     expect(tools.map(t => t.name).sort()).toEqual([
-      "ltm_context", "ltm_context_add", "ltm_forget", "ltm_get", "ltm_learn", "ltm_proposals",
-      "ltm_recall", "ltm_relate", "ltm_revalidate", "ltm_stale", "ltm_stats",
+      "ltm_collection", "ltm_context", "ltm_context_add", "ltm_forget", "ltm_get", "ltm_learn", "ltm_proposals",
+      "ltm_recall", "ltm_record", "ltm_relate", "ltm_revalidate", "ltm_stale", "ltm_stats",
     ]);
     for (const t of tools) {
       expect((t.input as { type: string }).type).toBe("object");
@@ -160,6 +160,31 @@ describe("curation tools", () => {
     const { call } = await load("/tmp/curation");
     expect(typeof (await call("ltm_proposals", { action: "list" }) as { count: number }).count).toBe("number");
     expect((await call("ltm_proposals", { action: "accept" }) as { ok: boolean }).ok).toBe(false);
+  });
+});
+
+describe("collections — ltm_collection + ltm_record", () => {
+  it("defines a project collection from the session directory and round-trips a record", async () => {
+    const { call } = await load("/tmp/oc-collections");
+    const def = await call("ltm_collection", {
+      action: "define", name: "oc_hosts", description: "Hosts this project deploys to", scope: "project",
+      fields: [{ name: "host", type: "string", required: true }, { name: "port", type: "integer" }], key_field: "host",
+    }) as { ok: boolean; collection: { scope: string; origin: string } };
+    expect(def.ok).toBe(true);
+    expect(def.collection.scope).toBe("oc-collections");
+    expect(def.collection.origin).toBe("agent-observation");
+    expect((await call("ltm_record", { action: "put", collection: "oc_hosts", data: { host: "web1", port: 443 } }) as { created: boolean }).created).toBe(true);
+    const q = await call("ltm_record", { action: "query", collection: "oc_hosts", where: [{ field: "port", op: "gte", value: 400 }] }) as { count: number };
+    expect(q.count).toBe(1);
+    // Another directory does not see a project-scoped collection.
+    const other = await load("/tmp/oc-elsewhere");
+    expect((await other.call("ltm_record", { action: "get", collection: "oc_hosts", key: "web1" }) as { error: string }).error).toBe("unknown_collection");
+  });
+
+  it("refuses a secret in a record", async () => {
+    const { call } = await load("/tmp/oc-collections");
+    const res = await call("ltm_record", { action: "put", collection: "oc_hosts", data: { host: "AKIAIOSFODNN7EXAMPLE" } }) as { ok: boolean; error: string };
+    expect(res).toMatchObject({ ok: false, error: "secret_refused" });
   });
 });
 

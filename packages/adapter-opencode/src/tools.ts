@@ -1,7 +1,10 @@
 import {
   recall, learn, forget, relate, revalidate, getMemoryById, getProjectContext, scrubForEgress, categorise, hasPrivateTag,
   addContextItem, listPendingProposals, MEMORY_ORIGINS, ORIGIN_PARAM_DESCRIPTION, isMemoryOrigin, acceptProposal, rejectProposal, listStaleMemories, memoryStats,
+  deriveProjectFromCwd, runCollectionTool, runRecordTool, COLLECTION_TOOL_DESCRIPTION, RECORD_TOOL_DESCRIPTION,
+  COLLECTION_TOOL_JSON_SCHEMA, RECORD_TOOL_JSON_SCHEMA,
 } from "@rohirik/openltm-core";
+import type { CollectionToolArgs, RecordToolArgs } from "@rohirik/openltm-core";
 import type { ContextItemType, MemoryCategory, RelationshipType } from "@rohirik/openltm-core";
 
 /** A V2 tool with a JSON Schema input and no declared output: results reach the model as text content. */
@@ -17,7 +20,14 @@ export interface LtmTool {
 // behind OpenCode's `execute` code-mode tool.
 const options = { codemode: false } as const;
 
-export function buildTools(): LtmTool[] {
+/** `directory`: the session's working directory; collection lookups resolve the project from it. */
+export function buildTools(opts: { directory?: string } = {}): LtmTool[] {
+  const currentProject = (input: Record<string, unknown>): string | null =>
+    (typeof input.project === "string" && input.project.trim()) || (opts.directory ? deriveProjectFromCwd(opts.directory) || null : null);
+  const withProject = <T extends { properties: object }>(schema: T) => ({
+    ...schema,
+    properties: { ...schema.properties, project: { type: "string", description: "Project name; omit for the current project" } },
+  });
   return [
     {
       name: "ltm_recall",
@@ -251,6 +261,28 @@ export function buildTools(): LtmTool[] {
       async execute(input) {
         const { project } = input as Record<string, unknown>;
         return text(memoryStats(project as string | undefined));
+      },
+    },
+
+    {
+      name: "ltm_collection",
+      description: COLLECTION_TOOL_DESCRIPTION,
+      options,
+      input: withProject(COLLECTION_TOOL_JSON_SCHEMA) as unknown as LtmTool["input"],
+      async execute(input) {
+        const args = input as Record<string, unknown>;
+        return text(deepScrub(runCollectionTool(args as unknown as CollectionToolArgs, { project: currentProject(args), actor: "opencode" })));
+      },
+    },
+
+    {
+      name: "ltm_record",
+      description: RECORD_TOOL_DESCRIPTION,
+      options,
+      input: withProject(RECORD_TOOL_JSON_SCHEMA) as unknown as LtmTool["input"],
+      async execute(input) {
+        const args = input as Record<string, unknown>;
+        return text(deepScrub(runRecordTool(args as unknown as RecordToolArgs, { project: currentProject(args), actor: "opencode" })));
       },
     },
   ];

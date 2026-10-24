@@ -37,6 +37,10 @@ function printHelp(): void {
       "                          forget, relate, context) — run 'memory --help'",
       "    janitor <cmd>         Curate the DB without graph-server (run, status,",
       "                          schedule, daemon) — run 'janitor --help'",
+      "    collection <cmd>      Agent-defined structured types (list, show, define,",
+      "                          evolve, archive, restore) — run 'collection --help'",
+      "    record <cmd>          Records in a collection (list, get, put, archive,",
+      "                          export) — run 'record --help'",
       "    conflict [list]       List staged memory conflicts; resolve one with",
       "                          'conflict accept|reject|coexist <id>'",
       "    hook --name <event>   Lifecycle hook entrypoint (SessionStart prefill,",
@@ -99,6 +103,14 @@ async function main(): Promise<void> {
     }
     process.stdout.write(JSON.stringify({ ok, action, id }) + "\n");
     process.exit(ok ? 0 : 1);
+  }
+
+  // Sub-commands: collection / record — the owner's view of agent-defined collections
+  if (argv[0] === "collection" || argv[0] === "record") {
+    const { runCollectionCommand, runRecordCommand } = await import("./collections.js");
+    const result = argv[0] === "collection" ? await runCollectionCommand(argv.slice(1)) : await runRecordCommand(argv.slice(1));
+    (result.exitCode === 0 ? process.stdout : process.stderr).write(result.output + "\n");
+    process.exit(result.exitCode);
   }
 
   // Sub-command: memory (learn | recall | forget | relate | context)

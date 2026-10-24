@@ -7,9 +7,9 @@
  * against a zod schema built from that definition. Nothing here produces SQL.
  */
 import { z } from "zod";
+import { FIELD_TYPES, MAX_QUERY_LIMIT, type FieldType } from "./toolSchema.js";
 
-export const FIELD_TYPES = ["string", "text", "integer", "number", "boolean", "date", "enum", "string[]", "url"] as const;
-export type FieldType = (typeof FIELD_TYPES)[number];
+export { FIELD_TYPES, type FieldType };
 
 /** Collection and field names: lowercase snake_case, 2–40 chars. */
 export const NAME_RE = /^[a-z][a-z0-9_]{1,39}$/;
@@ -31,7 +31,7 @@ export const LIMITS = {
   maxFields: 30,
   maxRecordBytes: 16_384,
   maxRecordsPerCollection: 10_000,
-  maxQueryLimit: 100,
+  maxQueryLimit: MAX_QUERY_LIMIT,
   maxDescription: 500,
   maxString: 500,
   maxText: 16_000,

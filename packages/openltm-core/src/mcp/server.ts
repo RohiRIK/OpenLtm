@@ -30,10 +30,8 @@ import { emitEvent } from "../lib/jsonlLogger.js";
 import { FIELD_TYPES, LIMITS as COLLECTION_LIMITS } from "../collections/fieldSpec.js";
 import { FILTER_OPS, searchRecords } from "../collections/query.js";
 import { COLLECTION_ORIGINS, listCollections } from "../collections/store.js";
-import {
-  COLLECTION_ACTIONS, RECORD_ACTIONS, COLLECTION_TOOL_DESCRIPTION, RECORD_TOOL_DESCRIPTION,
-  runCollectionTool, runRecordTool, type ToolOutcome,
-} from "../collections/tools.js";
+import { COLLECTION_ACTIONS, RECORD_ACTIONS, COLLECTION_TOOL_DESCRIPTION, RECORD_TOOL_DESCRIPTION } from "../collections/toolSchema.js";
+import { runCollectionTool, runRecordTool, type ToolOutcome } from "../collections/tools.js";
 
 // ─── Options ─────────────────────────────────────────────────────────────────
 

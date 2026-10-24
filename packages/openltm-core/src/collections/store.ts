@@ -14,6 +14,7 @@ import {
   LIMITS, NAME_RE, buildRecordSchema, buildSearchText, checkKeyField, diffFields, fieldListSchema,
   formatIssues, isAuthorityLike, looksSimilar, recordKeyOf, type FieldSpec,
 } from "./fieldSpec.js";
+import { COLLECTION_ORIGINS, type CollectionOrigin } from "./toolSchema.js";
 
 /** A refused collection operation. `code` is stable; `details` is safe to show the model. */
 export class CollectionError extends Error {
@@ -23,9 +24,7 @@ export class CollectionError extends Error {
   }
 }
 
-/** Origins a collection definition may carry: someone said it, or the agent inferred it. */
-export const COLLECTION_ORIGINS = ["owner-statement", "agent-observation"] as const;
-export type CollectionOrigin = (typeof COLLECTION_ORIGINS)[number];
+export { COLLECTION_ORIGINS, type CollectionOrigin };
 
 export interface Collection {
   id: number;

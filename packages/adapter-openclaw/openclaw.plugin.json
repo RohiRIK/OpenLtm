@@ -18,7 +18,9 @@
       "openltm_stale",
       "openltm_get",
       "openltm_context_add",
-      "openltm_proposals"
+      "openltm_proposals",
+      "openltm_collection",
+      "openltm_record"
     ]
   },
   "toolMetadata": {
@@ -38,6 +40,12 @@
       "sideEffecting": true
     },
     "openltm_proposals": {
+      "sideEffecting": true
+    },
+    "openltm_collection": {
+      "sideEffecting": true
+    },
+    "openltm_record": {
       "sideEffecting": true
     }
   },

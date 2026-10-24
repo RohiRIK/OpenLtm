@@ -12,9 +12,9 @@ import { getDb } from "../shared-db.js";
 import { buildFtsQuery } from "../db.js";
 import { LIMITS, type FieldSpec } from "./fieldSpec.js";
 import { CollectionError, collectionsById, resolveCollection, _toRecordView, type Collection, type RecordRow, type RecordView } from "./store.js";
+import { FILTER_OPS, type FilterOp } from "./toolSchema.js";
 
-export const FILTER_OPS = ["eq", "neq", "lt", "lte", "gt", "gte", "in", "contains", "exists"] as const;
-export type FilterOp = (typeof FILTER_OPS)[number];
+export { FILTER_OPS, type FilterOp };
 
 /** Columns a filter or sort may use besides the collection's own fields. */
 const META_COLUMNS: Record<string, string> = {

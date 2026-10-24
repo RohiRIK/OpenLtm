@@ -88,10 +88,11 @@ afterAll(() => {
 });
 
 describe("OpenClaw adapter — registration", () => {
-  it("registers the eleven OpenLTM tools", async () => {
+  it("registers the thirteen OpenLTM tools", async () => {
     const api = await register();
     expect(api.tools.map((t) => t.name).sort()).toEqual([
       "openltm_brain_stats",
+      "openltm_collection",
       "openltm_context",
       "openltm_context_add",
       "openltm_forget",
@@ -100,6 +101,7 @@ describe("OpenClaw adapter — registration", () => {
       "openltm_learn",
       "openltm_proposals",
       "openltm_recall",
+      "openltm_record",
       "openltm_relate",
       "openltm_stale",
     ]);
@@ -213,6 +215,20 @@ describe("OpenClaw adapter — behaviour over the real bridge", () => {
 
     const proposals = JSON.parse(await text(api.tools.find((t) => t.name === "openltm_proposals")!, "g5", { action: "list" })) as { count: number };
     expect(typeof proposals.count).toBe("number");
+  });
+
+  it("collection and record reach the core tools through the bridge", async () => {
+    const api = await register();
+    const collection = api.tools.find((t) => t.name === "openltm_collection")!;
+    const record = api.tools.find((t) => t.name === "openltm_record")!;
+    const defined = JSON.parse(await text(collection, "c1", {
+      action: "define", name: "claw_hosts", description: "Hosts OpenClaw talks to",
+      fields: [{ name: "host", type: "string", required: true }, { name: "port", type: "integer" }], key_field: "host",
+    })) as { ok: boolean };
+    expect(defined.ok).toBe(true);
+    expect(JSON.parse(await text(record, "c2", { action: "put", collection: "claw_hosts", data: { host: "gw", port: 18789 } }))).toMatchObject({ ok: true, created: true });
+    const q = JSON.parse(await text(record, "c3", { action: "query", collection: "claw_hosts", where: [{ field: "port", op: "eq", value: 18789 }] })) as { count: number };
+    expect(q.count).toBe(1);
   });
 
   it("context returns a tool result, not a bare string", async () => {

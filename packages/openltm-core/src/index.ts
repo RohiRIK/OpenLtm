@@ -44,9 +44,12 @@ export {
   FIELD_TYPES, FILTER_OPS, LIMITS as COLLECTION_LIMITS, COLLECTION_ORIGINS, AUTHORITY_NOTE, CollectionError,
   defineCollection, evolveCollection, listCollections, resolveCollection, setCollectionStatus, collectionIndexLines,
   putRecord, getRecord, archiveRecord, queryRecords, searchRecords,
+  runCollectionTool, runRecordTool, COLLECTION_ACTIONS, RECORD_ACTIONS, COLLECTION_TOOL_DESCRIPTION, RECORD_TOOL_DESCRIPTION,
+  COLLECTION_TOOL_JSON_SCHEMA, RECORD_TOOL_JSON_SCHEMA,
 } from "./collections/index.js";
 export type {
   FieldSpec, FieldType, Filter, FilterOp, Collection, CollectionSummary, CollectionOrigin, RecordView, RecordHit,
+  CollectionToolArgs, RecordToolArgs, ToolContext as CollectionToolContext, ToolOutcome as CollectionToolOutcome,
   DefineCollectionInput, EvolveCollectionInput, EvolveResult, PutRecordInput, PutRecordResult, QueryRecordsInput, QueryRecordsResult,
 } from "./collections/index.js";
 

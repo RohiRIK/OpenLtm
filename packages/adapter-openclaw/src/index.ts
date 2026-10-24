@@ -22,6 +22,10 @@ import { frameRecalledMemory } from "../../openltm-core/src/memoryFrame.js";
 // whereas the `@rohirik/openltm-core` package entry is Bun-only and external.
 import { dataDirFor, legacyLastSegment, loadProjectRegistry, resolveProjectName, sharedDbPath } from "../../openltm-core/src/project.js";
 import { Type } from "typebox";
+// Node-safe like project.ts: the collection/record contract as plain data.
+import {
+  COLLECTION_TOOL_DESCRIPTION, COLLECTION_TOOL_JSON_SCHEMA, RECORD_TOOL_DESCRIPTION, RECORD_TOOL_JSON_SCHEMA,
+} from "../../openltm-core/src/collections/toolSchema.js";
 
 const BRIDGE_DEPTH_ENV = "LTM_BRIDGE_DEPTH";
 const CATEGORIES = ["preference", "architecture", "gotcha", "pattern", "workflow", "constraint"] as const;
@@ -562,6 +566,29 @@ export default definePluginEntry({
               }),
             ),
         ),
+    );
+
+    const withProject = (schema: { properties: object }) => ({
+      ...schema,
+      properties: { ...schema.properties, project: { type: "string", description: "Project name; defaults to the working directory" } },
+    });
+
+    tool(
+      "openltm_collection",
+      "OpenLTM Collections",
+      COLLECTION_TOOL_DESCRIPTION,
+      withProject(COLLECTION_TOOL_JSON_SCHEMA),
+      async (params) =>
+        run(async (b) => textResult(await b.call("collection", { ...params, project: projectOf(params["project"]) }))),
+    );
+
+    tool(
+      "openltm_record",
+      "OpenLTM Records",
+      RECORD_TOOL_DESCRIPTION,
+      withProject(RECORD_TOOL_JSON_SCHEMA),
+      async (params) =>
+        run(async (b) => textResult(await b.call("record", { ...params, project: projectOf(params["project"]) }))),
     );
 
     api.logger.info("openltm: registered (Bun-backed local SQLite memory)");
