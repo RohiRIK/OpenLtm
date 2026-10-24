@@ -13,6 +13,11 @@
 - **Hermes:** a Python port over the same tables and DDL, so a database shared through `LTM_DB_PATH` works from both sides; core and Hermes run one shared contract fixture.
 - Eval `07-collections-record` checks that an agent reuses an existing collection instead of writing prose or a near-duplicate type. The Ltm skill says when to use a record and when `learn`; MemoryReview reviews new, empty and duplicate collections.
 
+## [2.21.1] — 2026-10-24
+
+### Added
+- **One-click release.** Actions → *Release (one click)* on `main` checks that every version reference matches, the changelog has the section, the version is not tagged yet and CI passed on that commit, then tags it, creates the GitHub Release, dispatches Publish at the tag (npm, then ClawHub in the same run, so no separate ClawHub dispatch), and opens a PR pinning the repo's Hermes catalog entry to the tag. No more tagging from a local checkout, which once tagged an old commit (v2.18.1).
+
 ## [2.21.0] — 2026-10-24
 
 ### Added

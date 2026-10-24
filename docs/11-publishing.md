@@ -21,6 +21,16 @@ project's own documentation.
 `@rohirik/openclaw-ltm` are published by `.github/workflows/publish.yml` on every `v*` tag, using npm OIDC
 trusted publishing (no stored token).
 
+**One-click release.** Actions → *Release (one click)* → Run workflow on `main`
+(`.github/workflows/release-button.yml`) does the whole release from the commit
+CI tested: it checks versions, changelog, that the tag is new and that CI passed,
+pushes the tag, creates the GitHub Release, dispatches Publish at the tag (npm,
+then ClawHub in the same run; a tag pushed with `GITHUB_TOKEN` fires no push
+events, so nothing runs twice), and opens a PR pinning the repo's Hermes
+catalog entry to the tag. Needs **Settings → Actions → General → Allow GitHub
+Actions to create and approve pull requests** for that last PR; a PR opened by
+`GITHUB_TOKEN` does not run CI, so merge it with the admin bypass.
+
 Nothing to submit. This is also the channel OpenClaw can install from directly.
 
 > Verified 2.14.2 end to end: `npm install @rohirik/openltm-core@2.14.2`, then
@@ -297,7 +307,7 @@ Tags:      latest
 
 ### Publishing to ClawHub — dispatch after npm
 
-The job is installed and runs only on `workflow_dispatch`. ClawHub rejects secretless OIDC on tag-push events; npm still publishes on version-tag pushes. After npm succeeds, dispatch the same workflow at the immutable release tag:
+The job runs only on `workflow_dispatch`: ClawHub rejects secretless OIDC on tag-push events. The one-click release dispatches `publish.yml` at the tag, so its ClawHub job runs right after npm in the same run. After a hand-pushed tag, dispatch it yourself once npm serves the version on all four packages (dispatching while npm still holds a version as "staged" fails with E409):
 
 ```bash
 gh workflow run publish.yml --repo RohiRIK/OpenLtm --ref v2.16.1
