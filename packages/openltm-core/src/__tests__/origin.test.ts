@@ -82,7 +82,10 @@ describe("migration 030", () => {
   it("adds origin, marks session-end extractions as agent observations, leaves the rest unknown", async () => {
     const v29 = new Database(":memory:");
     v29.exec("PRAGMA foreign_keys=ON;");
-    const schema = readFileSync(SCHEMA_PATH, "utf-8").replace(/,\n\s*-- Where the claim came from[^\n]*\n\s*origin[^\n]*\n[^\n]*\)\)\n\);/, "\n);");
+    // A v29 database: no memories.origin, and none of the later tables (031 collections).
+    const schema = readFileSync(SCHEMA_PATH, "utf-8")
+      .replace(/,\n\s*-- Where the claim came from[^\n]*\n\s*origin[^\n]*\n[^\n]*\)\)\n\);/, "\n);")
+      .split(/\n-- =+\n-- collections \+ records/)[0]!;
     expect(schema).not.toContain("origin");
     v29.exec(schema);
     ensureMigrationsTable(v29);
