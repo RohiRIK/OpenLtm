@@ -34,6 +34,8 @@ export interface MemorySlim {
   workspace_id?: string | null;
   agent_id?: string | null;
   created_by?: string | null;
+  /** Where the claim came from (migration 030); null = unknown. */
+  origin?: string | null;
   hidden?: number;
   color?: string | null;
   icon?: string | null;

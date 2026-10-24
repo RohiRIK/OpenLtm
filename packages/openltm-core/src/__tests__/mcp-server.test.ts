@@ -364,6 +364,21 @@ describe("mcp/server — recall workspace / agent filters", () => {
   });
 });
 
+describe("mcp/server — learn origin", () => {
+  it("stores the origin, returns it from learn and recall, and rejects an unknown one", async () => {
+    const client = await connect();
+    const stored = json<{ id: number; origin: string }>(await call(client, "learn", {
+      content: "quokkafern: the owner wants release notes in Hebrew and English", origin: "owner-statement",
+    }));
+    expect(stored.origin).toBe("owner-statement");
+    const recalled = json<Array<{ id: number; origin: string }>>(await call(client, "recall", { query: "quokkafern" }));
+    expect(recalled.find((m) => m.id === stored.id)?.origin).toBe("owner-statement");
+
+    const bad = await client.callTool({ name: "learn", arguments: { content: "quokkafern bad origin", origin: "the-boss" } });
+    expect(bad.isError).toBe(true);
+  });
+});
+
 // Found in review: recall hid private memories but the resources listed them.
 describe("mcp/server — resources respect the private tag", () => {
   it("memory://globals, memory://recent and memory://project/{name} omit private memories", async () => {

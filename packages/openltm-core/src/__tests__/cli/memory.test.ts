@@ -14,6 +14,15 @@ import { Database } from "bun:sqlite";
 // ── Arg parsing (pure) ────────────────────────────────────────────────────────
 
 describe("cli/memory — parseMemoryArgs", () => {
+  it("accepts a valid --origin and rejects an unknown one", async () => {
+    const { parseMemoryArgs } = await import("../../cli/memory.js");
+    const ok = parseMemoryArgs(["learn", "--text", "Squash merges only", "--origin", "owner-statement"]);
+    expect(ok.ok && ok.options["origin"]).toBe("owner-statement");
+    const bad = parseMemoryArgs(["learn", "--text", "Squash merges only", "--origin", "boss"]);
+    expect(bad.ok).toBe(false);
+    if (!bad.ok) expect(bad.error).toContain("invalid origin 'boss'");
+  });
+
   it("parses learn with all flags", async () => {
     const { parseMemoryArgs } = await import("../../cli/memory.js");
     const parsed = parseMemoryArgs([

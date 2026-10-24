@@ -66,7 +66,10 @@ CREATE TABLE IF NOT EXISTS memories (
   relevance_signal_at  TEXT,
   -- Code-anchored invalidation (migration 023). NULL = not flagged stale.
   stale_flagged_at     TEXT,
-  stale_reason         TEXT
+  stale_reason         TEXT,
+  -- Where the claim came from (migration 030). NULL = unknown (pre-030 row).
+  origin               TEXT CHECK(origin IS NULL OR origin IN (
+                         'owner-statement','agent-observation','external-source','proposal','historical-approval'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_memories_category   ON memories(category);

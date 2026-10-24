@@ -35,6 +35,10 @@ export { insertProvenance, insertAudit, queryAudit, listProvenance, snapshotMemo
 export { setEmbedding, getEmbedding, deleteEmbedding, listMemoryIdsMissingEmbedding } from "./dao/embeddings.js";
 export { listByProject, upsertGoal, appendProgress, addDecision, addGotcha, addContextItem } from "./dao/contextItems.js";
 
+// Memory origin (owner statement vs agent observation vs …)
+export { MEMORY_ORIGINS, DEFAULT_ORIGIN, isMemoryOrigin, ORIGIN_PARAM_DESCRIPTION } from "./origin.js";
+export type { MemoryOrigin } from "./origin.js";
+
 // Stale flags and store statistics
 export { listStaleMemories, memoryStats } from "./stats.js";
 export type { StaleMemory, ListStaleOptions, MemoryStats } from "./stats.js";

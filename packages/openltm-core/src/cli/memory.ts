@@ -15,6 +15,7 @@
  */
 import { learn, recall, forget, relate, getContextMerge, type MemoryCategory } from "../db.js";
 import { waitForInit } from "../shared-db.js";
+import { MEMORY_ORIGINS, isMemoryOrigin, type MemoryOrigin } from "../origin.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -111,6 +112,10 @@ export function parseMemoryArgs(argv: string[]): ParsedMemoryArgs | MemoryArgsEr
       if (flags["importance"] !== undefined && (importance === undefined || importance < 1 || importance > 5)) {
         return { ok: false, error: "learn: --importance must be an integer 1-5" };
       }
+      const origin = typeof flags["origin"] === "string" ? flags["origin"] : undefined;
+      if (origin && !isMemoryOrigin(origin)) {
+        return { ok: false, error: `learn: invalid origin '${origin}' — expected one of: ${MEMORY_ORIGINS.join(", ")}` };
+      }
       return {
         ok: true,
         command: "learn",
@@ -123,6 +128,7 @@ export function parseMemoryArgs(argv: string[]): ParsedMemoryArgs | MemoryArgsEr
           project: typeof flags["project"] === "string" ? flags["project"] : undefined,
           tags: asList(flags["tags"]),
           files: asList(flags["files"]),
+          origin,
         },
       };
     }
@@ -207,6 +213,7 @@ export async function runMemoryCommand(parsed: ParsedMemoryArgs): Promise<Memory
           project_scope: o["project"] as string | undefined,
           tags: o["tags"] as string[] | undefined,
           files: o["files"] as string[] | undefined,
+          origin: o["origin"] as MemoryOrigin | undefined,
           actor: "cli:ltm_memory",
         });
         const payload = { ...result, category: (o["category"] as string | undefined) ?? "pattern" };
@@ -285,7 +292,7 @@ export function printMemoryHelp(): string {
     "",
     "  Commands:",
     "    learn    <content> | --text <content> [--title <t>] [--category <c>] [--importance 1-5]",
-    "             [--project <scope>] [--tags a,b] [--files f1,f2] [--json]",
+    "             [--project <scope>] [--tags a,b] [--files f1,f2] [--origin <o>] [--json]",
     "    recall   [<q> | --query <q>] [--category <c>] [--project <scope>] [--limit N]",
     "             [--tags a,b] [--json]",
     "    forget   --id <n> [--reason <r>] [--json]",

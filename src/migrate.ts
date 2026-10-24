@@ -168,7 +168,7 @@ if (existsSync(LEARNED_DIR)) {
   for (const file of readdirSync(LEARNED_DIR).filter(f => f.endsWith(".md"))) {
     for (const { content, category } of parseLearnedFile(join(LEARNED_DIR, file))) {
       try {
-        const result = learn({ content, category, importance: 3, source: `migration:${file}`, skipExport: true });
+        const result = learn({ content, category, importance: 3, source: `migration:${file}`, skipExport: true, origin: null }); // old notes: who said it is unknown
         if (result.action === "created") learnCreated++;
         else learnReinforced++;
       } catch (_) {}

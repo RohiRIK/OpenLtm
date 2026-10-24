@@ -80,6 +80,9 @@ CREATE TABLE IF NOT EXISTS memories (
   -- Multi-agent isolation (migration 007). NULL = global / default agent.
   workspace_id         TEXT,
   agent_id             TEXT,
+  -- Where the claim came from (migration 030). NULL = unknown.
+  origin               TEXT CHECK(origin IS NULL OR origin IN (
+                         'owner-statement','agent-observation','external-source','proposal','historical-approval')),
   -- Pre-computed decay score (migration 011). Janitor materializes it.
   decay_score          REAL    NOT NULL DEFAULT 1.0,
   -- Origin actor (migration 013). NULL until backfilled.
