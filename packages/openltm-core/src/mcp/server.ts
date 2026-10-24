@@ -28,7 +28,8 @@ import { RECALLED_MEMORY_NOTICE } from "../memoryFrame.js";
 import { hasPrivateTag, notPrivateSql } from "../privacy.js";
 import { emitEvent } from "../lib/jsonlLogger.js";
 import { FIELD_TYPES, LIMITS as COLLECTION_LIMITS } from "../collections/fieldSpec.js";
-import { FILTER_OPS, searchRecords } from "../collections/query.js";
+import { FILTER_OPS } from "../collections/query.js";
+import { recallRecords } from "../collections/embeddings.js";
 import { COLLECTION_ORIGINS, listCollections } from "../collections/store.js";
 import { COLLECTION_ACTIONS, RECORD_ACTIONS, COLLECTION_TOOL_DESCRIPTION, RECORD_TOOL_DESCRIPTION } from "../collections/toolSchema.js";
 import { runCollectionTool, runRecordTool, type ToolOutcome } from "../collections/tools.js";
@@ -184,7 +185,7 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
       const memories = verbose ? (scrubMemoryPayload(results) as unknown[]) : compact(results);
       // Records sit after the memories so callers reading memories by index are unaffected.
       const records = query && includeRecords && !category
-        ? searchRecords(query, { project: await resolveProjectArg(project), limit: 3 }).map((r) => ({
+        ? (await recallRecords(query, { project: await resolveProjectArg(project), limit: 3 })).map((r) => ({
           type: "record", collection: r.collection, key: r.key, id: r.id, data: r.data, origin: r.origin,
           updated_at: r.updated_at, ...(r.authority_note ? { authority_note: r.authority_note } : {}),
         }))

@@ -378,6 +378,24 @@ class OpenLtmpMemoryProvider(MemoryProvider):
         from ._memory_frame import frame_recalled_memory
         return "\n\n".join(part for part in (static_block, frame_recalled_memory(reviewed_context)) if part)
 
+    def _embed_record(self, record_id: int) -> None:
+        """Store a record's vector for hybrid recall (scrubbed search text; failures only log)."""
+        if not self._embedder:
+            return
+        try:
+            from . import _collections
+            from ._providers import embedding_to_blob
+            from ._secrets_scrubber import scrub_or_refuse
+            text = _collections.record_search_text(self._conn, record_id)
+            if not text:
+                return
+            vec = self._embedder.embed(scrub_or_refuse(text))
+            if vec:
+                _collections.store_record_embedding(self._conn, record_id, text, embedding_to_blob(vec),
+                                                    getattr(self._embedder, "model", None))
+        except Exception as e:
+            logger.debug("OpenLTM record embedding failed: %s", e)
+
     def _collection_index(self) -> str:
         """Lines naming the collections visible from this project (scrubbed; empty when none)."""
         try:
@@ -537,8 +555,10 @@ class OpenLtmpMemoryProvider(MemoryProvider):
                     })
                 # Matching collection records follow the memories (same shape as core's recall).
                 if args.get("query") and not args.get("category") and args.get("include_records", True):
-                    from ._collections import search_records
-                    for rec in search_records(self._conn, args["query"], project=args.get("project") or self._project_scope):
+                    from ._collections import recall_records
+                    for rec in recall_records(self._conn, args["query"], project=args.get("project") or self._project_scope,
+                                              query_vector=query_embedding,
+                                              model=getattr(self._embedder, "model", None)):
                         hit = {"type": "record", "collection": rec["collection"], "key": rec["key"], "id": rec["id"],
                                "data": rec["data"], "origin": rec["origin"], "updated_at": rec["updated_at"]}
                         if rec.get("authority_note"):
@@ -614,6 +634,8 @@ class OpenLtmpMemoryProvider(MemoryProvider):
                 run = _collections.run_collection_tool if tool_name == "openltm_collection" else _collections.run_record_tool
                 outcome = run(self._conn, args, project=args.get("project") or self._project_scope,
                               actor=f"hermes:{tool_name}")
+                if tool_name == "openltm_record" and outcome.get("ok") and args.get("action") == "put":
+                    self._embed_record(outcome["record"]["id"])
                 return json.dumps(scrub_payload(outcome))
 
             elif tool_name == "openltm_relate":

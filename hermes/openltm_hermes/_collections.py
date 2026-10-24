@@ -18,6 +18,7 @@ import math
 from contextlib import contextmanager
 import re
 import sqlite3
+import struct
 from datetime import datetime
 from typing import Any, Optional
 
@@ -112,6 +113,7 @@ CREATE TABLE IF NOT EXISTS records (
                    'owner-statement','agent-observation','external-source','proposal','historical-approval')),
   created_by     TEXT,
   embedding      BLOB,
+  embedding_model TEXT,
   created_at     TEXT    NOT NULL DEFAULT (datetime('now')),
   updated_at     TEXT    NOT NULL DEFAULT (datetime('now'))
 );
@@ -634,7 +636,7 @@ def _rebuild_search_text(conn: sqlite3.Connection, c: dict) -> int:
     rows = conn.execute("SELECT * FROM records WHERE collection_id=?", (c["id"],)).fetchall()
     for r in rows:
         text = build_search_text(c["name"], c["fields"], json.loads(r["data"]), r["record_key"])
-        conn.execute("UPDATE records SET search_text=? WHERE id=?", (text, r["id"]))
+        conn.execute("UPDATE records SET search_text=?, embedding=NULL, embedding_model=NULL WHERE id=?", (text, r["id"]))
     return len(rows)
 
 
@@ -754,7 +756,7 @@ def put_record(
         if existing is not None:
             conn.execute(
                 """UPDATE records SET data=?, schema_version=?, search_text=?, status='active', origin=?,
-                          memory_id=coalesce(?, memory_id), embedding=NULL, updated_at=datetime('now') WHERE id=?""",
+                          memory_id=coalesce(?, memory_id), embedding=NULL, embedding_model=NULL, updated_at=datetime('now') WHERE id=?""",
                 (payload, c["version"], search_text, origin, memory_id, existing["id"]),
             )
             row = conn.execute("SELECT * FROM records WHERE id=?", (existing["id"],)).fetchone()
@@ -991,6 +993,80 @@ def search_records(conn: sqlite3.Connection, query: str, *, project: Optional[st
         return []  # records are optional in recall
     by_id = _collections_by_id(conn)
     return [{**_to_view(by_id[r["collection_id"]], r), "rank": r["rank"]} for r in rows if r["collection_id"] in by_id]
+
+
+# ─── Vectors (same columns and fusion as core's collections/embeddings.ts) ────
+
+_SEMANTIC_MIN_SIMILARITY = 0.5
+_RRF_K = 60
+
+
+def record_search_text(conn: sqlite3.Connection, record_id: int) -> Optional[str]:
+    row = conn.execute("SELECT search_text FROM records WHERE id=? AND status='active'", (record_id,)).fetchone()
+    return row[0] if row else None
+
+
+def store_record_embedding(conn: sqlite3.Connection, record_id: int, search_text: str, blob: bytes, model: Optional[str]) -> bool:
+    """Store a record's vector, only if its search text is unchanged since it was embedded."""
+    with _tx(conn):
+        cur = conn.execute(
+            "UPDATE records SET embedding=?, embedding_model=? WHERE id=? AND search_text=?",
+            (blob, model, record_id, search_text),
+        )
+    return cur.rowcount > 0
+
+
+def _blob_to_vec(blob: bytes) -> list[float]:
+    return list(struct.unpack(f"<{len(blob) // 4}f", blob))
+
+
+def _cosine(a: list[float], b: list[float]) -> float:
+    if len(a) != len(b):
+        return 0.0
+    dot = sum(x * y for x, y in zip(a, b))
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(y * y for y in b))
+    return 0.0 if na == 0 or nb == 0 else dot / (na * nb)
+
+
+def _vector_hits(conn: sqlite3.Connection, vec: list[float], model: Optional[str], project: Optional[str], top_n: int) -> list[tuple[int, float]]:
+    rows = conn.execute(
+        """SELECT r.id, r.embedding FROM records r JOIN collections c ON c.id = r.collection_id
+            WHERE r.embedding IS NOT NULL AND r.embedding_model IS ? AND r.status='active' AND c.status='active'
+              AND (c.project_scope IS NULL OR c.project_scope = ?)""",
+        (model, project or ""),
+    ).fetchall()
+    hits = [(r[0], _cosine(vec, _blob_to_vec(r[1]))) for r in rows]
+    hits = [h for h in hits if h[1] >= _SEMANTIC_MIN_SIMILARITY]
+    hits.sort(key=lambda h: -h[1])
+    return hits[:top_n]
+
+
+def recall_records(conn: sqlite3.Connection, query: str, *, project: Optional[str] = None, limit: int = 3,
+                   query_vector: Optional[list[float]] = None, model: Optional[str] = None) -> list[dict]:
+    """Records for recall: FTS hits, fused with vector hits by reciprocal rank when a query vector is given."""
+    fts = search_records(conn, query, project=project, limit=limit * 3)
+    try:
+        semantic = _vector_hits(conn, query_vector, model, project, limit * 3) if query_vector else []
+    except Exception:  # noqa: BLE001 — a bad vector never breaks recall; FTS still answers
+        semantic = []
+    if not semantic:
+        return fts[:limit]
+    score: dict[int, float] = {}
+    for i, h in enumerate(fts):
+        score[h["id"]] = score.get(h["id"], 0.0) + 1 / (_RRF_K + i + 1)
+    for i, (rid, _sim) in enumerate(semantic):
+        score[rid] = score.get(rid, 0.0) + 1 / (_RRF_K + i + 1)
+    ranked = sorted(score.items(), key=lambda kv: (-kv[1], kv[0]))[:limit]
+    by_hit = {h["id"]: h for h in fts}
+    missing = [rid for rid, _ in ranked if rid not in by_hit]
+    if missing:
+        cols = _collections_by_id(conn)
+        marks = ",".join("?" for _ in missing)
+        for r in conn.execute(f"SELECT * FROM records WHERE id IN ({marks})", missing).fetchall():
+            if r["collection_id"] in cols:
+                by_hit[r["id"]] = {**_to_view(cols[r["collection_id"]], r), "rank": 0}
+    return [{**by_hit[rid], "rank": -s} for rid, s in ranked if rid in by_hit]
 
 
 # ─── Tools (same contract as core's collections/tools.ts) ────────────────────

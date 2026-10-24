@@ -272,3 +272,31 @@ def test_tool_output_is_scrubbed_even_from_rows_written_elsewhere(provider):
     provider._conn.commit()
     out = provider.handle_tool_call("openltm_record", {"action": "query", "collection": "notes_box"})
     assert "AKIAIOSFODNN7EXAMPLE" not in out
+
+
+class _FakeEmbedder:
+    """One dimension per keyword, so similarity is predictable."""
+    name = "fake"
+    model = "fake-model"
+    words = ("database", "web", "hypervisor")
+
+    def embed(self, text):
+        t = text.lower()
+        return [1.0 if w in t else 0.01 for w in self.words]
+
+
+def test_record_vectors_and_hybrid_recall(provider):
+    provider._embedder = _FakeEmbedder()
+    call(provider, "openltm_collection", {"action": "define", "name": "hosts", "description": "Machines", "fields": HOSTS, "key_field": "host"})
+    call(provider, "openltm_record", {"action": "put", "collection": "hosts", "data": {"host": "pve1", "notes": "proxmox hypervisor"}})
+    call(provider, "openltm_record", {"action": "put", "collection": "hosts", "data": {"host": "w1", "notes": "nginx web"}})
+    row = provider._conn.execute("SELECT embedding, embedding_model FROM records WHERE record_key='pve1'").fetchone()
+    assert row["embedding_model"] == "fake-model" and len(row["embedding"]) == 12
+    # FTS cannot match this word; the vector can.
+    assert col.search_records(provider._conn, "hypervisorish") == []
+    out = call(provider, "openltm_recall", {"query": "hypervisorish"})
+    assert [r["key"] for r in out if r.get("type") == "record"][:1] == ["pve1"]
+    # A new put clears the stale vector before the new one is stored.
+    call(provider, "openltm_record", {"action": "put", "collection": "hosts", "data": {"host": "pve1", "notes": "web proxy now"}})
+    vec = col._blob_to_vec(provider._conn.execute("SELECT embedding FROM records WHERE record_key='pve1'").fetchone()[0])
+    assert vec[1] == 1.0 and vec[2] < 0.5

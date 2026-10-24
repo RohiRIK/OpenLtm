@@ -141,6 +141,8 @@ export function runRecordTool(args: RecordToolArgs, ctx: ToolContext): ToolOutco
           collection, project: ctx.project, data: need(args.data, "data", "put"), merge: args.merge,
           origin: args.origin, created_by: ctx.actor, memory_id: args.memory_id,
         });
+        // Vector for hybrid recall, off the request path; recall stays FTS-only until it lands.
+        void import("./embeddings.js").then((m) => m.scheduleRecordEmbedding(res.record.id)).catch(() => {});
         return { ok: true, created: res.created, record: res.record };
       }
       case "get": {

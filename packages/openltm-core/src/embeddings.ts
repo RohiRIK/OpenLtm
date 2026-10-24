@@ -81,7 +81,7 @@ function loadConfig(type: "embed" | "llm"): ProviderConfig | null {
 }
 
 /** Returns the embedding provider, lazily initialised once per process. */
-async function getEmbeddingProvider(): Promise<EmbeddingProvider> {
+export async function getEmbeddingProvider(): Promise<EmbeddingProvider> {
   if (!_embeddingProviderCache) {
     _embeddingProviderCache = (async () => {
       const [{ loadConfig }, { loadProvider }] = await Promise.all([
@@ -93,6 +93,11 @@ async function getEmbeddingProvider(): Promise<EmbeddingProvider> {
     })();
   }
   return _embeddingProviderCache;
+}
+
+/** Test seam: use `provider` for embeddings (null restores the configured one). */
+export function _setEmbeddingProviderForTesting(provider: EmbeddingProvider | null): void {
+  _embeddingProviderCache = provider ? Promise.resolve(provider) : null;
 }
 
 export function getLlmConfig(): ProviderConfig | null {
@@ -265,6 +270,9 @@ export async function backfill(db: Database): Promise<void> {
     const { rebuildVecIndex } = await import("./vec/index.js");
     rebuildVecIndex(db, { model: provider.model, dim: provider.dim });
   }
+  const { backfillRecordEmbeddings } = await import("./collections/embeddings.js");
+  const records = await backfillRecordEmbeddings(db);
+  if (records > 0) process.stderr.write(`[embeddings] Back-filled ${records} collection records\n`);
 }
 
 // --- Semantic similarity search ---

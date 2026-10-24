@@ -1,7 +1,7 @@
 import {
   recall, learn, forget, relate, revalidate, getMemoryById, getProjectContext, scrubForEgress, categorise, hasPrivateTag,
   addContextItem, listPendingProposals, MEMORY_ORIGINS, ORIGIN_PARAM_DESCRIPTION, isMemoryOrigin, acceptProposal, rejectProposal, listStaleMemories, memoryStats,
-  deriveProjectFromCwd, runCollectionTool, runRecordTool, COLLECTION_TOOL_DESCRIPTION, RECORD_TOOL_DESCRIPTION,
+  deriveProjectFromCwd, recallRecords, runCollectionTool, runRecordTool, COLLECTION_TOOL_DESCRIPTION, RECORD_TOOL_DESCRIPTION,
   COLLECTION_TOOL_JSON_SCHEMA, RECORD_TOOL_JSON_SCHEMA,
 } from "@rohirik/openltm-core";
 import type { CollectionToolArgs, RecordToolArgs } from "@rohirik/openltm-core";
@@ -40,17 +40,26 @@ export function buildTools(opts: { directory?: string } = {}): LtmTool[] {
           project: { type: "string", description: "Filter by project scope" },
           limit: { type: "number", description: "Max results (default 10)", minimum: 1, maximum: 50 },
           category: { type: "string", enum: ["preference", "architecture", "gotcha", "pattern", "workflow", "constraint"] },
+          include_records: { type: "boolean", description: "Append up to 3 matching collection records (type: \"record\") after the memories (default true)" },
         },
       },
       async execute(input) {
-        const { query, project, limit, category } = input as Record<string, unknown>;
+        const { query, project, limit, category, include_records } = input as Record<string, unknown>;
         const results = await recall({
           query: query as string | undefined,
           project: project as string | undefined,
           limit: limit as number | undefined,
           category: category as MemoryCategory | undefined,
         });
-        return text(results.map(m => ({ id: m.id, content: scrubForEgress(m.content), category: m.category, importance: m.importance, origin: m.origin ?? null })));
+        const memories = results.map(m => ({ id: m.id, content: scrubForEgress(m.content), category: m.category, importance: m.importance, origin: m.origin ?? null }));
+        // Records follow the memories, as in the MCP recall tool.
+        const records = typeof query === "string" && query && !category && include_records !== false
+          ? (await recallRecords(query, { project: currentProject(input as Record<string, unknown>), limit: 3 })).map((r) => ({
+            type: "record", collection: r.collection, key: r.key, id: r.id, data: r.data, origin: r.origin,
+            updated_at: r.updated_at, ...(r.authority_note ? { authority_note: r.authority_note } : {}),
+          }))
+          : [];
+        return text([...memories, ...(deepScrub(records) as unknown[])]);
       },
     },
 

@@ -43,7 +43,7 @@ export type { MemoryOrigin } from "./origin.js";
 export {
   FIELD_TYPES, FILTER_OPS, LIMITS as COLLECTION_LIMITS, COLLECTION_ORIGINS, AUTHORITY_NOTE, CollectionError,
   defineCollection, evolveCollection, listCollections, resolveCollection, setCollectionStatus, collectionIndexLines,
-  putRecord, getRecord, archiveRecord, queryRecords, searchRecords,
+  putRecord, getRecord, archiveRecord, queryRecords, searchRecords, recallRecords, embedRecord, backfillRecordEmbeddings,
   runCollectionTool, runRecordTool, COLLECTION_ACTIONS, RECORD_ACTIONS, COLLECTION_TOOL_DESCRIPTION, RECORD_TOOL_DESCRIPTION,
   COLLECTION_TOOL_JSON_SCHEMA, RECORD_TOOL_JSON_SCHEMA,
 } from "./collections/index.js";

@@ -255,7 +255,7 @@ function rebuildSearchText(db: Database, c: Collection): number {
   const rows = db.query<RecordRow, [number]>("SELECT * FROM records WHERE collection_id=?").all(c.id);
   for (const r of rows) {
     const text = buildSearchText(c.name, c.fields, JSON.parse(r.data) as Record<string, unknown>, r.record_key);
-    db.run("UPDATE records SET search_text=? WHERE id=?", [text, r.id]);
+    db.run("UPDATE records SET search_text=?, embedding=NULL, embedding_model=NULL WHERE id=?", [text, r.id]);
   }
   return rows.length;
 }
@@ -383,7 +383,7 @@ export function putRecord(input: PutRecordInput, db: Database = getDb()): PutRec
     if (existing) {
       db.run(
         `UPDATE records SET data=?, schema_version=?, search_text=?, status='active', origin=?,
-                memory_id=coalesce(?, memory_id), embedding=NULL, updated_at=datetime('now') WHERE id=?`,
+                memory_id=coalesce(?, memory_id), embedding=NULL, embedding_model=NULL, updated_at=datetime('now') WHERE id=?`,
         [json, c.version, searchText, origin, input.memory_id ?? null, existing.id],
       );
       return { record: toView(c, db.query<RecordRow, [number]>("SELECT * FROM records WHERE id=?").get(existing.id)!), created: false };

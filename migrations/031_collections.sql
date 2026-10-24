@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS records (
                    'owner-statement','agent-observation','external-source','proposal','historical-approval')),
   created_by     TEXT,
   embedding      BLOB,
+  embedding_model TEXT,
   created_at     TEXT    NOT NULL DEFAULT (datetime('now')),
   updated_at     TEXT    NOT NULL DEFAULT (datetime('now'))
 );
