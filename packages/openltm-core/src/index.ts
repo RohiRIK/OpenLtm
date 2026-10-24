@@ -39,6 +39,17 @@ export { listByProject, upsertGoal, appendProgress, addDecision, addGotcha, addC
 export { MEMORY_ORIGINS, DEFAULT_ORIGIN, isMemoryOrigin, ORIGIN_PARAM_DESCRIPTION } from "./origin.js";
 export type { MemoryOrigin } from "./origin.js";
 
+// Collections: structured types the agent defines (migration 031)
+export {
+  FIELD_TYPES, FILTER_OPS, LIMITS as COLLECTION_LIMITS, COLLECTION_ORIGINS, AUTHORITY_NOTE, CollectionError,
+  defineCollection, evolveCollection, listCollections, resolveCollection, setCollectionStatus,
+  putRecord, getRecord, archiveRecord, queryRecords, searchRecords,
+} from "./collections/index.js";
+export type {
+  FieldSpec, FieldType, Filter, FilterOp, Collection, CollectionSummary, CollectionOrigin, RecordView, RecordHit,
+  DefineCollectionInput, EvolveCollectionInput, EvolveResult, PutRecordInput, PutRecordResult, QueryRecordsInput, QueryRecordsResult,
+} from "./collections/index.js";
+
 // Stale flags and store statistics
 export { listStaleMemories, memoryStats } from "./stats.js";
 export type { StaleMemory, ListStaleOptions, MemoryStats } from "./stats.js";
