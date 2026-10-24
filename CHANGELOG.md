@@ -7,6 +7,9 @@
 - **An unknown option is a usage error.** `ltm --claud` or `ltm --version` used to fall through to an auto-detect install. The CLI now prints help and exits 1.
 - **`ltm memory recall docker rate limit` searches for the words.** Positional words were dropped, so `recall` listed everything and `learn` asked for `--text`. `learn` and `recall` now take their text as positional words too; a stray word on `forget`, `relate` or `context` is a usage error instead of being ignored.
 
+### Security
+- **zod 4.6.6+ and body-parser 2.4.0+.** zod 4.4.3 is affected by CVE-2023-54404 (high: denial of service via unbounded array validation) and body-parser 2.3.0 by CVE-2026-111181 (high: denial of service via an unhandled decompression stream error). The Trivy scan failed on both.
+
 ### Added
 - `ltm --version` / `-v`, and `ltm help`. The help now lists the `conflict` sub-command.
 

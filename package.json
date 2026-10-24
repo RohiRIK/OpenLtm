@@ -34,7 +34,7 @@
     "@modelcontextprotocol/sdk": "^1.31.0",
     "@rohirik/openltm-core": "workspace:*",
     "sqlite-vec": "0.1.9",
-    "zod": "^4.3.6"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@russellthehippo/honker-bun": "0.2.2",
@@ -47,7 +47,7 @@
     "path-to-regexp": "^8.4.0",
     "hono": "^4.13.5",
     "@hono/node-server": "^1.19.15",
-    "body-parser": "^2.3.0",
+    "body-parser": "^2.4.0",
     "qs": "^6.15.4",
     "fast-uri": "^3.1.8",
     "ip-address": "^10.3.1",
