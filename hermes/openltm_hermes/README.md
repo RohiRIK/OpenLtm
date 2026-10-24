@@ -29,6 +29,8 @@ A Hermes memory provider plugin that wraps [OpenLTM](https://github.com/RohiRIK/
 | `openltm_graph` | Traverse the memory graph from a memory |
 | `openltm_brain_stats` | Totals, categories, importance distribution, relations, stale count |
 | `openltm_stale` | List memories flagged as stale, or flag/revalidate one |
+| `openltm_collection` | Define, list, evolve or archive a structured type (collection) |
+| `openltm_record` | Store, get, query (by field or text) or archive records in a collection |
 
 ## Setup
 

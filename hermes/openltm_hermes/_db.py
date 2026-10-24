@@ -239,6 +239,9 @@ def init_schema(conn: sqlite3.Connection) -> None:
             except sqlite3.OperationalError:
                 pass  # already exists
     conn.executescript(FTS_TRIGGERS_SQL)
+    # Agent-defined collections (core's migration 031): same DDL, IF NOT EXISTS.
+    from ._collections import ensure_schema as _ensure_collections
+    _ensure_collections(conn)
     conn.commit()
 
 
