@@ -91,7 +91,19 @@ export function checkKeyField(fields: FieldSpec[], keyField: string | null | und
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/;
 
+/** A calendar date that exists (no 2026-02-30) and, with a time, one Date can parse. */
+function isRealDate(value: string): boolean {
+  const [y, m, d] = value.slice(0, 10).split("-").map(Number) as [number, number, number];
+  const day = new Date(Date.UTC(y, m - 1, d));
+  if (day.getUTCFullYear() !== y || day.getUTCMonth() !== m - 1 || day.getUTCDate() !== d) return false;
+  if (value.length === 10) return true;
+  const [hh, mm, ss] = value.slice(11, 19).split(":").map(Number);
+  if (hh! > 23 || mm! > 59 || (ss !== undefined && ss > 59)) return false;
+  return !Number.isNaN(Date.parse(value.replace(" ", "T")));
+}
+
 function isHttpUrl(value: string): boolean {
+  if (/\s/.test(value)) return false;
   try {
     const u = new URL(value);
     return u.protocol === "http:" || u.protocol === "https:";
@@ -108,7 +120,7 @@ function valueSchema(f: FieldSpec): z.ZodType {
     case "number": return z.number().finite();
     case "boolean": return z.boolean();
     case "date": return z.string().regex(ISO_DATE_RE, "expected an ISO date (YYYY-MM-DD or ISO 8601 datetime)")
-      .refine((v) => !Number.isNaN(Date.parse(v)), { message: "not a real date" });
+      .refine(isRealDate, { message: "not a real date" });
     case "enum": return z.enum(f.values as [string, ...string[]]);
     case "string[]": return z.array(z.string().max(LIMITS.maxString)).max(LIMITS.maxListItems);
     case "url": return z.string().max(LIMITS.maxUrl).refine(isHttpUrl, { message: "expected an http(s) URL" });
