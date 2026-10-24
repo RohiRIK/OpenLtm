@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 # Secrets scrubber: required. No identity fallback — if it cannot be imported,
 # importing _db fails rather than storing or embedding raw text.
 from ._secrets_scrubber import ScrubRefusedError, scrub_or_refuse, scrub_secrets_for_embedding  # noqa: F401
+from ._origin import DEFAULT_ORIGIN, MEMORY_ORIGINS
 
 # ─── Tunable constants ───────────────────────────────────────────────────────
 
@@ -65,7 +66,9 @@ CREATE TABLE IF NOT EXISTS memories (
   stale_flagged_at     TEXT,
   stale_reason         TEXT,
   workspace_id TEXT,
-  agent_id     TEXT
+  agent_id     TEXT,
+  origin       TEXT CHECK(origin IS NULL OR origin IN (
+                 'owner-statement','agent-observation','external-source','proposal','historical-approval'))
 );
 
 -- Context items table
@@ -221,6 +224,12 @@ def init_schema(conn: sqlite3.Connection) -> None:
     if "decay_score" not in cols:
         conn.execute("ALTER TABLE memories ADD COLUMN decay_score REAL NOT NULL DEFAULT 1.0")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_memories_decay_score ON memories (decay_score DESC)")
+    # Same definition as OpenLtm core's migration 030 (where a claim came from).
+    if "origin" not in cols:
+        conn.execute(
+            "ALTER TABLE memories ADD COLUMN origin TEXT CHECK(origin IS NULL OR origin IN ("
+            "'owner-statement','agent-observation','external-source','proposal','historical-approval'))"
+        )
     # FTS and triggers may fail if already exist — run individually
     for sql in FTS_SQL.split(";"):
         sql = sql.strip()
@@ -241,6 +250,18 @@ def _dedup_key(content: str) -> str:
     return hashlib.sha256(normalized.encode()).hexdigest()[:16]
 
 
+def _record_provenance(conn: sqlite3.Connection, memory_id: int, actor: str) -> None:
+    """Add the provenance row core's learn() writes, when core's table exists
+    (a Hermes-only database has no memory_provenance until core opens it)."""
+    try:
+        conn.execute(
+            "INSERT INTO memory_provenance (memory_id, source_type, actor) VALUES (?, 'learn', ?)",
+            (memory_id, actor),
+        )
+    except sqlite3.OperationalError:
+        pass
+
+
 def learn(
     conn: sqlite3.Connection,
     content: str,
@@ -253,6 +274,8 @@ def learn(
     workspace_id: str | None = None,
     agent_id: str | None = None,
     embedder=None,
+    origin: str | None = None,
+    actor: str = "hermes:openltm",
 ) -> dict:
     """Store or reinforce a memory. Returns {action, id, confirm_count}.
 
@@ -267,6 +290,8 @@ def learn(
     # Scrub every write here so all callers (tools, sync_turn, session end,
     # memory-write mirror) are covered. Fails closed: ScrubRefusedError
     # propagates and nothing is stored.
+    if origin not in MEMORY_ORIGINS:
+        origin = DEFAULT_ORIGIN
     content = scrub_or_refuse(content) or ""
     title = scrub_or_refuse(title)
     if tags:
@@ -287,9 +312,10 @@ def learn(
                confirm_count = ?,
                last_confirmed_at = ?,
                last_used_at = ?,
-               confidence = MIN(1.0, confidence + 0.1)
+               confidence = MIN(1.0, confidence + 0.1),
+               origin = CASE WHEN ? = 'owner-statement' THEN 'owner-statement' ELSE origin END
              WHERE id = ?""",
-            (new_count, now, now, existing["id"]),
+            (new_count, now, now, origin, existing["id"]),
         )
         conn.commit()
         return {"action": "reinforced", "id": existing["id"], "confirm_count": new_count}
@@ -314,9 +340,10 @@ def learn(
                                confirm_count = ?,
                                last_confirmed_at = ?,
                                last_used_at = ?,
-                               confidence = MIN(1.0, confidence + 0.1)
+                               confidence = MIN(1.0, confidence + 0.1),
+                               origin = CASE WHEN ? = 'owner-statement' THEN 'owner-statement' ELSE origin END
                              WHERE id = ?""",
-                            (new_count, now, now, existing_id),
+                            (new_count, now, now, origin, existing_id),
                         )
                         conn.commit()
                         return {
@@ -332,15 +359,16 @@ def learn(
     cursor = conn.execute(
         """INSERT INTO memories
            (content, title, category, importance, dedup_key, project_scope,
-            workspace_id, agent_id, created_at, last_confirmed_at, last_used_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            workspace_id, agent_id, created_at, last_confirmed_at, last_used_at, origin)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (content, title, category, importance, dedup, project,
-         workspace_id, agent_id, now, now, now),
+         workspace_id, agent_id, now, now, now, origin),
     )
     memory_id = cursor.lastrowid
     if memory_id is None:
         conn.commit()
         return {"action": "error", "id": 0, "confirm_count": 0}
+    _record_provenance(conn, memory_id, actor)
 
     # Store the embedding if an embedder is available (so future dedup/recall works)
     if embedder is not None:
@@ -359,7 +387,7 @@ def learn(
         _attach_tags(conn, memory_id, tags)
 
     conn.commit()
-    return {"action": "created", "id": memory_id, "confirm_count": 1}
+    return {"action": "created", "id": memory_id, "confirm_count": 1, "origin": origin}
 
 
 def recall(

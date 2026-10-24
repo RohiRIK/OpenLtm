@@ -185,7 +185,8 @@ export async function runOnboard(opts: OnboardOptions = {}): Promise<{ success: 
   if (goal.length > 0) {
     upsertGoal(projectName, goal);
     // Also store as a memory so it survives context expiry
-    learn({ content: goal, category: "architecture", importance: 3, project_scope: projectName, skipExport: true });
+    // The owner typed this goal into the wizard.
+    learn({ content: goal, category: "architecture", importance: 3, project_scope: projectName, skipExport: true, origin: "owner-statement" });
   }
 
   if (!nonInteractive) p.log.success("Goal saved");

@@ -14,7 +14,7 @@ Plugin `openltm`, MCP server key `memory`: in Claude Code each tool is `mcp__plu
 | Tool | Call when |
 |------|-----------|
 | `recall` | Before non-trivial work — natural-language query; surfaces decisions, gotchas, patterns. |
-| `learn` | After a durable insight. Always pass a short `title`; add `files` to anchor it to code, or `project` for knowledge that only holds in this repo. With neither it is global (`project_scope: null` in the reply). |
+| `learn` | After a durable insight. Always pass a short `title`; add `files` to anchor it to code, or `project` for knowledge that only holds in this repo. With neither it is global (`project_scope: null` in the reply). Pass `origin: owner-statement` only when the user said it directly; otherwise leave the default `agent-observation`, or `external-source` for docs and tool output. |
 | `context` | Session start / project switch — the goal, decisions, gotchas and recent progress, plus high-importance global (≥ 4) and project memories. |
 | `context_items` | List the project's `goal` / `decision` / `progress` / `gotcha` rows. |
 | `context_add` | `{type: goal\|decision\|gotcha\|progress, content, project?}` — record project state (a new `goal` replaces the old one). |

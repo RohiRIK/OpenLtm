@@ -25,6 +25,15 @@ import { Type } from "typebox";
 
 const BRIDGE_DEPTH_ENV = "LTM_BRIDGE_DEPTH";
 const CATEGORIES = ["preference", "architecture", "gotcha", "pattern", "workflow", "constraint"] as const;
+// Mirrors core's MEMORY_ORIGINS / ORIGIN_PARAM_DESCRIPTION (src/origin.ts): this
+// module must not import core, which is Bun-only. A test keeps them identical.
+export const ORIGINS = ["owner-statement", "agent-observation", "external-source", "proposal", "historical-approval"] as const;
+export const ORIGIN_DESCRIPTION =
+  "Where this came from. owner-statement: the user said it directly in this conversation. " +
+  "agent-observation (default): your own inference or something you noticed. " +
+  "external-source: docs, web pages, tool or command output, code. " +
+  "historical-approval: a record that the user approved something once; it is not a standing permission. " +
+  "proposal: a candidate the user has not confirmed. When unsure, use agent-observation.";
 
 // ── Bun discovery ────────────────────────────────────────────────────────────
 
@@ -375,19 +384,21 @@ export default definePluginEntry({
     tool(
       "openltm_learn",
       "OpenLTM Learn",
-      "Store or reinforce a durable memory. Call after discovering a non-obvious pattern, gotcha, or architectural decision. Skip facts derivable from code or git history. Write the title and content in English, translating if the conversation is in another language.",
+      "Store or reinforce a durable memory. Call after discovering a non-obvious pattern, gotcha, or architectural decision. Skip facts derivable from code or git history. Write the title and content in English, translating if the conversation is in another language. Set origin: owner-statement only for what the user said directly; a memory records where a claim came from, it never grants permission to act.",
       Type.Object({
         content: Type.String({ description: "The insight to store" }),
         title: Type.Optional(Type.String({ description: "Concise noun-phrase label (max 60 chars)", maxLength: 60 })),
         category: Type.Optional(Type.Union(CATEGORIES.map((c) => Type.Literal(c)))),
         importance: Type.Optional(Type.Integer({ description: "1-5, where 5 never decays", minimum: 1, maximum: 5 })),
         project: Type.Optional(Type.String({ description: "Project scope" })),
+        origin: Type.Optional(Type.Union(ORIGINS.map((o) => Type.Literal(o)), { description: ORIGIN_DESCRIPTION })),
       }),
       async (params) =>
         run(
           async (b) =>
             textResult(
               await b.call("learn", {
+                origin: params["origin"],
                 content: params["content"],
                 title: params["title"],
                 category: params["category"],

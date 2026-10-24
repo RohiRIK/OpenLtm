@@ -9,6 +9,7 @@ import { normalizeKey } from "./dedup.js";
 import { differsMeaningfully, isNearDuplicate, isNearDuplicateKey, jaccardSimilarity, nearDuplicateKey, type NearDuplicateKey } from "./similarity.js";
 import { filterPrivateMemories, hasPrivateTag, notPrivateSql } from "./privacy.js";
 import { normalizeAnchorPaths } from "./anchors.js";
+import { DEFAULT_ORIGIN, type MemoryOrigin } from "./origin.js";
 import { getDb, DB_PATH, configure as configureDb } from "./shared-db.js";
 import { enqueueEmbedding } from "./queue/index.js";
 import { notifyLtm, notifyMemoryAdded } from "./events/index.js";
@@ -56,6 +57,8 @@ export interface Memory {
   decay_score?: number;
   stale_flagged_at?: string | null;
   stale_reason?: string | null;
+  /** Where the claim came from; null = written before origin tracking. */
+  origin?: MemoryOrigin | null;
 }
 
 export interface MemoryRelation {
@@ -94,6 +97,8 @@ export interface LearnInput {
   files?: string[];
   /** Skip regenerating docs/memory-long-term.md (use during bulk imports) */
   skipExport?: boolean;
+  /** Where the claim came from. Default agent-observation; null = unknown (bulk imports of old notes). */
+  origin?: MemoryOrigin | null;
   /** Audit/provenance — all optional; safe to omit from existing callers. */
   actor?: string;
   sessionId?: string;
@@ -106,6 +111,8 @@ export interface LearnResult {
   action: "created" | "reinforced";
   id: number;
   confirm_count: number;
+  /** The memory's origin after this write (null = unknown, a pre-origin row). */
+  origin: MemoryOrigin | null;
   /** How an existing memory was matched (absent on clean create). */
   matched_by?: "exact" | "containment" | "jaccard";
   /** Similarity score in [0,1] when matched_by is jaccard/containment. */
@@ -740,15 +747,19 @@ export function learn(input: LearnInput): LearnResult {
   const nearNote = near && !near.reinforce ? near : null;
 
   const actor = input.actor ?? "mcp:ltm_learn";
+  const origin = input.origin === undefined ? DEFAULT_ORIGIN : input.origin;
 
   if (reinforceTarget) {
     const existing = reinforceTarget;
     const beforeSnap = snapshotMemory(db, existing.id);
+    // The owner restating a memory makes it the owner's; nothing else changes
+    // an origin, so an agent re-observing an owner statement never demotes it.
     db.run(
       `UPDATE memories SET confirm_count=confirm_count+1, last_confirmed_at=datetime('now'),
        confidence=MIN(1.0, confidence+0.05),
-       stale_flagged_at=NULL, stale_reason=NULL WHERE id=?`,
-      [existing.id]
+       stale_flagged_at=NULL, stale_reason=NULL,
+       origin=CASE WHEN ? = 'owner-statement' THEN 'owner-statement' ELSE origin END WHERE id=?`,
+      [origin, existing.id]
     );
     if (input.tags) attachTags(db, existing.id, input.tags);
     if (input.files) attachFiles(db, existing.id, input.files, existing.project_scope ?? input.project_scope ?? null);
@@ -767,13 +778,14 @@ export function learn(input: LearnInput): LearnResult {
       });
     });
     if (!skipExport) exportMarkdown();
-    const updated = db.query<{ confirm_count: number }, [number]>(
-      `SELECT confirm_count FROM memories WHERE id=?`
+    const updated = db.query<{ confirm_count: number; origin: MemoryOrigin | null }, [number]>(
+      `SELECT confirm_count, origin FROM memories WHERE id=?`
     ).get(existing.id);
     return {
       action: "reinforced",
       id: existing.id,
       confirm_count: updated?.confirm_count ?? existing.confirm_count + 1,
+      origin: updated?.origin ?? null,
       matched_by: exact ? "exact" : near!.matched_by,
       score: exact ? 1 : near!.score,
       matched_id: existing.id,
@@ -790,8 +802,8 @@ export function learn(input: LearnInput): LearnResult {
   const title = agentTitle || deriveTitle(content);
 
   const result = db.run(
-    `INSERT INTO memories (content, title, category, importance, confidence, source, project_scope, dedup_key, created_by, workspace_id, agent_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO memories (content, title, category, importance, confidence, source, project_scope, dedup_key, created_by, workspace_id, agent_id, origin)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       content,
       title,
@@ -804,6 +816,7 @@ export function learn(input: LearnInput): LearnResult {
       actor,
       input.workspace_id ?? null,
       input.agent_id ?? null,
+      origin,
     ]
   );
 
@@ -862,6 +875,7 @@ export function learn(input: LearnInput): LearnResult {
     action: "created",
     id: newId,
     confirm_count: 1,
+    origin,
     ...(nearNote
       ? { matched_by: nearNote.matched_by, score: nearNote.score, matched_id: nearNote.memory.id }
       : {}),
@@ -983,7 +997,7 @@ async function semanticHits(query: string, topN: number, enabled: boolean | unde
 const RECALL_COLUMNS = `id, content, category, importance, confidence, source, project_scope, dedup_key,
               created_at, last_confirmed_at, last_used_at, confirm_count, status,
               first_recalled_at, last_recalled_at, recall_count, superseded_by, superseded_at,
-              workspace_id, agent_id, decay_score, stale_flagged_at, stale_reason, title`;
+              workspace_id, agent_id, decay_score, stale_flagged_at, stale_reason, title, origin`;
 
 /** SQL ORDER BY for a recall without a query (no relevance signal to rank on). */
 function recallSqlOrder(sortBy: RecallInput["sort_by"]): string {
