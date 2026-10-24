@@ -21,7 +21,7 @@ openclaw plugins install @rohirik/openclaw-ltm --force --accept-capabilities   #
   outside ClawHub review until you acknowledge it.
 
 Verified end to end on OpenClaw 2026.9.8 (Node 24): install, runtime load with
-all eight tools, learn → recall on a brand-new database, and the Prior
+all eleven tools, learn → recall on a brand-new database, and the Prior
 Knowledge block.
 
 npm gets every release tag; ClawHub gets a release once it is published there (see the repo's `docs/11-publishing.md`). A new ClawHub version becomes
@@ -40,11 +40,14 @@ a child process — see [Runtime model](#runtime-model)).
 | `openltm_recall` | Search memory by meaning. Call before any non-trivial task. |
 | `openltm_learn` | Store or reinforce a durable fact. Skip anything derivable from code or git history. |
 | `openltm_forget` | Delete a memory that is wrong, outdated, or unwanted. |
+| `openltm_get` | Fetch one memory in full by id, after recall truncated it. |
 | `openltm_context` | Restore project goals, decisions, and gotchas. |
+| `openltm_context_add` | Record a project goal, decision, gotcha, or progress note. |
 | `openltm_relate` | Link two memories with a typed relationship. |
 | `openltm_graph` | Traverse the memory graph to trace decision chains. |
-| `openltm_brain_stats` | Totals, category spread, and importance distribution. |
+| `openltm_brain_stats` | Counts over the whole store: status, category, importance, stale, private, embedded, pending proposals. |
 | `openltm_stale` | List memories invalidated by code changes, or clear the flag after review. |
+| `openltm_proposals` | List, accept, or reject memories proposed at the end of a session. |
 
 ### Auto-recall
 

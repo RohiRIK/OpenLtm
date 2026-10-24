@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.21.0] — 2026-10-24
+
+### Added
+- **Every host can curate memory, not only Claude Code.** OpenCode had 5 tools and could not fetch a full memory, review session-end proposals, list or clear stale flags, or record a goal or decision. It now has 11: `ltm_get`, `ltm_stale`, `ltm_revalidate`, `ltm_context_add`, `ltm_proposals` and `ltm_stats` join the original five. OpenClaw gains `openltm_get`, `openltm_context_add` and `openltm_proposals`. Pi proxies the MCP server, so it gets every new tool without a change.
+- **MCP `stale` and `stats` tools.** `stale` lists the memories a commit flagged stale, with the reason, so curation no longer scans a 50-row recall for the flag. `stats` counts memories by status, category and importance, plus stale, private, embedded and pending-proposal totals; `embedded: 0` means recall is on full-text search only. Core exports `listStaleMemories`, `memoryStats`, `getProjectContext` and `addContextItem`, which every host now shares.
+- **`/openltm:doctor` checks embeddings.** A new *Embeddings (semantic recall)* section says whether the embedding server answers, what vector size it returns, and how many memories already have a vector, with the `llama-server` command to run when it is down. Only a fixed probe string is embedded. Before this, a missing server silently left recall on full-text search.
+- **[Local embeddings guide](docs/15-local-embeddings.md):** llama.cpp and bge-m3 in five minutes, including the batch-size flags long memories need and a systemd / launchd service so the server stays up.
+
+### Fixed
+- **OpenClaw `openltm_stale` could never clear a flag.** It sent `memory_id` to the core `revalidate` tool, which takes `id`, so every `clear` failed. Its `list` read a `stale` field compact recall never returns, so it always answered "No stale memories."
+- **OpenClaw `openltm_brain_stats` counted a 50-memory recall sample**, not the store. It now reports the real totals.
+- **OpenCode `ltm_context` returned memories only.** The goal, decisions, gotchas and progress were missing although the tool promised them. It now returns the same shape as the MCP `context` tool.
+- The MemoryReview skill lists stale memories with the new `stale` tool.
+
 ## [2.20.3] — 2026-10-24
 
 ### Fixed

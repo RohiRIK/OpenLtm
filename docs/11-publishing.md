@@ -210,7 +210,7 @@ should not rely on it; route 4b is the supported path.
 
 ```bash
 openclaw plugins install @rohirik/openclaw-ltm --force --accept-capabilities
-openclaw plugins inspect openltm --runtime --json   # status: loaded, 8 tools
+openclaw plugins inspect openltm --runtime --json   # status: loaded, 11 tools
 # then exercise recall/learn inside a live OpenClaw session
 ```
 

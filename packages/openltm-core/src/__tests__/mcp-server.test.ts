@@ -16,7 +16,7 @@ import type { McpServerOptions } from "../mcp/server.js";
 
 const TOOL_NAMES = [
   "recall", "get", "learn", "relate", "forget", "revalidate", "admin_audit",
-  "context", "graph", "context_items", "context_add", "proposals",
+  "context", "graph", "context_items", "context_add", "proposals", "stale", "stats",
 ];
 
 describe("mcp/server — buildMcpServer", () => {
@@ -117,7 +117,7 @@ describe("mcp/server — tools/list", () => {
       expect(tool!.annotations?.openWorldHint).toBe(false);
     }
 
-    for (const name of ["recall", "get", "context", "context_items", "graph", "admin_audit"]) {
+    for (const name of ["recall", "get", "context", "context_items", "graph", "admin_audit", "stale", "stats"]) {
       expect(byName.get(name)!.annotations?.readOnlyHint).toBe(true);
     }
     for (const name of ["learn", "relate", "forget", "revalidate", "context_add", "proposals"]) {

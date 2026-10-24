@@ -13,13 +13,13 @@ import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mc
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { learn, recall, getMemoryById, relate, forget, revalidate, getContextMerge, type Memory } from "../db.js";
+import { learn, recall, getMemoryById, relate, forget, revalidate, type Memory } from "../db.js";
 import { getDb, waitForInit } from "../shared-db.js";
 import { queryAudit } from "../dao/provenanceAudit.js";
-import { getItems, type ContextType } from "../context.js";
-import { upsertGoal, addDecision, addGotcha, appendProgress } from "../dao/contextItems.js";
-import { writeQueue } from "../lib/writeQueue.js";
+import { getItems, getProjectContext } from "../context.js";
+import { addContextItem } from "../dao/contextItems.js";
 import { listPendingProposals, acceptProposal, rejectProposal } from "../proposals.js";
+import { listStaleMemories, memoryStats } from "../stats.js";
 import { traverseGraph, buildReasoningContext } from "../graph.js";
 import { categorise } from "../recall/categorise.js";
 import { scrubForEgress, SCRUB_FAILED_PLACEHOLDER } from "../secretsScrubber.js";
@@ -107,19 +107,8 @@ const NO_PROJECT_MESSAGE =
   "No project given and the server could not infer one from its working directory. " +
   "Pass `project` — the LTM project name (see the SessionStart context banner or ~/.claude/projects/registry.json).";
 
-/** Progress lines `context` returns (most recent last), like SessionStart's summary. */
-const CONTEXT_RECENT_PROGRESS = 5;
-
 /** Proposal session ids are file stems in the proposals dir — never allow a path. */
 const SESSION_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-
-/** context_add writers — the same DAO calls the hooks use (UpdateContext, onboarding). */
-const CONTEXT_WRITERS: Record<ContextType, (project: string, content: string) => unknown> = {
-  goal: upsertGoal,
-  decision: addDecision,
-  gotcha: addGotcha,
-  progress: (project, content) => appendProgress(project, content),
-};
 
 // ─── Server factory ──────────────────────────────────────────────────────────
 
@@ -319,6 +308,37 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
   );
 
   server.registerTool(
+    "stale",
+    {
+      title: "List stale memories",
+      description: "List memories a commit flagged stale because the files they are anchored to changed, with the reason. Review each one: revalidate it if it is still correct, forget it if it is wrong, or learn a corrected version.",
+      inputSchema: {
+        project: z.string().optional().describe("Only this project's memories plus global ones. Omit for every project."),
+        limit: z.number().int().min(1).max(200).optional().describe("Max results (default 50)"),
+        includePrivate: z.boolean().optional().default(false).describe("Include memories tagged private (default false)"),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async ({ project, limit, includePrivate }) => {
+      const rows = listStaleMemories({ project: project?.trim() || undefined, limit, includePrivate });
+      return jsonResult({ count: rows.length, memories: scrubMemoryPayload(rows) });
+    },
+  );
+
+  server.registerTool(
+    "stats",
+    {
+      title: "Memory statistics",
+      description: "Count memories by status, category and importance, plus how many are stale, private, embedded for semantic search, and waiting as proposals. embedded = 0 means recall is running on full-text search only.",
+      inputSchema: {
+        project: z.string().optional().describe("Only this project's memories plus global ones. Omit for the whole store."),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async ({ project }) => jsonResult(memoryStats(project?.trim() || undefined)),
+  );
+
+  server.registerTool(
     "admin_audit",
     {
       title: "Memory audit log",
@@ -359,18 +379,7 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
     async ({ project }) => {
       const resolved = await resolveProjectArg(project);
       if (!resolved) return errorResult(NO_PROJECT_MESSAGE);
-      const items = getItems(resolved);
-      const ofType = (type: ContextType) => items.filter((i) => i.type === type).map((i) => scrubForEgress(i.content));
-      const merged = getContextMerge(resolved);
-      return jsonResult({
-        project: resolved,
-        goal: ofType("goal").at(-1) ?? null,
-        decisions: ofType("decision"),
-        gotchas: ofType("gotcha"),
-        progress: ofType("progress").slice(-CONTEXT_RECENT_PROGRESS),
-        globals: scrubMemoryPayload(merged.globals),
-        scoped: scrubMemoryPayload(merged.scoped),
-      });
+      return jsonResult(scrubMemoryPayload(getProjectContext(resolved)));
     },
   );
 
@@ -444,10 +453,7 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
       if (!text) return errorResult("`content` must not be empty.");
       const resolved = await resolveProjectArg(project);
       if (!resolved) return errorResult(NO_PROJECT_MESSAGE);
-      await CONTEXT_WRITERS[type](resolved, text);
-      // The DAO writers enqueue on the shared write queue — drain it so the
-      // item is committed (and visible to context_items) before replying.
-      await writeQueue.enqueue(() => undefined);
+      await addContextItem(type, resolved, text);
       return jsonResult({ ok: true, project: resolved, type });
     },
   );

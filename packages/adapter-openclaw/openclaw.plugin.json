@@ -15,7 +15,10 @@
       "openltm_relate",
       "openltm_graph",
       "openltm_brain_stats",
-      "openltm_stale"
+      "openltm_stale",
+      "openltm_get",
+      "openltm_context_add",
+      "openltm_proposals"
     ]
   },
   "toolMetadata": {
@@ -26,6 +29,15 @@
       "sideEffecting": true
     },
     "openltm_relate": {
+      "sideEffecting": true
+    },
+    "openltm_stale": {
+      "sideEffecting": true
+    },
+    "openltm_context_add": {
+      "sideEffecting": true
+    },
+    "openltm_proposals": {
       "sideEffecting": true
     }
   },

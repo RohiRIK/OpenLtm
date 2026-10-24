@@ -14,6 +14,7 @@ If you ever need to call them yourself (e.g. from a custom hook or script), this
 | `get` | Fetch one memory by id after compact recall. Private-tagged memories return `{ ok:false, error:"private" }` unless `includePrivate: true`. |
 | `learn` | Store or reinforce a memory. Deduplicates automatically. Optional `files` param anchors the memory to repo-relative paths it references; optional `project` scopes it to one project (the current one by default when `files` is given, otherwise global); optional `workspace_id` / `agent_id` scope it. The SessionStart index lists project memories with importance ≥ 3 (≥ 2 when embeddings are on) and globals with importance ≥ 4, up to `injectTopN` — a lower-importance global surfaces through `recall` and prompt recall. |
 | `forget` | Delete a memory by ID. Cascades to relations. |
+| `stale` | List active memories a commit flagged stale (code-anchored invalidation), newest first, with `stale_flagged_at` and `stale_reason`. Optional `project` (its memories plus globals), `limit` (default 50, max 200), `includePrivate`. |
 | `revalidate` | Clear a memory's stale flag after review — the code changed but the memory is still correct. Use `forget` when it's actually wrong. |
 | `relate` | Create a typed relationship between two memories. |
 | `graph` | Traverse the memory graph from seed nodes. |
@@ -22,6 +23,7 @@ If you ever need to call them yourself (e.g. from a custom hook or script), this
 | `context_items` | List context items by type (goal/decision/progress/gotcha). `project` is optional. |
 | `context_add` | Record a goal, decision, gotcha, or progress note for a project. `project` is optional. |
 | `proposals` | List, accept, or reject memories proposed by end-of-session evaluation. |
+| `stats` | Counts over the store, or over one `project` plus globals: `active`, `byStatus`, `byCategory`, `byImportance`, `stale`, `private`, `embedded` (active memories with a vector; `0` means recall is full-text only) and `pendingProposals`. |
 
 ### Optional `project`
 
@@ -57,7 +59,7 @@ Every tool carries a `title` and MCP [tool annotations](https://modelcontextprot
 
 | Tool | `readOnlyHint` | `destructiveHint` | `idempotentHint` |
 |------|:-:|:-:|:-:|
-| `recall`, `context`, `context_items`, `graph`, `admin_audit` | ✅ | — | — |
+| `recall`, `get`, `context`, `context_items`, `graph`, `admin_audit`, `stale`, `stats` | ✅ | — | — |
 | `learn`, `context_add` | ❌ | ❌ | ❌ |
 | `relate`, `revalidate` | ❌ | ❌ | ✅ |
 | `forget` | ❌ | ✅ | ✅ |

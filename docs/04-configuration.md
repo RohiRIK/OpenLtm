@@ -39,7 +39,7 @@ still read (and written in place) when the new file does not exist. See
 
 ## Embeddings
 
-Default is local llama.cpp. OpenLTM does not download a model. Start a server, then leave `LTM_EMBED_PROVIDER` unset:
+Default is local llama.cpp. OpenLTM does not download a model. Start a server, then leave `LTM_EMBED_PROVIDER` unset ([step-by-step setup](15-local-embeddings.md), including running it as a service; `/openltm:doctor` checks it):
 
 ```bash
 llama-server -m bge-m3.gguf --embeddings --pooling mean --port 8080
