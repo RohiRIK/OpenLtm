@@ -5,6 +5,16 @@
 ### Added
 - **One-click release.** Actions → *Release (one click)* on `main` checks that every version reference matches, the changelog has the section, the version is not tagged yet and CI passed on that commit, then tags it, creates the GitHub Release, dispatches Publish at the tag (npm, then ClawHub in the same run, so no separate ClawHub dispatch), and opens a PR pinning the repo's Hermes catalog entry to the tag. No more tagging from a local checkout, which once tagged an old commit (v2.18.1).
 
+### Upgrade notes from 2.19.0
+
+Highlights from the 2.20.0–2.21.1 entries below for readers upgrading from 2.19.0.
+
+- **OpenCode V2.** The OpenCode plugin now runs on OpenCode V2 (`@opencode/plugin` 2.0.32) and no longer loads on OpenCode 1.x; OpenCode 1.x users should pin `@rohirik/opencode-ltm@2.19.0`.
+- **Migration checksum recovery.** Known earlier texts of migrations 009, 015, 017, 023 and 027 are recognized and re-recorded with the current checksum; those edits did not change the resulting schema. Other checksum mismatches still fail closed. After reviewing a mismatch, `/openltm:admin migrate --accept-checksums` backs the database up and re-records checksums without running migration SQL or changing memory data; `migrate status` lists mismatched versions.
+- **Hermes memory origin and provenance.** From 2.21.0, `learn` accepts `origin`, defaults new writes to `agent-observation`, and `recall` returns it; restating a memory with `owner-statement` upgrades its origin. Hermes adds the nullable origin column to its own databases, leaving existing rows unknown, and records provenance when core’s `memory_provenance` table exists. Core migration 030 also backfills session-end extractions as agent observations. Origin records a claim’s source, not permission to act.
+- **Hermes memory provider tool calls.** From 2.20.1, the Hermes memory provider prompt says its tools are direct provider tools, not routed through `tool_call` or imported in `execute_code`, and a fact counts as saved only after a tool receipt returns its memory ID.
+- **Release versus Hermes catalog availability.** Publishing to npm and ClawHub does not update the upstream Hermes catalog. The one-click release workflow opens a PR updating the catalog copy in `RohiRIK/OpenLtm`; a separate, manual re-pin PR must be reviewed and merged in `NousResearch/hermes-agent` before its catalog offers the new release. `bun run catalog:drift` checks OpenLTM’s own catalog copy against the latest `v*` release tag; it does not prove the upstream catalog is current.
+
 ## [2.21.0] — 2026-10-24
 
 ### Added
