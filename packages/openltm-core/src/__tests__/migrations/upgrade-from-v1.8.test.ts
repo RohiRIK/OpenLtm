@@ -9,9 +9,11 @@ import { Database } from "bun:sqlite";
 import { readFileSync } from "fs";
 import { join } from "path";
 import { runPendingMigrations } from "../../migrations.js";
+import { migrateDb } from "../../shared-db.js";
 
 const OLD_SCHEMA = readFileSync(join(import.meta.dir, "fixtures", "schema-v1.8.0.sql"), "utf-8");
-const CURRENT_SCHEMA = readFileSync(join(import.meta.dir, "..", "..", "schema.sql"), "utf-8");
+const SCHEMA_PATH = join(import.meta.dir, "..", "..", "schema.sql");
+const CURRENT_SCHEMA = readFileSync(SCHEMA_PATH, "utf-8");
 
 /** name → column list (tables) or object type (index, trigger, view). */
 function shape(db: Database): Record<string, string> {
@@ -48,13 +50,18 @@ describe("upgrade from the v1.8.0 schema", () => {
     db.close();
   });
 
-  // Known bug: initDb()/getDb() exec the current schema.sql BEFORE migrations,
-  // and its CREATE INDEX on memories(stale_flagged_at) fails on a v1.8.0 table
-  // ("no such column: stale_flagged_at"). Flip to `it` once fixed.
-  it.failing("initDb's order (current schema.sql, then migrations) opens a v1.8.0 database", async () => {
+  // The current schema.sql indexes memories(stale_flagged_at), a column a v1.8.0
+  // table lacks until migration 023: migrateDb (initDb's path) must still open it.
+  it("migrateDb (initDb's schema.sql + migrations) opens a v1.8.0 database", async () => {
+    const fresh = new Database(":memory:");
+    await migrateDb(fresh, SCHEMA_PATH);
+
     const db = oldDb();
-    db.exec(CURRENT_SCHEMA);
-    await runPendingMigrations(db);
+    await migrateDb(db, SCHEMA_PATH);
+
+    expect(shape(db)).toEqual(shape(fresh));
+    expect(db.query("SELECT COUNT(*) AS n FROM memories").get()).toEqual({ n: 1 });
+    fresh.close();
     db.close();
   });
 });

@@ -1236,7 +1236,7 @@ export function forget(input: { id: number; reason?: string; skipExport?: boolea
   if (!input.skipExport) exportMarkdown();
 }
 
-export function getSimilarMemories(
+export function getSimilarMemoriesByVec(
   db: Database,
   queryVec: Float32Array,
   opts: { projectScope?: string; limit?: number; minImportance?: number }

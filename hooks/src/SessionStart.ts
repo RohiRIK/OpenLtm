@@ -19,7 +19,7 @@ import { trimSummary } from "../lib/summaryTrim.js";
 import { recordInjectedIds } from "../lib/promptRecall.js";
 import { applyInjectTopN } from "../lib/injectTopN.js";
 import { findLtmHooksInUserSettings, userSettingsPath } from "../lib/settingsHooks.js";
-import { getContextMerge, getSimilarMemories, getContextMergeWithGraph,
+import { getContextMerge, getSimilarMemoriesByVec, getContextMergeWithGraph,
          embedText, getDb, listMemoryIdsMissingEmbedding, exportContextMarkdown,
          waitForInit, getRecentConflicts, listStagedConflicts, emitEvent, listPendingProposals,
          scrubForEgress, frameRecalledMemory } from "@rohirik/openltm-core";
@@ -87,8 +87,8 @@ async function buildLtmSection(
       // Semantic matches lead; the decay-ranked merge fills the rest, so memories
       // without an embedding (learned while the provider was down) still appear.
       const db = getDb();
-      const semGlobals = getSimilarMemories(db, queryVec, { minImportance: 4, limit: Math.ceil(topN / 3) });
-      const semScoped  = getSimilarMemories(db, queryVec, { projectScope: project, minImportance: 2, limit: topN });
+      const semGlobals = getSimilarMemoriesByVec(db, queryVec, { minImportance: 4, limit: Math.ceil(topN / 3) });
+      const semScoped  = getSimilarMemoriesByVec(db, queryVec, { projectScope: project, minImportance: 2, limit: topN });
       process.stderr.write(`[SessionStart] Semantic LTM: ${semGlobals.length} globals, ${semScoped.length} scoped\n`);
       globals = uniqueById([...semGlobals, ...globals]);
       scoped  = uniqueById([...semScoped, ...scoped]);

@@ -44,6 +44,10 @@ Publishing the `@rohirik/*` npm packages is automated and **tokenless** (npm OID
 
 No `NPM_TOKEN` or ClawHub token is stored — auth is via GitHub OIDC, configured as a Trusted Publisher per package on npmjs.com and on ClawHub. See `CONTRIBUTING.md` and `docs/11-publishing.md` for the full flow.
 
+## Schema & Migrations
+
+New migrations go in `packages/openltm-core/migrations/` (the only copy; `schema.sql` is `packages/openltm-core/src/schema.sql`). Touching a migration → check `hermes/schema.sql` too.
+
 ## Cache Sync
 
 During local development, the plugin system reads from the cache at

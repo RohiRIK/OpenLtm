@@ -4,7 +4,7 @@ import { join } from "path";
 import { Database } from "bun:sqlite";
 
 const dbPath = `/tmp/test-ltm-mcp-tools-${process.pid}-${Date.now()}.db`;
-const SCHEMA_PATH = join(import.meta.dir, "..", "..", "src", "schema.sql");
+const SCHEMA_PATH = join(import.meta.dir, "..", "..", "packages", "openltm-core", "src", "schema.sql");
 
 let learn: (input: import("@rohirik/openltm-core").LearnInput) => import("@rohirik/openltm-core").LearnResult;
 let recall: (input?: import("@rohirik/openltm-core").RecallInput) => Promise<import("@rohirik/openltm-core").MemoryWithRelations[]>;

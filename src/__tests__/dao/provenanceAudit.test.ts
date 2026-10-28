@@ -8,7 +8,7 @@ import { readFileSync, unlinkSync } from "fs";
 import { join } from "path";
 
 const dbPath = `/tmp/test-ltm-prov-dao-${process.pid}-${Date.now()}.db`;
-const schemaPath = join(import.meta.dir, "..", "..", "..", "src", "schema.sql");
+const schemaPath = join(import.meta.dir, "..", "..", "..", "packages", "openltm-core", "src", "schema.sql");
 
 let insertProvenance: typeof import("@rohirik/openltm-core").insertProvenance;
 let insertAudit: typeof import("@rohirik/openltm-core").insertAudit;

@@ -8,8 +8,8 @@ import { readFileSync, unlinkSync } from "fs";
 import { join } from "path";
 
 const dbPath = `/tmp/test-dao-embeddings-${process.pid}-${Date.now()}.db`;
-const schemaPath = join(import.meta.dir, "..", "..", "..", "src", "schema.sql");
-const mig010Path = join(import.meta.dir, "..", "..", "..", "migrations", "010_memory_embeddings_split.sql");
+const schemaPath = join(import.meta.dir, "..", "..", "..", "packages", "openltm-core", "src", "schema.sql");
+const mig010Path = join(import.meta.dir, "..", "..", "..", "packages", "openltm-core", "migrations", "010_memory_embeddings_split.sql");
 
 let db: Database;
 let mem1Id: number;

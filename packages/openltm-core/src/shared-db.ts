@@ -11,6 +11,7 @@ import { runPendingMigrations } from "./migrations.js";
 import { writeQueue } from "./lib/writeQueue.js";
 import { ensureCustomSqlite, loadExtensions, getCapabilities } from "./extensions.js";
 import { syncVecIndex } from "./vec/index.js";
+import { acquireJanitorLock } from "./janitor/lock.js";
 import type { LtmCoreConfig } from "./adapterTypes.js";
 
 export let DB_PATH = getDbPath();
@@ -44,15 +45,45 @@ export async function initDb(opts?: { dbPath?: string; schemaPath?: string }): P
   // SQLITE_BUSY while another process is writing.
   db.exec("PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
   loadExtensions(db);
-  // Apply schema.sql first (CREATE IF NOT EXISTS — safe for fresh + existing DBs)
-  db.exec(readFileSync(SCHEMA_PATH, "utf-8"));
-  // Then run versioned migrations (idempotent — skips already-applied versions)
-  await runPendingMigrations(db);
+  await migrateDb(db);
   // Index embeddings the vec0 index is missing: a DB that predates vec wiring,
   // or vectors the Hermes plugin wrote to a shared DB. No-op when vec is
   // unavailable or nothing is missing.
   if (getCapabilities().vec) syncVecIndex(db);
   return db;
+}
+
+/**
+ * Bring `db` to the current schema: schema.sql (CREATE IF NOT EXISTS), then the
+ * pending versioned migrations. A file database is migrated under a
+ * cross-process lock (`<db>.migrate.lock`), so processes opening a brand-new
+ * database at once do not both run the same migrations.
+ */
+export async function migrateDb(db: Database, schemaPath: string = SCHEMA_PATH): Promise<void> {
+  const file = db.filename;
+  let release = (): void => {};
+  if (file && file !== ":memory:") {
+    // Waits for the holder; a lock left by a dead process is reclaimed.
+    for (;;) {
+      const lock = acquireJanitorLock(file, { lockPath: `${file}.migrate.lock`, maxAgeMs: 10 * 60_000 });
+      if (lock.acquired) { release = lock.release; break; }
+      await Bun.sleep(25);
+    }
+  }
+  try {
+    const schema = readFileSync(schemaPath, "utf-8");
+    try {
+      db.exec(schema);
+    } catch {
+      // A database from an older release: schema.sql indexes columns that only a
+      // later migration adds (e.g. stale_flagged_at). Migrate it first.
+      await runPendingMigrations(db);
+      db.exec(schema);
+    }
+    await runPendingMigrations(db);
+  } finally {
+    release();
+  }
 }
 
 /** Path of the database this process opens (after configure()/initDb overrides). */
@@ -89,7 +120,8 @@ export function getDb(): Database {
     _db = new Database(DB_PATH, { create: true });
     _db.exec("PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
     loadExtensions(_db);
-    _db.exec(readFileSync(SCHEMA_PATH, "utf-8"));
+    // An older database fails schema.sql until migrated; initDb (above) does that.
+    try { _db.exec(readFileSync(SCHEMA_PATH, "utf-8")); } catch { /* old DB */ }
   }
   return _db;
 }

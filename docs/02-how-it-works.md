@@ -127,7 +127,7 @@ commands/             4 slash commands
 skills/               5 Claude Code skills
 scripts/              install-wiring.ts, update-wiring.ts
 graph-app/            Next.js memory graph visualizer (port 7332)
-migrations/           SQL schema migrations
+packages/openltm-core/migrations/  SQL schema migrations (schema.sql in packages/openltm-core/src/)
 .claude-plugin/       Plugin manifest (plugin.json)
 docs/                 This documentation
 CLAUDE.md             Loaded by Claude — tool reference

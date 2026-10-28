@@ -2,13 +2,13 @@
 export type { LtmCoreConfig, LtmAdapterContext, LtmAdapterOptions } from "./adapterTypes.js";
 
 // DB singleton + configuration
-export { getDb, initDb, configure, waitForInit, _setDbForTesting, withRetry, DB_PATH,
+export { getDb, initDb, migrateDb, configure, waitForInit, _setDbForTesting, withRetry, DB_PATH,
          getSetting, setSetting, getAllSettings, getConfiguredDbPath } from "./shared-db.js";
 export { configureCore, configureDocs } from "./db.js";
 
 // Core memory operations
 export {
-  learn, recall, getMemoryById, forget, relate, getSimilarMemories,
+  learn, recall, getMemoryById, forget, relate, getSimilarMemoriesByVec,
   getContextMerge, getContextMergeWithGraph, computeDecayScore,
   exportMarkdown, exportGraphJson, flagStaleByPaths, revalidate,
 } from "./db.js";

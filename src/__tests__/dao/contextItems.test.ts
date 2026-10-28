@@ -5,7 +5,7 @@ import { join } from "path";
 
 // Unique path per process+timestamp to avoid collisions when tests run in parallel
 const dbPath = `/tmp/test-ltm-dao-${process.pid}-${Date.now()}.db`;
-const schemaPath = join(import.meta.dir, "..", "..", "..", "src", "schema.sql");
+const schemaPath = join(import.meta.dir, "..", "..", "..", "packages", "openltm-core", "src", "schema.sql");
 
 // Deferred — imported after the DB is injected
 let listByProject: typeof import("@rohirik/openltm-core").listByProject;

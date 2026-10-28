@@ -5,7 +5,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { Database } from "bun:sqlite";
-import { mkdirSync, mkdtempSync, rmSync } from "fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
@@ -61,6 +61,27 @@ describe("multi-process writers on one WAL database", () => {
           .get(`concurrent writer ${w} note %`)!;
         expect({ w, n }).toEqual({ w, n: PER_WRITER });
       }
+    } finally {
+      db.close();
+    }
+  }, 60_000);
+
+  it("migrates a brand-new database once when 3 processes open it at once", async () => {
+    const dbPath = join(base, "fresh.db");
+    const freshEnv = { ...env, LTM_DB_PATH: dbPath };
+    const script = `const c = await import(${JSON.stringify(CORE)}); await c.waitForInit();`;
+    const procs = Array.from({ length: WRITERS }, () =>
+      Bun.spawn([process.execPath, "-e", script], { env: freshEnv, stdout: "pipe", stderr: "pipe" }));
+    const results = await Promise.all(procs.map(async (p) => ({
+      exitCode: await p.exited,
+      stderr: await new Response(p.stderr).text(),
+    })));
+    for (const r of results) expect(r).toEqual({ exitCode: 0, stderr: "" });
+
+    const db = new Database(dbPath, { readonly: true });
+    try {
+      const { n } = db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM _schema_version").get()!;
+      expect(n).toBe(readdirSync(join(import.meta.dir, "..", "..", "migrations")).filter((f) => f.endsWith(".sql")).length);
     } finally {
       db.close();
     }

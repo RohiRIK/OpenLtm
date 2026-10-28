@@ -14,7 +14,7 @@ const FAKE_CLAUDE_DIR = join(FAKE_HOME, ".claude");
 const PROJECT_CWD = join(TEST_DIR, basename(TEST_DIR));
 const PLUGIN_DATA = join(TEST_DIR, "plugin-data");
 const DB_PATH = join(TEST_DIR, "test-openltm.db");
-const SCHEMA_PATH = join(import.meta.dir, "..", "..", "src", "schema.sql");
+const SCHEMA_PATH = join(import.meta.dir, "..", "..", "packages", "openltm-core", "src", "schema.sql");
 
 // Real ~/.claude: the test wrapper passes the pre-isolation home; fall back to
 // homedir() (cached by Bun at process start) for `HOME=$(mktemp -d) bun test`.

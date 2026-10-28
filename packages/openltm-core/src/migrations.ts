@@ -12,7 +12,6 @@ import { createHash } from "crypto";
 import { getDbPath, getMigrationsDir } from "./paths.js";
 
 const DB_PATH = getDbPath();
-const MIGRATIONS_DIR = getMigrationsDir();
 
 function openDb(): Database {
   const db = new Database(DB_PATH, { create: true });
@@ -42,9 +41,10 @@ export interface MigrationFile {
 }
 
 export async function getMigrationFiles(): Promise<MigrationFile[]> {
-  if (!existsSync(MIGRATIONS_DIR)) return [];
-
-  const files = readdirSync(MIGRATIONS_DIR)
+  // Resolved per call, not at import: a missing directory throws, and importing
+  // core must not fail for callers that never migrate.
+  const dir = getMigrationsDir();
+  const files = readdirSync(dir)
     .filter((f) => f.endsWith(".sql"))
     .sort();
 
@@ -54,7 +54,7 @@ export async function getMigrationFiles(): Promise<MigrationFile[]> {
     if (!match) throw new Error(`Migration filename must match NNN_name.sql: ${file}`);
     const version = parseInt(match[1]!, 10);
     const name = match[2]!;
-    const filePath = join(MIGRATIONS_DIR, file);
+    const filePath = join(dir, file);
     const content = await Bun.file(filePath).text();
     results.push({ version, name, path: filePath, content });
   }

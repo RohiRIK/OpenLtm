@@ -98,18 +98,12 @@ export function getSchemaPath(): string {
 }
 
 /**
- * Locate the versioned SQL migrations.
- *
- * Order matters: the package-local `migrations/` copy is checked FIRST because
- * it is the one that ships inside the published npm tarball. The monorepo-root
- * path is only the development fallback. A published install that resolved to
- * the root path would silently find zero migrations and hand back a
- * column-incomplete database (missing `decay_score`, `workspace_id`, …).
+ * Locate the versioned SQL migrations (shipped inside the npm tarball). Throws
+ * when the directory is missing: carrying on would silently find zero
+ * migrations and hand back a column-incomplete database.
  */
 export function getMigrationsDir(): string {
-  const packaged = join(import.meta.dir, "..", "migrations");
-  if (existsSync(packaged)) return packaged;
-
-  // Development inside the monorepo.
-  return join(import.meta.dir, "..", "..", "..", "migrations");
+  const dir = join(import.meta.dir, "..", "migrations");
+  if (!existsSync(dir)) throw new Error(`[openltm] migrations directory not found: ${dir} (broken install?)`);
+  return dir;
 }

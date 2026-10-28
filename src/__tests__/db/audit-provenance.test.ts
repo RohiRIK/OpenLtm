@@ -8,7 +8,7 @@ import { readFileSync, unlinkSync } from "fs";
 import { join } from "path";
 
 const dbPath = `/tmp/test-ltm-audit-int-${process.pid}-${Date.now()}.db`;
-const schemaPath = join(import.meta.dir, "..", "..", "..", "src", "schema.sql");
+const schemaPath = join(import.meta.dir, "..", "..", "..", "packages", "openltm-core", "src", "schema.sql");
 
 let learn: typeof import("@rohirik/openltm-core").learn;
 let forget: typeof import("@rohirik/openltm-core").forget;

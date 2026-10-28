@@ -296,8 +296,9 @@ sequenceDiagram
 ## 5. Data Model Overview
 
 The persistent store is one SQLite file (`openltm.db`) under `${CLAUDE_PLUGIN_DATA}`.
-Schema lives in `src/schema.sql` and is extended idempotently by migrations in
-`src/shared-db.ts`. WAL mode is enabled for read-during-write concurrency.
+Schema lives in `packages/openltm-core/src/schema.sql` and is extended by the
+versioned migrations in `packages/openltm-core/migrations/` (run by
+`migrateDb()` in `packages/openltm-core/src/shared-db.ts`). WAL mode is enabled for read-during-write concurrency.
 
 ### 5.1 Tables
 

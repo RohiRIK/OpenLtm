@@ -11,7 +11,7 @@ import { join } from "path";
 
 const PROJECT_ROOT = join(import.meta.dir, "..", "..", "..");
 const HOOK_SCRIPT = join(PROJECT_ROOT, "hooks", "src", "UpdateContext.ts");
-const SCHEMA_PATH = join(PROJECT_ROOT, "src", "schema.sql");
+const SCHEMA_PATH = join(PROJECT_ROOT, "packages", "openltm-core", "src", "schema.sql");
 
 let tmp: string;
 let home: string;

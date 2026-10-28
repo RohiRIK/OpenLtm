@@ -162,7 +162,7 @@ The cross-session JTBDs the LTM plugin solves:
 ### 4.5 Storage & Registry
 
 - **Database:** SQLite at `${CLAUDE_PLUGIN_DATA}/openltm.db` (resolved by Claude Code).
-- **Schema:** `src/schema.sql`. Two main tables: `memories` (long-term, permanent) and
+- **Schema:** `packages/openltm-core/src/schema.sql`. Two main tables: `memories` (long-term, permanent) and
   `context_items` (short-term, project-scoped, auto-trimmed).
 - **Registry:** `~/.claude/projects/registry.json` — maps cwd → project name. Auto-populated by `SessionStart`.
 - **Cache mirror:** `~/.claude/plugins/cache/ltm/ltm/<version>/` — the plugin loader reads
