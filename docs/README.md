@@ -21,6 +21,7 @@ Read top to bottom for a guided path, or jump to what you need.
 | 14 | [Memory versus authority](memory-versus-authority.md) | Conceptual separation of LTM from action approval |
 | 15 | [Local embeddings](15-local-embeddings.md) | Turn on search by meaning with a local llama.cpp server, in five minutes |
 | 16 | [Collections](16-collections.md) | Structured types the agent defines (hosts, releases, endpoints) and the records in them |
+| 17 | [Security and privacy](17-security.md) | What stays local, what can leave the machine, secret scrubbing, PII masking, native-code loading |
 
 **Top-level docs** live at the repository root: [README](../README.md) · [Changelog](../CHANGELOG.md) · [Contributing](../CONTRIBUTING.md).
 

@@ -1,7 +1,7 @@
 {
   "name": "@rohirik/openltm-core",
   "version": "2.23.0",
-  "description": "Shared LTM storage engine — path-agnostic SQLite core used by Claude Code, OpenCode, and Pi adapters",
+  "description": "Local long-term memory engine for AI coding agents: SQLite with full-text and vector search, an MCP server and a CLI. Powers OpenLTM for Claude Code, OpenCode, Pi, OpenClaw and Hermes.",
   "type": "module",
   "main": "./src/index.ts",
   "exports": {
@@ -24,7 +24,24 @@
     "long-term-memory",
     "claude-code",
     "sqlite",
-    "memory"
+    "memory",
+    "ai-memory",
+    "agent-memory",
+    "llm-memory",
+    "persistent-memory",
+    "ai-agents",
+    "semantic-search",
+    "local-first",
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "fts5",
+    "sqlite-vec",
+    "embeddings",
+    "rag",
+    "llama-cpp",
+    "coding-agent",
+    "cli"
   ],
   "license": "MIT",
   "publishConfig": {

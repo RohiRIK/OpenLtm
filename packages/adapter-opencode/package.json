@@ -1,7 +1,7 @@
 {
   "name": "@rohirik/opencode-ltm",
   "version": "2.23.0",
-  "description": "LTM (Long-Term Memory) plugin for OpenCode \u2014 share memories with Claude Code and Pi",
+  "description": "Long-term memory plugin for OpenCode: persistent local SQLite memory with semantic recall, shared with Claude Code, Pi, OpenClaw and Hermes.",
   "type": "module",
   "main": "./src/index.ts",
   "exports": {
@@ -21,7 +21,16 @@
     "opencode",
     "ltm",
     "long-term-memory",
-    "plugin"
+    "plugin",
+    "opencode-plugin",
+    "ai-memory",
+    "agent-memory",
+    "llm-memory",
+    "persistent-memory",
+    "ai-agents",
+    "sqlite",
+    "semantic-search",
+    "local-first"
   ],
   "license": "MIT",
   "publishConfig": {
