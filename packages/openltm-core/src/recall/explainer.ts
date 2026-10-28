@@ -17,6 +17,8 @@ export interface RecallExplainer {
   recencyBoost: number;
   totalScore: number;
   temperature: MemoryTemperature;
+  /** The query's intent when one was detected ("recency" boosts newer hits, "aggregate" skips the adaptive cutoff). */
+  intent?: "recency" | "aggregate";
 }
 
 export interface ExplainerInput {
@@ -25,6 +27,7 @@ export interface ExplainerInput {
   last_recalled_at: string | null | undefined;
   ftsRank?: number | null;
   semanticScore?: number | null;
+  intent?: "recency" | "aggregate" | null;
 }
 
 function roundScore(value: number): number {
@@ -76,5 +79,6 @@ export function buildExplainer(input: ExplainerInput): RecallExplainer {
     recencyBoost,
     totalScore: roundScore(totalScore),
     temperature: computeTemperature(input.recall_count, input.last_recalled_at),
+    ...(input.intent ? { intent: input.intent } : {}),
   };
 }

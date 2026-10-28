@@ -11,11 +11,17 @@ export {
   learn, recall, getMemoryById, forget, relate, getSimilarMemories,
   getContextMerge, getContextMergeWithGraph, computeDecayScore,
   exportMarkdown, exportGraphJson, flagStaleByPaths, revalidate,
+  SUPERSEDE_RELATIONS, normalizeEventTime,
 } from "./db.js";
 export type {
   Memory, MemoryWithRelations, MemoryCategory, RelationshipType, MemoryRelation,
   LearnInput, LearnResult, RecallInput, DecayResult, FlagStaleResult,
+  SupersedeRelation, SupersedeKind, SupersedeOutcome,
 } from "./db.js";
+export { detectQueryIntent, recencyRanks, type QueryIntent } from "./recall/intent.js";
+export { adaptiveCutoff, matchStrengths, ADAPTIVE_DEFAULTS } from "./recall/adaptive.js";
+export { checkIntegrity, repairIntegrity } from "./integrity.js";
+export type { IntegrityCheck, IntegrityCheckId, IntegrityReport, IntegrityOptions, RepairResult } from "./integrity.js";
 
 // Context items
 export { addItem, getItems, getProjectContext, exportContextMarkdown, trimProgress, promote } from "./context.js";

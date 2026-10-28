@@ -12,7 +12,7 @@ import { homedir } from "os";
 import { spawnSync } from "child_process";
 import { Database } from "bun:sqlite";
 import { getDbPath, CLAUDE_DIR } from "./resolveProject.js";
-import { getMigrationFiles, findChecksumMismatches, loadConfig, loadProvider, llamaCppBaseUrl } from "@rohirik/openltm-core";
+import { getMigrationFiles, findChecksumMismatches, loadConfig, loadProvider, llamaCppBaseUrl, checkIntegrity } from "@rohirik/openltm-core";
 
 const HOME = homedir();
 // Keep in sync with the candidate list in hooks/bin/run-hook.sh
@@ -203,6 +203,36 @@ async function checkDatabase(): Promise<void> {
     }
   } catch {
     warn("Could not read _schema_version table", "Run /openltm:admin migrate up to ensure schema is up to date");
+  } finally {
+    db?.close();
+  }
+}
+
+/**
+ * Index and row-level integrity (same checks as `ltm doctor`). Read-only: the
+ * FTS integrity-check command needs a writable handle but writes nothing.
+ */
+async function checkDatabaseIntegrity(): Promise<void> {
+  section("Database integrity");
+  const dbPath = getDbPath();
+  if (!existsSync(dbPath)) return;
+  let db: InstanceType<typeof Database> | undefined;
+  try {
+    db = new Database(dbPath);
+    let model: string | null = null;
+    try {
+      const cfg = await loadConfig();
+      const provider = await loadProvider(cfg.embeddings);
+      model = provider.name === "disabled" ? null : provider.model;
+    } catch { /* no provider: skip the model check */ }
+    const report = checkIntegrity(db, { activeModel: model });
+    for (const c of report.checks) {
+      if (c.ok) ok(c.message);
+      else if (c.fix) fail(c.message, `Run: bunx @rohirik/openltm-core doctor --fix (backs up first; ${c.fix})`);
+      else warn(c.message, "See docs/09-troubleshooting.md");
+    }
+  } catch (e) {
+    warn("Could not run the integrity checks", String(e));
   } finally {
     db?.close();
   }
@@ -535,6 +565,7 @@ console.log(`Plugin root: ${PLUGIN_ROOT}`);
 checkManifest();
 checkBun();
 await checkDatabase();
+await checkDatabaseIntegrity();
 await checkEmbeddings();
 checkMcp();
 checkPluginHooks();

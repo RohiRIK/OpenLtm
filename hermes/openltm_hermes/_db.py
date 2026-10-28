@@ -68,7 +68,9 @@ CREATE TABLE IF NOT EXISTS memories (
   workspace_id TEXT,
   agent_id     TEXT,
   origin       TEXT CHECK(origin IS NULL OR origin IN (
-                 'owner-statement','agent-observation','external-source','proposal','historical-approval'))
+                 'owner-statement','agent-observation','external-source','proposal','historical-approval')),
+  occurred_at    TEXT,
+  supersede_kind TEXT CHECK(supersede_kind IS NULL OR supersede_kind IN ('updates','retracts'))
 );
 
 -- Context items table
@@ -230,6 +232,15 @@ def init_schema(conn: sqlite3.Connection) -> None:
             "ALTER TABLE memories ADD COLUMN origin TEXT CHECK(origin IS NULL OR origin IN ("
             "'owner-statement','agent-observation','external-source','proposal','historical-approval'))"
         )
+    # Same definitions as OpenLtm core's migration 032 (event time, supersede kind).
+    if "occurred_at" not in cols:
+        conn.execute("ALTER TABLE memories ADD COLUMN occurred_at TEXT")
+    if "supersede_kind" not in cols:
+        conn.execute(
+            "ALTER TABLE memories ADD COLUMN supersede_kind TEXT CHECK("
+            "supersede_kind IS NULL OR supersede_kind IN ('updates','retracts'))"
+        )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_memories_occurred_at ON memories (occurred_at)")
     # FTS and triggers may fail if already exist — run individually
     for sql in FTS_SQL.split(";"):
         sql = sql.strip()

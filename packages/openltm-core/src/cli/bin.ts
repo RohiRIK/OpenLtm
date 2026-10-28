@@ -41,6 +41,8 @@ function printHelp(): void {
       "                          evolve, archive, restore) — run 'collection --help'",
       "    record <cmd>          Records in a collection (list, get, put, archive,",
       "                          export) — run 'record --help'",
+      "    doctor [--fix]        Check the database (integrity, indexes, orphan rows,",
+      "                          stale vectors); --fix repairs after a backup",
       "    conflict [list]       List staged memory conflicts; resolve one with",
       "                          'conflict accept|reject|coexist <id>'",
       "    hook --name <event>   Lifecycle hook entrypoint (SessionStart prefill,",
@@ -103,6 +105,14 @@ async function main(): Promise<void> {
     }
     process.stdout.write(JSON.stringify({ ok, action, id }) + "\n");
     process.exit(ok ? 0 : 1);
+  }
+
+  // Sub-command: doctor — database health checks and safe repair
+  if (argv[0] === "doctor") {
+    const { runDoctorCommand } = await import("./doctor.js");
+    const result = await runDoctorCommand(argv.slice(1));
+    (result.exitCode === 0 ? process.stdout : process.stderr).write(result.output + "\n");
+    process.exit(result.exitCode);
   }
 
   // Sub-commands: collection / record — the owner's view of agent-defined collections

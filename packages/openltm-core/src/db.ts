@@ -18,6 +18,9 @@ import { insertProvenance, insertAudit, snapshotMemory, listProvenanceBatch } fr
 import type { ProvenanceSourceType } from "./dao/types.js";
 import type { LtmCoreConfig } from "./adapterTypes.js";
 import { tmpdir } from "os";
+import { supersede } from "./janitor/supersedes.js";
+import { detectQueryIntent, recencyRanks, type QueryIntent } from "./recall/intent.js";
+import { adaptiveCutoff, matchStrengths } from "./recall/adaptive.js";
 
 export { DB_PATH };
 /** Adapters can override via configureDocs() or LtmCoreConfig.docsDir. */
@@ -59,7 +62,17 @@ export interface Memory {
   stale_reason?: string | null;
   /** Where the claim came from; null = written before origin tracking. */
   origin?: MemoryOrigin | null;
+  /** When the fact became true or the event happened; null = unknown (use created_at). */
+  occurred_at?: string | null;
+  /** On a superseded row: replaced by a new value ('updates') or no longer true ('retracts'). */
+  supersede_kind?: SupersedeKind | null;
 }
+
+/** How a new memory relates to an older one it names in `learn({ supersedes })`. */
+export type SupersedeRelation = "updates" | "extends" | "retracts";
+/** The two relations that retire the older memory. */
+export type SupersedeKind = Exclude<SupersedeRelation, "extends">;
+export const SUPERSEDE_RELATIONS: readonly SupersedeRelation[] = ["updates", "extends", "retracts"];
 
 export interface MemoryRelation {
   id: number;
@@ -99,6 +112,15 @@ export interface LearnInput {
   skipExport?: boolean;
   /** Where the claim came from. Default agent-observation; null = unknown (bulk imports of old notes). */
   origin?: MemoryOrigin | null;
+  /** When the fact became true or the event happened (date or date-time). Default unknown. */
+  occurred_at?: string;
+  /**
+   * An older memory this one changes: 'updates' replaces its value, 'retracts'
+   * says it is no longer true (both retire it as superseded), 'extends' adds
+   * to it (both stay active, linked by a 'refines' relation). An agent cannot
+   * retire an owner statement: that request is recorded as 'contradicts'.
+   */
+  supersedes?: { id: number; relation?: SupersedeRelation };
   /** Audit/provenance — all optional; safe to omit from existing callers. */
   actor?: string;
   sessionId?: string;
@@ -119,6 +141,16 @@ export interface LearnResult {
   score?: number;
   /** Id of the near-duplicate candidate (reinforced or noted on create). */
   matched_id?: number;
+  /** Outcome of `supersedes`, when it was given. */
+  supersede?: SupersedeOutcome;
+}
+
+export interface SupersedeOutcome {
+  id: number;
+  relation: SupersedeRelation;
+  applied: boolean;
+  /** Why it was not applied: not_found, not_active, self, owner_statement_protected. */
+  reason?: string;
 }
 
 export interface RecallInput {
@@ -146,6 +178,19 @@ export interface RecallInput {
    * is false or the embeddings provider is "disabled".
    */
   semantic?: boolean;
+  /**
+   * Trim weak hits from a query recall: keep hits that match at least 30% as
+   * strongly as the best one (never fewer than 3). Default true; skipped for
+   * "list all / how many" queries. false returns up to `limit` as before.
+   */
+  adaptive?: boolean;
+  /**
+   * Point-in-time recall: memories known and not yet superseded at this date
+   * (YYYY-MM-DD or date-time). Event time (occurred_at) is used when set, else
+   * created_at. Returns rows superseded later, with their supersede fields, and
+   * does not count as a recall of them.
+   */
+  as_of?: string;
 }
 
 
@@ -557,6 +602,12 @@ export const RANK_WEIGHTS = {
    * while a hit from both retrievers (+20) outranks a single-retriever hit.
    */
   relevance: 20,
+  /**
+   * Boost for the newest candidate of a "current / latest" query (linear in
+   * recency rank, 0 for the oldest): about 5 relevance ranks, so the newest of
+   * several close matches wins but a far weaker match does not.
+   */
+  recencyIntent: 1.5,
 } as const;
 
 /** Reciprocal Rank Fusion constant (Cormack et al. 2009). */
@@ -624,6 +675,8 @@ export function rankRecallResults(
     sortBy?: "relevance" | "created" | "last_recalled" | "recall_count";
     /** id → fused query relevance (fuseRecallRankings). Absent ids score 0. */
     relevance?: ReadonlyMap<number, number>;
+    /** id → recency in [0,1] (1 = newest); set for "current / latest" queries. */
+    recency?: ReadonlyMap<number, number>;
   },
 ): Memory[] {
   const rows = [...candidates];
@@ -654,8 +707,10 @@ export function rankRecallResults(
     const stale = memory.stale_flagged_at ? RANK_WEIGHTS.stalePenalty : 0;
     const relevance = relevanceMap ? (relevanceMap.get(memory.id) ?? 0) * RANK_WEIGHTS.relevance : 0;
     const decayTerm = relevanceMap ? Math.min(1, decay / 5) : decay;
+    const recency = (opts.recency?.get(memory.id) ?? 0) * RANK_WEIGHTS.recencyIntent;
     const score =
       relevance +
+      recency +
       decayTerm * RANK_WEIGHTS.decay +
       importance * RANK_WEIGHTS.importance +
       projectScope * RANK_WEIGHTS.projectScope +
@@ -748,6 +803,7 @@ export function learn(input: LearnInput): LearnResult {
 
   const actor = input.actor ?? "mcp:ltm_learn";
   const origin = input.origin === undefined ? DEFAULT_ORIGIN : input.origin;
+  const occurredAt = input.occurred_at ? normalizeEventTime(db, input.occurred_at) : null;
 
   if (reinforceTarget) {
     const existing = reinforceTarget;
@@ -758,8 +814,9 @@ export function learn(input: LearnInput): LearnResult {
       `UPDATE memories SET confirm_count=confirm_count+1, last_confirmed_at=datetime('now'),
        confidence=MIN(1.0, confidence+0.05),
        stale_flagged_at=NULL, stale_reason=NULL,
+       occurred_at=COALESCE(occurred_at, ?),
        origin=CASE WHEN ? = 'owner-statement' THEN 'owner-statement' ELSE origin END WHERE id=?`,
-      [origin, existing.id]
+      [occurredAt, origin, existing.id]
     );
     if (input.tags) attachTags(db, existing.id, input.tags);
     if (input.files) attachFiles(db, existing.id, input.files, existing.project_scope ?? input.project_scope ?? null);
@@ -781,6 +838,7 @@ export function learn(input: LearnInput): LearnResult {
     const updated = db.query<{ confirm_count: number; origin: MemoryOrigin | null }, [number]>(
       `SELECT confirm_count, origin FROM memories WHERE id=?`
     ).get(existing.id);
+    const supersedeOutcome = input.supersedes ? applySupersede(db, existing.id, input.supersedes, origin) : undefined;
     return {
       action: "reinforced",
       id: existing.id,
@@ -789,6 +847,7 @@ export function learn(input: LearnInput): LearnResult {
       matched_by: exact ? "exact" : near!.matched_by,
       score: exact ? 1 : near!.score,
       matched_id: existing.id,
+      ...(supersedeOutcome ? { supersede: supersedeOutcome } : {}),
     };
   }
 
@@ -802,8 +861,8 @@ export function learn(input: LearnInput): LearnResult {
   const title = agentTitle || deriveTitle(content);
 
   const result = db.run(
-    `INSERT INTO memories (content, title, category, importance, confidence, source, project_scope, dedup_key, created_by, workspace_id, agent_id, origin)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO memories (content, title, category, importance, confidence, source, project_scope, dedup_key, created_by, workspace_id, agent_id, origin, occurred_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       content,
       title,
@@ -817,6 +876,7 @@ export function learn(input: LearnInput): LearnResult {
       input.workspace_id ?? null,
       input.agent_id ?? null,
       origin,
+      occurredAt,
     ]
   );
 
@@ -847,6 +907,7 @@ export function learn(input: LearnInput): LearnResult {
     });
   });
 
+  const supersedeOutcome = input.supersedes ? applySupersede(db, newId, input.supersedes, origin) : undefined;
   if (!skipExport) exportMarkdown();
 
   // Embedding generation: prefer the durable Honker queue (a long-lived worker
@@ -879,7 +940,70 @@ export function learn(input: LearnInput): LearnResult {
     ...(nearNote
       ? { matched_by: nearNote.matched_by, score: nearNote.score, matched_id: nearNote.memory.id }
       : {}),
+    ...(supersedeOutcome ? { supersede: supersedeOutcome } : {}),
   };
+}
+
+/**
+ * Normalise an event time to SQLite's "YYYY-MM-DD HH:MM:SS" (UTC), the format
+ * created_at uses, so the two compare as strings. A bare date stays a date at
+ * midnight. Throws on anything SQLite cannot read as a date.
+ */
+export function normalizeEventTime(db: Database, value: string): string {
+  const v = value.trim();
+  const row = db.query<{ t: string | null }, [string]>(`SELECT datetime(?) AS t`).get(v);
+  if (!row?.t) throw new Error(`Invalid date "${value}": use YYYY-MM-DD or an ISO 8601 date-time`);
+  return row.t;
+}
+
+/**
+ * Point-in-time bound for `recall({ as_of })`: a bare date means the end of
+ * that day. Same storage format as normalizeEventTime.
+ */
+export function normalizeAsOf(db: Database, value: string): string {
+  const v = value.trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(v) ? normalizeEventTime(db, `${v} 23:59:59`) : normalizeEventTime(db, v);
+}
+
+/**
+ * Apply `learn({ supersedes })`. 'updates' / 'retracts' retire the older memory
+ * (status superseded, kind recorded); 'extends' links both with 'refines'.
+ * An owner statement is never retired by a claim of another origin: the link
+ * is recorded as 'contradicts' instead, so the conflict stays visible.
+ */
+function applySupersede(
+  db: Database,
+  newId: number,
+  target: { id: number; relation?: SupersedeRelation },
+  origin: MemoryOrigin | null,
+): SupersedeOutcome {
+  const relation = target.relation ?? "updates";
+  const base = { id: target.id, relation };
+  if (target.id === newId) return { ...base, applied: false, reason: "self" };
+  const old = db.query<{ status: string; origin: MemoryOrigin | null }, [number]>(
+    `SELECT status, origin FROM memories WHERE id=?`
+  ).get(target.id);
+  if (!old) return { ...base, applied: false, reason: "not_found" };
+  if (old.status !== "active") return { ...base, applied: false, reason: "not_active" };
+  if (relation === "extends") {
+    relate({ source_id: newId, target_id: target.id, relationship_type: "refines" });
+    return { ...base, applied: true };
+  }
+  if (old.origin === "owner-statement" && origin !== "owner-statement") {
+    relate({ source_id: newId, target_id: target.id, relationship_type: "contradicts" });
+    return { ...base, applied: false, reason: "owner_statement_protected" };
+  }
+  const beforeSnap = snapshotMemory(db, target.id);
+  supersede(newId, target.id, false, relation);
+  tryAudit(() => {
+    const afterSnap = snapshotMemory(db, target.id);
+    insertAudit(db, {
+      memory_id: target.id, op: "update", actor: "learn:supersede",
+      before_json: beforeSnap ? JSON.stringify(beforeSnap) : null,
+      after_json: afterSnap ? JSON.stringify(afterSnap) : null,
+    });
+  });
+  return { ...base, applied: true };
 }
 
 // ── Recall query building + hybrid retrieval ─────────────────────────────────
@@ -997,7 +1121,8 @@ async function semanticHits(query: string, topN: number, enabled: boolean | unde
 const RECALL_COLUMNS = `id, content, category, importance, confidence, source, project_scope, dedup_key,
               created_at, last_confirmed_at, last_used_at, confirm_count, status,
               first_recalled_at, last_recalled_at, recall_count, superseded_by, superseded_at,
-              workspace_id, agent_id, decay_score, stale_flagged_at, stale_reason, title, origin`;
+              workspace_id, agent_id, decay_score, stale_flagged_at, stale_reason, title, origin,
+              occurred_at, supersede_kind`;
 
 /** SQL ORDER BY for a recall without a query (no relevance signal to rank on). */
 function recallSqlOrder(sortBy: RecallInput["sort_by"]): string {
@@ -1045,7 +1170,16 @@ export async function recall(input: RecallInput = {}): Promise<MemoryWithRelatio
     filters.push("(agent_id IS NULL OR agent_id=?)");
     filterParams.push(input.agent_id);
   }
-  filters.push("status = 'active'");
+  // Point in time: rows known by then (event time when set) and not yet
+  // superseded by then. Otherwise only active rows.
+  const asOf = input.as_of ? normalizeAsOf(db, input.as_of) : null;
+  if (asOf) {
+    filters.push("COALESCE(occurred_at, created_at) <= ? AND (status = 'active' OR (status = 'superseded' AND superseded_at > ?))");
+    filterParams.push(asOf, asOf);
+  } else {
+    filters.push("status = 'active'");
+  }
+  const intent: QueryIntent | null = detectQueryIntent(input.query);
   // Exclude private-tagged memories in SQL (not after ranking), so they never take
   // a result slot from the limit and never get recall_count/last_recalled bumps.
   if (input.includePrivate !== true) {
@@ -1151,18 +1285,25 @@ export async function recall(input: RecallInput = {}): Promise<MemoryWithRelatio
     defaultSort: !relevance && (!input.sort_by || input.sort_by === "relevance"),
     sortBy: input.sort_by,
     relevance: relevance ?? undefined,
+    recency: relevance && intent === "recency" ? recencyRanks(candidateRows) : undefined,
   });
-  if (sorted.length > 0) {
-    const placeholders = sorted.map(() => "?").join(",");
+  // Adaptive cutoff: a query recall drops hits far weaker than its best match,
+  // unless the query asks for every instance ("list all", "how many").
+  const kept = relevance && input.adaptive !== false && intent !== "aggregate"
+    ? adaptiveCutoff(sorted, matchStrengths(sorted.map((m) => m.id), ftsRanks, semanticScores))
+    : sorted;
+  // A point-in-time look is history, not use: it does not bump recall stats.
+  if (kept.length > 0 && !asOf) {
+    const placeholders = kept.map(() => "?").join(",");
     db.run(
       `UPDATE memories SET last_used_at = datetime('now'), last_recalled_at = datetime('now'),
               recall_count = recall_count + 1,
               first_recalled_at = COALESCE(first_recalled_at, datetime('now'))
        WHERE id IN (${placeholders})`,
-      sorted.map(m => m.id),
+      kept.map(m => m.id),
     );
   }
-  let enriched = sorted.map(m => enrichMemory(db, m));
+  let enriched = kept.map(m => enrichMemory(db, m));
   enriched = filterPrivateMemories(enriched, input.includePrivate === true);
   if (input.includeProvenance) {
     const provMap = listProvenanceBatch(db, enriched.map(m => m.id));
@@ -1181,6 +1322,7 @@ export async function recall(input: RecallInput = {}): Promise<MemoryWithRelatio
         last_recalled_at: m.last_recalled_at,
         ftsRank: ftsRanks.get(m.id) ?? null,
         semanticScore: semanticScores.get(m.id) ?? null,
+        intent,
       });
     }
   }

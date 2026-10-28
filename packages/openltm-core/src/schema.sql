@@ -69,7 +69,10 @@ CREATE TABLE IF NOT EXISTS memories (
   stale_reason         TEXT,
   -- Where the claim came from (migration 030). NULL = unknown (pre-030 row).
   origin               TEXT CHECK(origin IS NULL OR origin IN (
-                         'owner-statement','agent-observation','external-source','proposal','historical-approval'))
+                         'owner-statement','agent-observation','external-source','proposal','historical-approval')),
+  -- Event time and supersede kind (migration 032). NULL occurred_at = unknown (use created_at).
+  occurred_at          TEXT,
+  supersede_kind       TEXT CHECK(supersede_kind IS NULL OR supersede_kind IN ('updates','retracts'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_memories_category   ON memories(category);

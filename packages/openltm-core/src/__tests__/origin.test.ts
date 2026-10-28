@@ -84,7 +84,8 @@ describe("migration 030", () => {
     v29.exec("PRAGMA foreign_keys=ON;");
     // A v29 database: no memories.origin, and none of the later tables (031 collections).
     const schema = readFileSync(SCHEMA_PATH, "utf-8")
-      .replace(/,\n\s*-- Where the claim came from[^\n]*\n\s*origin[^\n]*\n[^\n]*\)\)\n\);/, "\n);")
+      // origin (030) and the columns after it (032 occurred_at, supersede_kind)
+      .replace(/,\n\s*-- Where the claim came from[\s\S]*?\n\);/, "\n);")
       .split(/\n-- =+\n-- collections \+ records/)[0]!;
     expect(schema).not.toContain("origin");
     v29.exec(schema);

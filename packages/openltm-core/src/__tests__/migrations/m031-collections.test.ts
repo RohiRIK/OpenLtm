@@ -20,7 +20,7 @@ describe("migration 031", () => {
     expect(v30.query("SELECT 1 FROM sqlite_master WHERE name='collections'").get()).toBeNull();
 
     const results = await runPendingMigrations(v30);
-    expect(results.map((r) => r.version)).toEqual([31]);
+    expect(results.map((r) => r.version)[0]).toBe(31);
     for (const name of ["collections", "records", "records_fts", "records_ai", "records_ad", "records_au", "idx_collections_name_scope"]) {
       expect(v30.query("SELECT 1 FROM sqlite_master WHERE name=?").get(name)).not.toBeNull();
     }

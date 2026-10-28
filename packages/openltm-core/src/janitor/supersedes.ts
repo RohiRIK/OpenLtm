@@ -16,6 +16,8 @@ export function supersede(
   newId: number,
   oldId: number,
   transferTags = true,
+  /** Why the old memory is retired: replaced by a new value, or no longer true. */
+  kind: "updates" | "retracts" = "updates",
 ): void {
   const db = getDb();
 
@@ -34,9 +36,9 @@ export function supersede(
     );
     // Single source of truth: status + superseded_by/at + relation
     db.run(
-      `UPDATE memories SET status = 'superseded', superseded_by = ?, superseded_at = datetime('now')
+      `UPDATE memories SET status = 'superseded', superseded_by = ?, superseded_at = datetime('now'), supersede_kind = ?
        WHERE id = ?`,
-      [newId, oldId],
+      [newId, kind, oldId],
     );
     if (transferTags) {
       db.run(
@@ -108,7 +110,7 @@ export function unsupersede(newId: number, oldId: number): void {
 
     if ((stillSuperseded?.cnt ?? 0) === 0) {
       db.run(
-        `UPDATE memories SET status = 'active', superseded_by = NULL, superseded_at = NULL
+        `UPDATE memories SET status = 'active', superseded_by = NULL, superseded_at = NULL, supersede_kind = NULL
          WHERE id = ? AND status = 'superseded'`,
         [oldId],
       );

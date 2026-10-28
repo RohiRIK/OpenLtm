@@ -13,7 +13,7 @@ import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mc
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { learn, recall, getMemoryById, relate, forget, revalidate, type Memory } from "../db.js";
+import { learn, recall, getMemoryById, relate, forget, revalidate, SUPERSEDE_RELATIONS, type Memory, type SupersedeRelation } from "../db.js";
 import { getDb, waitForInit } from "../shared-db.js";
 import { queryAudit } from "../dao/provenanceAudit.js";
 import { getItems, getProjectContext } from "../context.js";
@@ -98,7 +98,12 @@ function compact(memories: unknown[]): unknown[] {
     const score = exp
       ? { temperature: exp.temperature, score: typeof exp.totalScore === "number" ? Math.round(exp.totalScore * 100) / 100 : undefined }
       : {};
-    return { id: mem.id, content, category: mem.category, importance: mem.importance, origin: mem.origin ?? null, tags: scrubMemoryPayload(mem.tags), project_scope: mem.project_scope, ...score, ...relations };
+    // Event time and supersede state only when set, so the common row stays small.
+    const temporal = {
+      ...(mem.occurred_at ? { occurred_at: mem.occurred_at } : {}),
+      ...(mem.status === "superseded" ? { status: "superseded", superseded_by: mem.superseded_by, superseded_at: mem.superseded_at, supersede_kind: mem.supersede_kind ?? "updates" } : {}),
+    };
+    return { id: mem.id, content, category: mem.category, importance: mem.importance, origin: mem.origin ?? null, tags: scrubMemoryPayload(mem.tags), project_scope: mem.project_scope, ...temporal, ...score, ...relations };
   });
 }
 
@@ -175,11 +180,18 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
         includeProvenance: z.boolean().optional().default(false).describe("Attach provenance chain to each result (off by default)"),
         includePrivate: z.boolean().optional().default(false).describe("Include memories tagged private (default false — private ≠ encrypted)"),
         includeRecords: z.boolean().optional().default(true).describe("Append up to 3 matching collection records (type: \"record\") after the memories (default true)"),
+        adaptive: z.boolean().optional().describe("Trim hits far weaker than the best match (default true; never below 3; skipped for 'list all / how many' queries). false = up to `limit`"),
+        as_of: z.string().optional().describe("Point-in-time recall (YYYY-MM-DD or date-time): what was known and not yet superseded then. Superseded rows come back with status, superseded_by and supersede_kind"),
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    async ({ query, project, limit, category, verbose, since, until, sort_by, workspace_id, agent_id, includeProvenance, includePrivate, includeRecords }) => {
-      const results = await recall({ query, project, limit, category, since, until, sort_by, workspace_id, agent_id, includeProvenance, includePrivate });
+    async ({ query, project, limit, category, verbose, since, until, sort_by, workspace_id, agent_id, includeProvenance, includePrivate, includeRecords, adaptive, as_of }) => {
+      let results: Awaited<ReturnType<typeof recall>>;
+      try {
+        results = await recall({ query, project, limit, category, since, until, sort_by, workspace_id, agent_id, includeProvenance, includePrivate, adaptive, as_of });
+      } catch (err) {
+        return errorResult((err as Error).message);
+      }
       // /openltm:health counts these ("Recall hits").
       if (results.length > 0) emitEvent({ hook: "MCP", event: "recall.hit", project, count: results.length, ts: new Date().toISOString() });
       const memories = verbose ? (scrubMemoryPayload(results) as unknown[]) : compact(results);
@@ -229,10 +241,16 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
         workspace_id: z.string().optional().describe("Workspace for this memory"),
         agent_id: z.string().optional().describe("Agent ID for this memory"),
         origin: z.enum(MEMORY_ORIGINS).optional().describe(ORIGIN_PARAM_DESCRIPTION),
+        occurred_at: z.string().optional().describe("When the fact became true or the event happened (YYYY-MM-DD or date-time), if it differs from now"),
+        supersedes: z.object({
+          id: z.number().int().describe("The older memory this one changes"),
+          relation: z.enum(SUPERSEDE_RELATIONS as [SupersedeRelation, ...SupersedeRelation[]]).optional()
+            .describe("updates (default): a new value replaces it. retracts: it is no longer true. Both retire it. extends: adds to it; both stay active"),
+        }).optional().describe("Set when this memory changes an older one. An owner statement is never retired by another origin: it is linked as contradicts instead"),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
-    async ({ content, title, category, importance, tags, files, project, workspace_id, agent_id, origin }) => {
+    async ({ content, title, category, importance, tags, files, project, workspace_id, agent_id, origin, occurred_at, supersedes }) => {
       // File anchors are repo-relative, so an anchored memory belongs to a project:
       // without one, a commit to the same path in any repo would flag it stale.
       const scope = project?.trim() || (files && files.length > 0 ? (await resolveProjectArg(undefined)) ?? undefined : undefined);
@@ -251,19 +269,26 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
         }
       }
 
-      const result = learn({
-        content,
-        title,
-        category: resolvedCategory,
-        importance,
-        tags,
-        files,
-        project_scope: scope,
-        workspace_id,
-        agent_id,
-        origin,
-        actor: "mcp:ltm_learn",
-      });
+      let result: ReturnType<typeof learn>;
+      try {
+        result = learn({
+          content,
+          title,
+          category: resolvedCategory,
+          importance,
+          tags,
+          files,
+          project_scope: scope,
+          workspace_id,
+          agent_id,
+          origin,
+          occurred_at,
+          supersedes,
+          actor: "mcp:ltm_learn",
+        });
+      } catch (err) {
+        return errorResult((err as Error).message);
+      }
 
       emitEvent({ hook: "MCP", event: "learn.write", project: scope, detail: result.action, ts: new Date().toISOString() });
       notify(`memory_stored: id=${result.id} category=${resolvedCategory}${categoriseSource ? ` (auto:${categoriseSource})` : ""} importance=${importance ?? 3} action=${result.action}`);

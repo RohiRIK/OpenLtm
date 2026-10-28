@@ -86,7 +86,10 @@ CREATE TABLE IF NOT EXISTS memories (
   -- Pre-computed decay score (migration 011). Janitor materializes it.
   decay_score          REAL    NOT NULL DEFAULT 1.0,
   -- Origin actor (migration 013). NULL until backfilled.
-  created_by           TEXT
+  created_by           TEXT,
+  -- Event time and supersede kind (migration 032). NULL occurred_at = unknown (use created_at).
+  occurred_at          TEXT,
+  supersede_kind       TEXT CHECK(supersede_kind IS NULL OR supersede_kind IN ('updates','retracts'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_memories_category   ON memories(category);
