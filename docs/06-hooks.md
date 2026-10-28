@@ -16,7 +16,7 @@ If a hook fails, run `/openltm:health` to diagnose.
 | `UserPromptSubmit` | Every prompt (5s) | Adds up to 5 memories relevant to the prompt. Full-text only, ~50ms, never repeats a memory within a session. |
 | `PostToolUse` | After a Bash call (10s) | When Claude runs a successful `git commit`, flags memories anchored to the committed files as stale. |
 | `UpdateContext` | `Stop` — after every assistant turn (10s) | Upserts **one** progress line per session in `context_items` (files written or edited so far). |
-| `EvaluateSession` | `SessionEnd` — once (60s) | Writes a session summary and queues memory proposals for review. |
+| `EvaluateSession` | `SessionEnd` — once (60s) | Writes a session summary; queues LLM memory proposals when `ltm.evaluateSessionLlm` is on. |
 | `SessionEnd` | `SessionEnd` — once | Spawns a detached `ltm janitor run --if-due`, at most once per 6h. No graph-server needed. Opt out with `LTM_JANITOR_ON_SESSION_END=0`. See [Janitor](13-janitor.md). |
 | `PreCompact` | Before compaction (30s) | Snapshots context to `context-summary.md` so it survives compaction. |
 
@@ -58,7 +58,7 @@ Runs after Claude makes a successful `git commit` (matcher `Bash`). It marks mem
 Claude Code fires `Stop` after **every** assistant turn, not when the session ends, so OpenLTM splits the work:
 
 - **`UpdateContext`** reads the transcript at `transcript_path` and upserts a single progress line for the current session, keyed on `session_id`. Later turns rewrite the same row, so the 20-entry progress history counts sessions, not turns. It prints nothing.
-- **`EvaluateSession`** runs once at `SessionEnd`. It writes a per-session summary to `${CLAUDE_PLUGIN_DATA}/learned/patterns/<date>-<session8>.md` and a rolling index to `${CLAUDE_PLUGIN_DATA}/learned/summary.md` — never into the plugin install directory. It queues proposals at `${CLAUDE_PLUGIN_DATA}/proposals/<session-id>.json` for `/openltm:memory propose` (or the MCP `proposals` tool). Proposals come from real tool errors only — harness errors, permission denials, user interrupts and rejections, routine git outcomes ("nothing to commit"), failures of read-only probes (`ls`, `cat`, `lsof`, `curl`, …) and one-off scripts (`bun --eval`, `node -e`, `python -c`, `sqlite3`), very short messages and duplicates are dropped, and the `Exit code N` prefix is removed — plus, when `ltm.evaluateSessionLlm` is on, an LLM pass over the assistant's text (capped at 45s). It also removes UserPromptSubmit's per-session dedupe state.
+- **`EvaluateSession`** runs once at `SessionEnd`. It writes a per-session summary to `${CLAUDE_PLUGIN_DATA}/learned/patterns/<date>-<session8>.md` and a rolling index to `${CLAUDE_PLUGIN_DATA}/learned/summary.md` — never into the plugin install directory. The summary's error list keeps real tool errors only — harness errors, permission denials, user interrupts and rejections, routine git outcomes ("nothing to commit"), failures of read-only probes (`ls`, `cat`, `lsof`, `curl`, …) and one-off scripts (`bun --eval`, `node -e`, `python -c`, `sqlite3`), very short messages and duplicates are dropped, and the `Exit code N` prefix is removed. Raw errors are never proposed as memories: proposals at `${CLAUDE_PLUGIN_DATA}/proposals/<session-id>.json` (for `/openltm:memory propose` or the MCP `proposals` tool) come only from an LLM pass over the assistant's text when `ltm.evaluateSessionLlm` is on (capped at 45s); with it off, nothing is queued. It also removes UserPromptSubmit's per-session dedupe state.
 
 ### Config keys
 

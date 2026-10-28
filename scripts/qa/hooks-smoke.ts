@@ -113,8 +113,10 @@ try {
   const patterns = existsSync(join(data, "learned", "patterns")) ? readdirSync(join(data, "learned", "patterns")) : [];
   check("SessionEnd writes the session summary under the plugin data dir", end.code === 0 && patterns.some((f) => f.endsWith("-sess-AAA.md")), patterns);
   check("nothing written into the plugin install dir", !existsSync(join(ROOT, "skills", "Learned", "patterns", patterns[0] ?? "none")));
-  const props = existsSync(join(data, "proposals", "sess-AAA.json")) ? readFileSync(join(data, "proposals", "sess-AAA.json"), "utf-8") : "";
-  check("SessionEnd proposes the real error, drops harness noise", props.includes("left-pad") && !props.includes("has not been read"), props);
+  const sessMd = patterns.find((f) => f.endsWith("-sess-AAA.md"));
+  const summaryMd = sessMd ? readFileSync(join(data, "learned", "patterns", sessMd), "utf-8") : "";
+  check("SessionEnd records the real error, drops harness noise", summaryMd.includes("left-pad") && !summaryMd.includes("has not been read"), summaryMd);
+  check("SessionEnd queues no raw-error proposals without the LLM flag", !existsSync(join(data, "proposals", "sess-AAA.json")));
   check("SessionEnd removes the prompt-recall dedupe state", !existsSync(join(tmp, "ltm-prompt-recall-sess-AAA.json")));
 
   // ── PreCompact → SessionStart(compact) ─────────────────────────────────────

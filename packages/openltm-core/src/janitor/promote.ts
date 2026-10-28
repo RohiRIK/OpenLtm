@@ -7,6 +7,14 @@ import { getDb, getSetting } from "../shared-db.js";
 import { normalizeKey } from "../dedup.js";
 import { scrubOrRefuse } from "../secretsScrubber.js";
 import { SETTING_KEYS, getDefault } from "./providers/types.js";
+import { deriveTitle } from "../db.js";
+import { DEFAULT_ORIGIN } from "../origin.js";
+import { insertAudit, snapshotMemory } from "../dao/provenanceAudit.js";
+
+/** Pending auto-promoted memories nobody reviewed within this many days are accepted. */
+export const AUTO_ACCEPT_DAYS = 7;
+/** Audit actor of janitor auto-accepts; SessionStart counts these rows. */
+export const AUTO_ACCEPT_ACTOR = "janitor:auto-accept";
 
 export interface PromoteResult {
   /** Number of context_items promoted to pending memories. */
@@ -92,9 +100,9 @@ export function runPromote(): PromoteResult {
 
     // Create a pending memory
     const insertResult = db.run(
-      `INSERT INTO memories (content, category, importance, confidence, source, project_scope, dedup_key, status)
-       VALUES (?, ?, ?, 0.8, 'auto-promote', ?, ?, 'pending')`,
-      [content, category, importance, item.project_name, dedupKey],
+      `INSERT INTO memories (content, title, category, importance, confidence, source, project_scope, dedup_key, status, origin)
+       VALUES (?, ?, ?, ?, 0.8, 'auto-promote', ?, ?, 'pending', ?)`,
+      [content, deriveTitle(content), category, importance, item.project_name, dedupKey, DEFAULT_ORIGIN],
     );
 
     const memoryId = Number(insertResult.lastInsertRowid);
@@ -115,7 +123,7 @@ export function runPromote(): PromoteResult {
  * Approve a pending memory — set status to 'active'.
  * Also updates the linked context_item status to 'promoted'.
  */
-export function approveMemory(memoryId: number): boolean {
+export function approveMemory(memoryId: number, actor = "approve"): boolean {
   const db = getDb();
   const mem = db
     .query<{ id: number; status: string }, [number]>(
@@ -125,13 +133,61 @@ export function approveMemory(memoryId: number): boolean {
 
   if (!mem || mem.status !== "pending") return false;
 
+  const before = snapshotMemory(db, memoryId);
   db.run("UPDATE memories SET status = 'active' WHERE id = ?", [memoryId]);
   db.run(
     "UPDATE context_items SET status = 'promoted' WHERE memory_id = ?",
     [memoryId],
   );
+  insertAudit(db, {
+    memory_id: memoryId,
+    op: "update",
+    actor,
+    before_json: before ? JSON.stringify(before) : null,
+    after_json: JSON.stringify(snapshotMemory(db, memoryId)),
+  });
 
   return true;
+}
+
+/**
+ * Accept pending auto-promoted memories older than AUTO_ACCEPT_DAYS (owner
+ * decision: unreviewed proposals otherwise rot in the inbox). Also backfills
+ * titles on untitled pending auto-promote rows written before runPromote set one.
+ */
+export function runAutoAccept(): { accepted: number } {
+  const db = getDb();
+  const untitled = db
+    .query<{ id: number; content: string }, []>(
+      `SELECT id, content FROM memories
+        WHERE status = 'pending' AND source = 'auto-promote' AND (title IS NULL OR title = '')`,
+    )
+    .all();
+  for (const m of untitled) db.run("UPDATE memories SET title = ? WHERE id = ?", [deriveTitle(m.content), m.id]);
+
+  const due = db
+    .query<{ id: number }, [string]>(
+      `SELECT id FROM memories
+        WHERE status = 'pending' AND source = 'auto-promote' AND created_at < datetime('now', ?)`,
+    )
+    .all(`-${AUTO_ACCEPT_DAYS} days`);
+  let accepted = 0;
+  for (const m of due) if (approveMemory(m.id, AUTO_ACCEPT_ACTOR)) accepted++;
+  return { accepted };
+}
+
+/** Ids of `project`'s memories the janitor auto-accepted in the last AUTO_ACCEPT_DAYS that are still active. */
+export function listRecentlyAutoAccepted(project: string): number[] {
+  return getDb()
+    .query<{ id: number }, [string, string, string]>(
+      `SELECT DISTINCT a.memory_id AS id FROM memory_audit a
+         JOIN memories m ON m.id = a.memory_id
+        WHERE a.actor = ? AND a.created_at >= datetime('now', ?)
+          AND m.status = 'active' AND m.project_scope = ?
+        ORDER BY a.memory_id`,
+    )
+    .all(AUTO_ACCEPT_ACTOR, `-${AUTO_ACCEPT_DAYS} days`, project)
+    .map(r => r.id);
 }
 
 /**

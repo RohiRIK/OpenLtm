@@ -14,7 +14,7 @@ export {
 } from "./db.js";
 export type {
   Memory, MemoryWithRelations, MemoryCategory, RelationshipType, MemoryRelation,
-  LearnInput, LearnResult, RecallInput, DecayResult, FlagStaleResult,
+  LearnInput, LearnResult, RecallInput, FlagStaleResult,
 } from "./db.js";
 
 // Context items
@@ -105,7 +105,7 @@ export type { PendingProposal } from "./proposals.js";
 export {
   runJanitor, runJanitorExclusive, getJanitorStatus, startAutoRun, stopAutoRun,
   runArchive, touchMemory,
-  approveMemory, getPendingMemories, rejectMemory,
+  approveMemory, getPendingMemories, rejectMemory, listRecentlyAutoAccepted,
   mergeMemories, parseDedupSource,
   supersede, stageContradictions, listStagedConflicts, detectContradictions, sanitizeStagingTerm,
   acceptStagedConflict, rejectStagedConflict, coexistStagedConflict,

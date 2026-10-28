@@ -349,9 +349,6 @@ const HALF_LIVES: Record<number, number> = {
   1: 14,
 };
 
-/** Memories below this score are soft-deprecated (not deleted). */
-const DEPRECATION_THRESHOLD = 0.25;
-
 /**
  * Compute effective relevance score.
  * score = importance × confidence × decay
@@ -381,44 +378,6 @@ export function updateLastUsed(ids: number[]): void {
   );
 }
 
-export interface DecayResult {
-  deprecated: number;
-  scored: number;
-}
-
-/**
- * Compute decay scores for all active memories. Deprecate those below threshold.
- * Protection: importance=5 OR confirm_count>=5 are never deprecated.
- */
-export function decayMemories(): DecayResult {
-  const db = getDb();
-
-  const rows = db.query<Memory, []>(
-    `SELECT * FROM memories WHERE status = 'active'`
-  ).all();
-
-  const toDeprecate = rows
-    .filter(mem => mem.importance !== 5)
-    .filter(mem =>
-      // Code-invalidated memories are decay-eligible regardless of recall
-      // frequency — this is the "high-traffic but stale" case decay can't
-      // otherwise see. Otherwise fall back to the recency/confirm guard.
-      mem.stale_flagged_at != null ||
-      (mem.confirm_count < 5 && computeDecayScore(mem) < DEPRECATION_THRESHOLD)
-    )
-    .map(mem => mem.id);
-
-  if (toDeprecate.length > 0) {
-    const placeholders = toDeprecate.map(() => "?").join(",");
-    db.run(
-      `UPDATE memories SET status = 'deprecated' WHERE id IN (${placeholders})`,
-      toDeprecate
-    );
-  }
-
-  return { deprecated: toDeprecate.length, scored: rows.length };
-}
-
 export interface FlagStaleResult {
   flagged: number;
   ids: number[];
@@ -427,7 +386,8 @@ export interface FlagStaleResult {
 /**
  * Flag active memories anchored to any of `paths` as stale — the code they
  * reference changed. Never deletes (audit trail preserved) and never touches
- * importance=5 (permanent). Matches anchors in the same project scope or global
+ * importance=5 (permanent), preferences or owner statements (a code change does
+ * not invalidate what the owner wants). Matches anchors in the same project scope or global
  * (NULL-scoped) anchors. A memory is flagged once until revalidated: later
  * commits to the same files (an amend, the next edit) keep the first
  * invalidating commit as the reason and add no audit rows.
@@ -449,6 +409,8 @@ export function flagStaleByPaths(
          JOIN memory_files mf ON mf.memory_id = m.id
         WHERE m.status = 'active'
           AND m.importance <> 5
+          AND m.category <> 'preference'
+          AND m.origin IS NOT 'owner-statement'
           AND m.stale_flagged_at IS NULL
           AND mf.path IN (${placeholders})
           AND (mf.project_scope IS ? OR mf.project_scope IS NULL)`,

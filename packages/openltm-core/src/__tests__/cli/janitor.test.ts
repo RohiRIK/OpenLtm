@@ -56,6 +56,9 @@ describe("cli/janitor — run with no servers (in-process)", () => {
   const prevFetch = globalThis.fetch;
   const prevLlama = process.env.LTM_LLAMA_CPP_URL;
   let ids: number[] = [];
+  let conflict: number[] = [];
+  let stalePending = 0;
+  let freshPending = 0;
 
   beforeAll(async () => {
     dir = mkdtempSync(join(tmpdir(), "ltm-janitor-cli-"));
@@ -85,6 +88,19 @@ describe("cli/janitor — run with no servers (in-process)", () => {
     put.run(ids[0]!, Buffer.from(same.buffer));
     put.run(ids[1]!, Buffer.from(same.buffer));
     put.run(ids[2]!, Buffer.from(other.buffer));
+
+    // A contradiction (older npm, newer bun) the conflicts step must stage.
+    conflict = [
+      learn({ content: "Janitor CLI test: install packages with npm ci", category: "workflow", project_scope: "jproj" }).id,
+      learn({ content: "Janitor CLI test: install packages with bun install", category: "workflow", project_scope: "jproj" }).id,
+    ];
+    db.run("UPDATE memories SET created_at = datetime('now', '-1 hour') WHERE id = ?", [conflict[0]!]);
+    // Untitled pending auto-promotes written before runPromote set titles: one unreviewed for 8 days.
+    const pend = db.prepare(`INSERT INTO memories (content, category, importance, confidence, source, project_scope, dedup_key, status, created_at)
+      VALUES (?, 'gotcha', 4, 0.8, 'auto-promote', 'jproj', ?, 'pending', datetime('now', ?))`);
+    stalePending = Number(pend.run("Janitor CLI test: the old pending gotcha. More detail here", "jk-old", "-8 days").lastInsertRowid);
+    freshPending = Number(pend.run("Janitor CLI test: the new pending gotcha", "jk-new", "-1 days").lastInsertRowid);
+    db.run("INSERT INTO context_items (project_name, type, content, status) VALUES ('jproj', 'decision', 'Janitor CLI test: promote me with a title. Body follows', 'active')");
   });
 
   afterAll(() => {
@@ -111,6 +127,23 @@ describe("cli/janitor — run with no servers (in-process)", () => {
     expect(statuses.every((s) => s.status === "active")).toBe(true);
     const pending = db.query<{ source: string }, []>("SELECT source FROM memories WHERE status = 'pending' AND source LIKE 'dedup:%'").all();
     expect(pending.map((p) => p.source)).toEqual([`dedup:${ids[0]}:${ids[1]}`]);
+
+    // Week-old unreviewed auto-promote accepted (and audited); newer one stays pending; both titled.
+    expect(out.accept.accepted).toBe(1);
+    const row = (id: number) => db.query<{ status: string; title: string }, [number]>("SELECT status, title FROM memories WHERE id = ?").get(id)!;
+    expect(row(stalePending)).toEqual({ status: "active", title: "Janitor CLI test: the old pending gotcha" });
+    expect(row(freshPending)).toEqual({ status: "pending", title: "Janitor CLI test: the new pending gotcha" });
+    const { listRecentlyAutoAccepted } = await import("../../janitor/promote.js");
+    expect(listRecentlyAutoAccepted("jproj")).toEqual([stalePending]);
+
+    // Promoted context item carries a derived title and an origin.
+    const promoted = db.query<{ title: string; origin: string }, []>("SELECT title, origin FROM memories WHERE content LIKE '%promote me with a title%'").get();
+    expect(promoted).toEqual({ title: "Janitor CLI test: promote me with a title", origin: "agent-observation" });
+
+    // Contradiction staged, so SessionStart's conflict section lists it.
+    expect(out.conflicts.staged).toBe(1);
+    const { listStagedConflicts } = await import("../../janitor/supersedes.js");
+    expect(listStagedConflicts(50, "jproj").map((c) => [c.olderId, c.newerId])).toEqual([[conflict[0]!, conflict[1]!]]);
 
     // Lock released, run recorded.
     expect(existsSync(`${dbPath}.janitor.lock`)).toBe(false);

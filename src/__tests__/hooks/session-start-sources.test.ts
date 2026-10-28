@@ -5,6 +5,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
+import { Database } from "bun:sqlite";
 import {
   HOOKS_SRC, initSandboxDb, makeSandbox, markOnboarded, registerProject, runHook, seedMemory, writeConfig,
   type Sandbox,
@@ -141,6 +142,19 @@ describe("SessionStart — injection", () => {
     const { stdout } = await runHook("SessionStart.ts", { cwd, source: "startup" }, sb);
     expect(stdout).toContain("💡 2 memory proposal(s) pending — review with /openltm:memory propose review");
   }, 60_000);
+
+  it("announces memories the janitor auto-accepted this week, with ids to forget", async () => {
+    markOnboarded(sb);
+    initSandboxDb(sb);
+    registerProject(sb, cwd, "demo-app");
+    const id = seedMemory(sb, { content: "Auto-promoted gotcha nobody reviewed", project: "demo-app" });
+    const other = seedMemory(sb, { content: "Another project's auto-accept", project: "elsewhere" });
+    const db = new Database(sb.dbPath);
+    for (const m of [id, other]) db.run("INSERT INTO memory_audit (memory_id, op, actor) VALUES (?, 'update', 'janitor:auto-accept')", [m]);
+    db.close();
+    const { stdout } = await runHook("SessionStart.ts", { cwd, source: "startup" }, sb);
+    expect(stdout).toContain(`✅ 1 memory auto-accepted this week (#${id}) — forget <id> to undo`);
+  }, 30_000);
 
   it("ltm.injectTopN caps project-scoped memories", async () => {
     markOnboarded(sb);

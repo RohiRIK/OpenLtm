@@ -7,7 +7,8 @@ import { getSetting, setSetting, getDb } from "../shared-db.js";
 import { runDecay, type DecayResult } from "./decay.js";
 import { findDuplicates, saveDedupCandidates, type DedupResult } from "./dedup.js";
 import { embedMissingMemories } from "./embeddings.js";
-import { runPromote, type PromoteResult } from "./promote.js";
+import { runPromote, runAutoAccept, type PromoteResult } from "./promote.js";
+import { detectContradictions, stageContradictions } from "./supersedes.js";
 import { runArchive, type ArchiveResult } from "./archive.js";
 import { SETTING_KEYS, getDefault } from "./providers/types.js";
 
@@ -32,6 +33,10 @@ export interface JanitorRunResult {
   decay: DecayResult;
   archive: ArchiveResult;
   promote: PromoteResult;
+  /** Pending auto-promoted memories accepted after AUTO_ACCEPT_DAYS unreviewed. */
+  accept: { accepted: number };
+  /** Contradiction pairs newly staged for review. */
+  conflicts: { staged: number };
   dedup: { pairsCompared: number; candidatesFound: number };
   errors: string[];
 }
@@ -63,8 +68,10 @@ export async function runJanitorExclusive(): Promise<JanitorRunResult | null> {
  * Run all janitor tasks in sequence:
  * 1. Embed missing memories (required for dedup)
  * 2. Decay stale memories
- * 3. Promote eligible context_items
- * 4. Find duplicates (no auto-merge without LLM verification)
+ * 3. Archive evicted deprecated memories
+ * 4. Promote eligible context_items, then auto-accept week-old unreviewed ones
+ * 5. Stage contradictions per project scope
+ * 6. Find duplicates (no auto-merge without LLM verification)
  */
 export async function runJanitor(): Promise<JanitorRunResult> {
   if (_running) {
@@ -83,6 +90,8 @@ export async function runJanitor(): Promise<JanitorRunResult> {
     skipped: 0,
     scanned: 0,
   };
+  let accepted = 0;
+  let conflictsStaged = 0;
   let dedupResult: DedupResult = {
     pairsCompared: 0,
     candidates: [],
@@ -118,7 +127,26 @@ export async function runJanitor(): Promise<JanitorRunResult> {
       errors.push(`promote: ${String(e)}`);
     }
 
-    // 5. Find duplicates and save as pending for review
+    // 4b. Auto-accept pending auto-promoted memories nobody reviewed in a week
+    try {
+      accepted = runAutoAccept().accepted;
+    } catch (e) {
+      errors.push(`accept: ${String(e)}`);
+    }
+
+    // 5. Stage contradictions for review in every active scope (null = global)
+    try {
+      const scopes = getDb()
+        .query<{ scope: string | null }, []>("SELECT DISTINCT project_scope AS scope FROM memories WHERE status = 'active'")
+        .all()
+        .map(r => r.scope);
+      if (!scopes.includes(null)) scopes.push(null);
+      for (const scope of scopes) conflictsStaged += stageContradictions(detectContradictions(scope));
+    } catch (e) {
+      errors.push(`conflicts: ${String(e)}`);
+    }
+
+    // 6. Find duplicates and save as pending for review
     try {
       dedupResult = await findDuplicates(0.85, true);
       if (dedupResult.candidates.length > 0) {
@@ -138,6 +166,8 @@ export async function runJanitor(): Promise<JanitorRunResult> {
     decay: decayResult,
     archive: archiveResult,
     promote: promoteResult,
+    accept: { accepted },
+    conflicts: { staged: conflictsStaged },
     dedup: {
       pairsCompared: dedupResult.pairsCompared,
       candidatesFound: dedupResult.candidates.length,
@@ -225,7 +255,7 @@ export function stopAutoRun(): void {
 }
 
 // Re-export sub-modules for direct access from server routes
-export { approveMemory, getPendingMemories, rejectMemory } from "./promote.js";
+export { approveMemory, getPendingMemories, rejectMemory, listRecentlyAutoAccepted } from "./promote.js";
 export { mergeMemories, parseDedupSource } from "./dedup.js";
 export { supersede, stageContradictions, listStagedConflicts, detectContradictions, sanitizeStagingTerm, acceptStagedConflict, rejectStagedConflict, coexistStagedConflict } from "./supersedes.js";
 export type { Contradiction, StagedConflict } from "./supersedes.js";

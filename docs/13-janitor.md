@@ -1,12 +1,14 @@
 # Janitor without graph-server
 
-The janitor keeps the memory database healthy. It runs the same five steps whether it is started from the CLI, a hook, a timer, or graph-server:
+The janitor keeps the memory database healthy. It runs the same steps whether it is started from the CLI, a hook, a timer, or graph-server:
 
 1. **Embed backfill** — vectors for memories that have none (local llama.cpp by default; skipped when the server is down).
-2. **Decay** — refreshes `decay_score`, deprecates stale low-importance memories.
+2. **Decay** — refreshes `decay_score`, deprecates stale low-importance memories, and deprecates memories stale-flagged by a code change more than 30 days ago that nobody revalidated (`revalidate` clears the flag; importance 5 is exempt).
 3. **Archive** — moves dead deprecated memories into `memory_archive`.
-4. **Promote** — turns eligible `context_items` into pending memories.
-5. **Dedup suggestions** — near-duplicate pairs become *pending* review rows (`source = dedup:<a>:<b>`). Nothing is merged, superseded, or deleted automatically. Review them in the graph app or with `/openltm:health`.
+4. **Promote** — turns eligible `context_items` into pending memories (titled, origin `agent-observation`).
+5. **Accept** — pending auto-promoted memories nobody reviewed for 7 days become active (audited with actor `janitor:auto-accept`). SessionStart lists the ones accepted this week; `forget <id>` undoes one.
+6. **Conflicts** — contradiction pairs in each project scope (and global) are staged for review. Nothing is superseded; SessionStart lists pending conflicts.
+7. **Dedup suggestions** — near-duplicate pairs become *pending* review rows (`source = dedup:<a>:<b>`). Nothing is merged, superseded, or deleted automatically. Review them in the graph app or with `/openltm:health`.
 
 None of this needs graph-server or Honker. The CLI opens the SQLite file directly.
 

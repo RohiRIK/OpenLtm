@@ -22,7 +22,7 @@ import { findLtmHooksInUserSettings, userSettingsPath } from "../lib/settingsHoo
 import { getContextMerge, getSimilarMemoriesByVec, getContextMergeWithGraph,
          embedText, getDb, listMemoryIdsMissingEmbedding, exportContextMarkdown,
          waitForInit, getRecentConflicts, listStagedConflicts, emitEvent, listPendingProposals,
-         scrubForEgress, frameRecalledMemory } from "@rohirik/openltm-core";
+         scrubForEgress, frameRecalledMemory, listRecentlyAutoAccepted } from "@rohirik/openltm-core";
 import { readConfigSync } from "../../src/config.js";
 import type { Config } from "../../src/config.js";
 
@@ -189,6 +189,19 @@ function buildProposalsNotice(): string {
   }
 }
 
+/** The janitor accepts week-old unreviewed auto-promoted memories; tell the owner how to undo one. */
+function buildAutoAcceptNotice(project: string): string {
+  if (!existsSync(DB_PATH)) return "";
+  try {
+    const ids = listRecentlyAutoAccepted(project);
+    if (ids.length === 0) return "";
+    const shown = ids.slice(0, 5).map(id => `#${id}`).join(", ") + (ids.length > 5 ? ", …" : "");
+    return `✅ ${ids.length} memor${ids.length === 1 ? "y" : "ies"} auto-accepted this week (${shown}) — forget <id> to undo\n`;
+  } catch {
+    return "";
+  }
+}
+
 /**
  * First-ever startup: run onboard.ts non-interactively (fire-once via onboarded.flag).
  * Returns null when not applicable, else whether the flag now exists.
@@ -298,6 +311,7 @@ async function main(): Promise<void> {
     output += `\n${directive}${LTM_REMINDER}`;
   }
   output += buildProposalsNotice();
+  output += buildAutoAcceptNotice(name);
   output += buildDuplicateHooksNotice();
   output += buildBackfillHint(cfg);
 

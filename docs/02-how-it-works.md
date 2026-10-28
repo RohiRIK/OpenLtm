@@ -93,11 +93,11 @@ So invalidation can be driven by *code change* instead. When you store a memory 
 anchor it to the files it references (`learn`'s optional `files` param → `memory_files`
 table). The git post-commit hook already knows which files a commit touched; when
 `gitInvalidateEnabled` is on (default), a commit touching an anchored file **flags those
-memories stale** (`importance: 5` is exempt). Nothing is deleted — the flag is auditable.
+memories stale** (`importance: 5`, preferences and owner statements are exempt). Nothing is deleted — the flag is auditable.
 
 A stale memory is **downranked in `recall`** (still returned, marked `stale`) and becomes
-**decay-eligible regardless of recall frequency**, so the high-traffic-but-stale memory can
-finally sink. Clear the flag by re-confirming the memory (`learn` the same content) or with
+**deprecated by the janitor once it has been flagged for 30 days**, regardless of recall
+frequency, so the high-traffic-but-stale memory can finally sink. Clear the flag by re-confirming the memory (`learn` the same content) or with
 the `revalidate` tool; use `forget` when it's genuinely wrong.
 
 ---
