@@ -95,6 +95,25 @@ Recall falls back to **full-text only**, with identical results, when any of the
 
 `recall({ workspace_id })` returns memories learned with that `workspace_id` plus memories with no workspace; `agent_id` works the same way. `learn` persists both fields.
 
+### Time, intent and adaptive cutoff (2.23.0)
+
+- **Event time.** `learn` takes `occurred_at` (ISO date or datetime): when the fact happened, as opposed to when it was stored. Unknown stays `NULL` and ranking falls back to `created_at`. Reinforcing a memory fills an unknown `occurred_at` but never overwrites a known one.
+- **Point-in-time recall.** `recall` takes `as_of`: only memories that had happened by then, including ones superseded *after* that moment. A bare date means the end of that day. An `as_of` recall does not bump recall counts.
+- **Query intent.** Recall detects two shapes of question. *Recency* ("latest", "current", "most recent", "now") boosts newer memories by event time. *Aggregate* ("all", "every", "list", "how many") keeps the full result list. Verbose results report the detected `intent`.
+- **Adaptive cutoff.** By default recall drops tail hits whose match strength (the stronger of relative BM25 and relative semantic similarity) is under 30% of the best hit, never returning fewer than 3. Pass `adaptive: false` for a fixed-size list; aggregate questions skip the cutoff.
+
+### Superseding with a relation (2.23.0)
+
+`learn` takes `supersedes: { id, relation }`, where `relation` is:
+
+| relation | Effect |
+|----------|--------|
+| `updates` (default) | The old memory is marked superseded (`supersede_kind: "updates"`); the new one replaces it. |
+| `retracts` | Same, but `supersede_kind: "retracts"`: the old claim was wrong, not just outdated. |
+| `extends` | Both stay active; a `refines` relation links them. |
+
+The result carries `supersede: { applied, reason? }`. An agent cannot retire an `owner-statement` memory: the request becomes a `contradicts` relation with reason `owner_statement_protected`, and the owner decides. Other refusals: `not_found`, `not_active`, `self`. Superseded memories returned by an `as_of` recall show `status`, `superseded_by`, `superseded_at` and `supersede_kind`.
+
 ---
 
 ## When each tool runs

@@ -205,3 +205,14 @@ This project uses stricter memory injection.
 - `autoRecall` — Override auto-recall at session start
 
 **Note:** Changes require restarting Claude Code.
+
+## Personal data masking (2.23.0)
+
+Secrets are scrubbed on every write. Personal data (emails, phone numbers, Luhn-valid card numbers, US SSNs, IPv4 addresses other than loopback) is stored as written, because it is often the point of the memory, but it is replaced with placeholders (`[EMAIL]`, `[PHONE]`, `[CREDIT_CARD]`, `[SSN]`, `[IP_ADDRESS]`) on the way to third-party models: the categoriser, session-end extraction, relation classification, the janitor's LLM and embedding providers. A janitor merge whose text contains a placeholder the originals did not is dropped.
+
+| Setting | Values | Default |
+|---------|--------|---------|
+| `LTM_MASK_PII` env, else `ltm.maskPii` in config.json | `providers` (mask provider-bound text), `all` (also mask what the agent sees through MCP and hooks), `off` | `providers` |
+
+Hermes reads the same `LTM_MASK_PII` variable. Patterns are English/US-centric, like the rest of the store.
+

@@ -192,3 +192,8 @@ Each Hermes profile keeps its own DB; share only the one you point
 ## Collections (2.22.0)
 
 The plugin exposes `openltm_collection` and `openltm_record`, the same contract as core's `collection` / `record` tools (see [Collections](16-collections.md)). `openltm_recall` appends matching records after the memories (`include_records: false` turns it off), `openltm_context` lists the collections, and the system prompt names them inside the recalled-memory frame. Tables are created with core's migration 031 DDL, so a database shared through `LTM_DB_PATH` works from both sides. With an embedder configured, records get vectors on `put` and recall fuses them with full-text hits.
+
+## Time, supersede and PII masking (2.23.0)
+
+`openltm_learn` takes `occurred_at` and `supersedes: {id, relation}` (`updates`, `extends`, `retracts`), with the same owner-statement protection as core. `openltm_recall` takes `as_of` (full-text only for that call) and `adaptive`, and applies the same recency / aggregate intent detection. Text sent to the embedding provider is masked for personal data per `LTM_MASK_PII` (see [Configuration](04-configuration.md#personal-data-masking-2230)). The plugin adds the `occurred_at` and `supersede_kind` columns to its own databases, matching core's migration 032.
+

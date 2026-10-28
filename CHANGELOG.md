@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.23.0] — 2026-10-28
+
+Ideas taken from a comparison with memvid, built on top of 2.22.0 (collections).
+
+### Added
+- **Event time and point-in-time recall** (migration 032). `learn` takes `occurred_at`, when the fact happened, separate from when it was stored. `recall` takes `as_of` and returns what was known and current at that moment, including memories superseded later. Recency questions rank by event time, falling back to `created_at`. See [MCP tools](docs/08-mcp-tools.md#time-intent-and-adaptive-cutoff-2230).
+- **Query intent.** Recall detects recency questions ("latest", "current") and boosts newer memories, and aggregate questions ("all", "list", "how many") and keeps the whole list. Verbose results report the intent.
+- **Adaptive result cutoff.** Recall drops tail hits under 30% of the best hit's match strength, never below 3 results; `adaptive: false` restores a fixed-size list.
+- **Supersede with a relation.** `learn({ supersedes: { id, relation } })` with `updates`, `retracts` (both retire the old memory, recorded in `supersede_kind`) or `extends` (both stay active, linked by `refines`). An agent cannot retire an owner statement: the request is recorded as a `contradicts` relation instead.
+- **Personal data masking toward providers.** Emails, phone numbers, Luhn-valid card numbers, SSNs and IPv4 addresses become placeholders in text sent to the categoriser, session-end extraction, relation classification, the janitor's LLM and embedding providers. Memories are stored as written. `LTM_MASK_PII` / `ltm.maskPii`: `providers` (default), `all` (also mask agent-bound output), `off`. Session-end extraction input was not secret-scrubbed before; it now is.
+- **`ltm doctor [--deep] [--fix] [--json]`**: SQLite, foreign-key, FTS and vector-index integrity checks, orphan and other-model vectors, dangling supersedes. `--fix` backs up first. `/openltm:doctor` gains a *Database integrity* section.
+- **Portable capsules: `ltm export` / `ltm import`.** One checksummed JSON file per project (memories, relations, context items, collections and records), optionally AES-256-GCM encrypted with a passphrase from the environment. Imports go through normal dedup and are labelled `external-source` unless `--keep-origin`.
+- **`ltm facts extract [--apply]`**: deterministic English rules turn prose ("X listens on port N", "X is pinned to vN", "X uses Y"…) into records of a global `facts` collection, one per entity.slot, newest memory wins.
+- **`bun run bench:locomo`**: a reproducible retrieval benchmark on the LoCoMo dataset (pinned SHA-256, no LLM calls). Full-text only, k=10: 51.7% evidence recall, 69.3% of questions with at least one evidence turn.
+- **Hermes and adapters:** the Hermes plugin, OpenCode and OpenClaw pass `occurred_at`, `supersedes`, `as_of` and `adaptive`; Hermes has twins of the intent, cutoff and PII code.
+
 ## [2.22.0] — 2026-10-24
 
 ### Added
