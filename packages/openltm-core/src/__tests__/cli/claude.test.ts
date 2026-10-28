@@ -11,6 +11,9 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { join } from "path";
 import os from "os";
 
+// On a case-insensitive FS (APFS default) OpenLtm-openltm and openltm-OpenLtm are one dir.
+const caseInsensitiveFs = existsSync(os.tmpdir().toUpperCase());
+
 type HookEntry = { matcher?: string; hooks?: Array<{ type: string; command: string; timeout?: number }>; command?: string };
 
 describe("installClaude", () => {
@@ -46,7 +49,7 @@ describe("installClaude", () => {
     }
   });
 
-  it("keeps sharing a database an earlier install created under OpenLtm-openltm", async () => {
+  it.skipIf(caseInsensitiveFs)("keeps sharing a database an earlier install created under OpenLtm-openltm", async () => {
     const legacy = join(home, ".claude", "plugins", "data", "OpenLtm-openltm");
     mkdirSync(legacy, { recursive: true });
     writeFileSync(join(legacy, "openltm.db"), "");

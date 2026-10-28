@@ -5,10 +5,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { Database } from "bun:sqlite";
 import { readFileSync, unlinkSync } from "fs";
-import { join } from "path";
+import { getSchemaPath } from "../../../packages/openltm-core/src/paths.js";
 
 const dbPath = `/tmp/test-ltm-prov-dao-${process.pid}-${Date.now()}.db`;
-const schemaPath = join(import.meta.dir, "..", "..", "..", "src", "schema.sql");
+const schemaPath = getSchemaPath();
 
 let insertProvenance: typeof import("@rohirik/openltm-core").insertProvenance;
 let insertAudit: typeof import("@rohirik/openltm-core").insertAudit;

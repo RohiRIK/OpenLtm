@@ -6,7 +6,7 @@
  */
 import { afterAll, describe, expect, it } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -54,7 +54,8 @@ describeNode("adapter core lookup under Node", () => {
   for (const adapter of ADAPTERS) {
     it(`${adapter} finds core even when core's exports map hides package.json`, () => {
       // Stand-in for core 2.15.1: `exports` lists only ".", like the published package.
-      const dir = mkdtempSync(join(tmpdir(), `openltm-node-${adapter}-`));
+      // Node reports realpaths; tmpdir() is a /var symlink on macOS.
+      const dir = realpathSync(mkdtempSync(join(tmpdir(), `openltm-node-${adapter}-`)));
       tempDirs.push(dir);
       const core = join(dir, "node_modules", "@rohirik", "openltm-core");
       mkdirSync(join(core, "src", "cli"), { recursive: true });

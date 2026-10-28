@@ -26,7 +26,7 @@ import { join } from "path";
 import {
   getDataDir, getProjectsDir as projectsDirFor, getRegistryPath as registryPathFor,
   getLegacyClaudeDir, getClaudeTranscriptsDir,
-  resolveProjectNameDetailed, legacyClaudeSlug, loadProjectRegistry, migrateLegacyRegistry,
+  resolveProjectNameDetailed, legacyClaudeSlug, scopeName, loadProjectRegistry, migrateLegacyRegistry,
   migrateLegacyContextFiles, hasContextFiles, isSafeProjectDirName, createProjectDataProbe,
   type ProjectNameSource,
 } from "@rohirik/openltm-core";
@@ -135,7 +135,7 @@ export function saveRegistry(registry: Record<string, string>): void {
 
 export function registerPath(cwd: string, name: string): void {
   const registry = loadRegistry();
-  registry[cwd] = name;
+  registry[cwd] = scopeName(name); // scopes are case-insensitive
   saveRegistry(registry);
 }
 
@@ -143,13 +143,18 @@ export function resolveProject(cwd: string): ProjectResolution {
   const projectsDir = getProjectsDir();
   const registry = loadRegistry();
   const dbProbe = createProjectDataProbe(getDbPath());
-  const hasContext = (name: string): boolean =>
-    isSafeProjectDirName(name) &&
-    (hasContextFiles(join(projectsDir, name)) || hasContextFiles(join(getClaudeTranscriptsDir(), name)));
+  // The resolver lowercases the slug; Claude's legacy dir keeps the path's casing.
+  const slug = legacyClaudeSlug(cwd);
+  const legacyDir = (name: string): string => (name === scopeName(slug) ? slug : name);
+  const hasContext = (name: string): boolean => {
+    const legacy = legacyDir(name);
+    return isSafeProjectDirName(name) && isSafeProjectDirName(legacy) &&
+      (hasContextFiles(join(projectsDir, name)) || hasContextFiles(join(getClaudeTranscriptsDir(), legacy)));
+  };
 
   const resolved = resolveProjectNameDetailed(cwd, {
     registry,
-    legacyName: legacyClaudeSlug(cwd),
+    legacyName: slug,
     hasProjectData: (name) => (hasContext(name) ? true : dbProbe(name)),
   });
   const { name, source } = resolved;
@@ -163,7 +168,7 @@ export function resolveProject(cwd: string): ProjectResolution {
     } catch { /* registry busy — this resolution is still correct */ }
   }
 
-  migrateLegacyContextFiles(name, projectsDir);
+  migrateLegacyContextFiles(name, projectsDir, getClaudeTranscriptsDir(), legacyDir(name));
   const projectDir = join(projectsDir, name);
   // New = nothing anywhere: no registry entry, no context files, no DB rows.
   const isNew = (source === "repo-root" || source === "cwd") && !hasContextFiles(projectDir) && dbProbe(name) === false;

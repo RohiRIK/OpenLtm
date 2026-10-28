@@ -11,10 +11,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { Database } from "bun:sqlite";
 import { readFileSync, unlinkSync } from "fs";
-import { join } from "path";
+import { getSchemaPath } from "../../../packages/openltm-core/src/paths.js";
 
 const dbPath = `/tmp/test-ltm-decay-unit-${process.pid}-${Date.now()}.db`;
-const schemaPath = join(import.meta.dir, "..", "..", "..", "src", "schema.sql");
+const schemaPath = getSchemaPath();
 
 let db: Database;
 let runDecay: typeof import("@rohirik/openltm-core").runDecay;
@@ -81,7 +81,7 @@ describe("runDecay() SQL batch", () => {
     const row = db.query<{ decay_score: number }, [number]>(
       "SELECT decay_score FROM memories WHERE id=?",
     ).get(1001);
-    expect(row).toBeDefined();
+    expect(row).not.toBeNull();
     expect(row!.decay_score).toBeGreaterThan(0);
   });
 

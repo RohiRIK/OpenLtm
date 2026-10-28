@@ -244,6 +244,11 @@ def init_schema(conn: sqlite3.Connection) -> None:
 
 # ─── Core Operations ─────────────────────────────────────────────────────────
 
+def _scope(project: str | None) -> str | None:
+    """Project scopes are case-insensitive (core migration 031 lowercased stored rows)."""
+    return (project.strip().lower() or None) if project else None
+
+
 def _dedup_key(content: str) -> str:
     """Generate a dedup key from content (normalized hash)."""
     normalized = content.strip().lower()
@@ -292,6 +297,7 @@ def learn(
     # propagates and nothing is stored.
     if origin not in MEMORY_ORIGINS:
         origin = DEFAULT_ORIGIN
+    project = _scope(project)
     content = scrub_or_refuse(content) or ""
     title = scrub_or_refuse(title)
     if tags:
@@ -400,6 +406,7 @@ def recall(
     sort_by: str = "relevance",
 ) -> list[dict]:
     """Search memories using FTS5. Returns list of memory dicts."""
+    project = _scope(project)
     conditions = ["m.status = 'active'"]
     params: list[Any] = []
 
@@ -492,6 +499,7 @@ def _egress_reason(reason: str | None) -> str | None:
 
 def get_context(conn: sqlite3.Connection, project: str) -> dict:
     """Get project context: goals, decisions, progress, gotchas."""
+    project = _scope(project) or project
     items = conn.execute(
         """SELECT * FROM context_items
            WHERE project_name = ? AND status = 'active'
@@ -951,6 +959,8 @@ def vector_search(
     when ``model`` is given, from that model) are compared."""
     import math
     import struct
+
+    project = _scope(project)
 
     conditions = ["m.status = 'active'"]
     params: list[Any] = []

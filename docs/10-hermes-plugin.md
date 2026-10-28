@@ -12,7 +12,7 @@ extraction logic, and tests — lives under [`hermes/`](../hermes/README.md).
 | Plugin location | untracked `~/.hermes/plugins/openltm_hermes` + separate `hermes-brain` repo | `hermes/openltm_hermes/` in this repo (source of truth) |
 | Schema | drift-prone inline SQL (25 objects) | `hermes/schema.sql` (canonical, column-terminal, folds migrations 007/011/013) |
 | Auto-capture | keyword lists duplicated in `sync_turn` and `on_session_end`, with one-off regexes patched on per incident | one ordered rule table + named guards + shared distiller in `hermes/openltm_hermes/auto_capture.py` |
-| Migration history | split across two repos | single canonical `migrations/` 001–025 in OpenLtm core |
+| Migration history | split across two repos | single canonical `packages/openltm-core/migrations/` 001–025 in OpenLtm core |
 | CI | Security Scan 5 HIGH CVEs; bundle auto-push to protected main | Trivy 0/0; drift-gate workflow (no push) |
 | Publish | n/a | tokenless OIDC provenance on npm |
 

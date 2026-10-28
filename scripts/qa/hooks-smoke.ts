@@ -7,6 +7,7 @@
  * Usage (repo root): bun run scripts/qa/hooks-smoke.ts
  */
 import { Database } from "bun:sqlite";
+import { openQueryOnly } from "../../packages/openltm-core/src/sql.js";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { dirname, join } from "path";
@@ -90,7 +91,7 @@ try {
   writeFileSync(join(repo, "src", "parser.ts"), "export {}\n");
   git("add", "-A"); git("commit", "-qm", "parser");
   const ptu = hook("PostToolUse.ts", { cwd: repo, session_id: "s1", tool_name: "Bash", tool_input: { command: "git commit -m parser" }, tool_response: { stdout: "", stderr: "", interrupted: false } });
-  const stale = new Database(dbPath, { readonly: true }).query<{ n: number }, [number]>("SELECT COUNT(*) n FROM memories WHERE id=? AND stale_flagged_at IS NOT NULL").get(anchored)!.n;
+  const stale = openQueryOnly(dbPath).query<{ n: number }, [number]>("SELECT COUNT(*) n FROM memories WHERE id=? AND stale_flagged_at IS NOT NULL").get(anchored)!.n;
   check("PostToolUse flags the anchored memory stale after git commit", ptu.code === 0 && ptu.out === "" && stale === 1, ptu.out);
   const logged = existsSync(join(data, "logs", "ltm.jsonl"))
     ? readFileSync(join(data, "logs", "ltm.jsonl"), "utf-8").trim().split("\n").map((l) => JSON.parse(l).event as string) : [];
@@ -101,7 +102,7 @@ try {
   const stop1 = hook("UpdateContext.ts", { cwd: repo, session_id: "sess-AAA", transcript_path: t1 });
   writeFileSync(t1, readFileSync(t1, "utf-8") + JSON.stringify(edit("/repo/b.ts")) + "\n");
   hook("UpdateContext.ts", { cwd: repo, session_id: "sess-AAA", transcript_path: t1 });
-  const rows = new Database(dbPath, { readonly: true }).query<{ content: string }, []>("SELECT content FROM context_items WHERE type='progress' AND session_id='sess-AAA'").all();
+  const rows = openQueryOnly(dbPath).query<{ content: string }, []>("SELECT content FROM context_items WHERE type='progress' AND session_id='sess-AAA'").all();
   check("Stop prints nothing", stop1.out === "", stop1.out);
   check("Stop keeps one progress row per session, updated each turn", rows.length === 1 && rows[0]!.content.includes("b.ts"), JSON.stringify(rows));
 
@@ -113,8 +114,10 @@ try {
   const patterns = existsSync(join(data, "learned", "patterns")) ? readdirSync(join(data, "learned", "patterns")) : [];
   check("SessionEnd writes the session summary under the plugin data dir", end.code === 0 && patterns.some((f) => f.endsWith("-sess-AAA.md")), patterns);
   check("nothing written into the plugin install dir", !existsSync(join(ROOT, "skills", "Learned", "patterns", patterns[0] ?? "none")));
-  const props = existsSync(join(data, "proposals", "sess-AAA.json")) ? readFileSync(join(data, "proposals", "sess-AAA.json"), "utf-8") : "";
-  check("SessionEnd proposes the real error, drops harness noise", props.includes("left-pad") && !props.includes("has not been read"), props);
+  const sessMd = patterns.find((f) => f.endsWith("-sess-AAA.md"));
+  const summaryMd = sessMd ? readFileSync(join(data, "learned", "patterns", sessMd), "utf-8") : "";
+  check("SessionEnd records the real error, drops harness noise", summaryMd.includes("left-pad") && !summaryMd.includes("has not been read"), summaryMd);
+  check("SessionEnd queues no raw-error proposals without the LLM flag", !existsSync(join(data, "proposals", "sess-AAA.json")));
   check("SessionEnd removes the prompt-recall dedupe state", !existsSync(join(tmp, "ltm-prompt-recall-sess-AAA.json")));
 
   // ── PreCompact → SessionStart(compact) ─────────────────────────────────────

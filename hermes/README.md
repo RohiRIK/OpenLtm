@@ -111,7 +111,7 @@ Details: [Upgrading an installed plugin](../docs/10-hermes-plugin.md#upgrading-a
 
 > The live plugin dir is a generated/installed copy — never edit it directly; edit
 > this repo and reinstall. The plugin creates its own schema (`init_schema()`) and
-> runs no migrations. OpenLtm's `migrations/` run only when OpenLtm core opens the
+> runs no migrations. OpenLtm's `packages/openltm-core/migrations/` run only when OpenLtm core opens the
 > DB, which happens when another host shares it.
 
 ## Tests

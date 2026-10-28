@@ -19,7 +19,6 @@ CREATE TABLE IF NOT EXISTS context_items (
   project_name TEXT    NOT NULL,
   type         TEXT    NOT NULL CHECK(type IN ('goal','decision','progress','gotcha')),
   content      TEXT    NOT NULL,
-  title        TEXT,
   session_id   TEXT,                          -- for progress dedup
   permanent    INTEGER NOT NULL DEFAULT 0,    -- 1 = never auto-delete (decisions, gotchas)
   memory_id    INTEGER REFERENCES memories(id) ON DELETE SET NULL,
@@ -35,7 +34,6 @@ CREATE INDEX IF NOT EXISTS idx_ctx_type    ON context_items(project_name, type);
 CREATE TABLE IF NOT EXISTS memories (
   id                INTEGER PRIMARY KEY AUTOINCREMENT,
   content           TEXT    NOT NULL,
-  title             TEXT,
   category          TEXT    NOT NULL CHECK(category IN (
                       'preference','architecture','gotcha','pattern','workflow','constraint')),
   importance        INTEGER NOT NULL DEFAULT 3 CHECK(importance BETWEEN 1 AND 5),
@@ -55,21 +53,7 @@ CREATE TABLE IF NOT EXISTS memories (
   last_recalled_at  TEXT,
   recall_count     INTEGER NOT NULL DEFAULT 0,
   superseded_by    INTEGER REFERENCES memories(id) ON DELETE SET NULL,
-  superseded_at    TEXT,
-  -- Phase 7: graph humanization
-  hidden     INTEGER NOT NULL DEFAULT 0,
-  color      TEXT,
-  icon       TEXT,
-  user_note  TEXT,
-  -- Personal relevance signal: 'works' | 'doesnt' | NULL (unrated)
-  relevance_signal     TEXT,
-  relevance_signal_at  TEXT,
-  -- Code-anchored invalidation (migration 023). NULL = not flagged stale.
-  stale_flagged_at     TEXT,
-  stale_reason         TEXT,
-  -- Where the claim came from (migration 030). NULL = unknown (pre-030 row).
-  origin               TEXT CHECK(origin IS NULL OR origin IN (
-                         'owner-statement','agent-observation','external-source','proposal','historical-approval'))
+  superseded_at   TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_memories_category   ON memories(category);
@@ -80,20 +64,6 @@ CREATE INDEX IF NOT EXISTS idx_memories_status     ON memories(status);
 CREATE INDEX IF NOT EXISTS idx_memories_last_used  ON memories(last_used_at);
 CREATE INDEX IF NOT EXISTS idx_memories_superseded ON memories(superseded_by);
 CREATE INDEX IF NOT EXISTS idx_memories_recall_count ON memories(recall_count DESC);
-CREATE INDEX IF NOT EXISTS idx_memories_stale ON memories(stale_flagged_at);
-
--- ============================================================
--- memory_files: code anchors — files a memory references (migration 023)
--- A commit touching one of these paths can flag the memory stale.
--- ============================================================
-CREATE TABLE IF NOT EXISTS memory_files (
-  memory_id     INTEGER NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
-  path          TEXT    NOT NULL,
-  project_scope TEXT,
-  created_at    TEXT    NOT NULL DEFAULT (datetime('now')),
-  PRIMARY KEY (memory_id, path)
-);
-CREATE INDEX IF NOT EXISTS idx_memory_files_path ON memory_files(path);
 
 -- ============================================================
 -- tags + memory_tags: many-to-many tagging for memories
@@ -118,8 +88,6 @@ CREATE TABLE IF NOT EXISTS memory_relations (
   target_memory_id INTEGER NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
   relationship_type TEXT NOT NULL CHECK(relationship_type IN (
                       'supports','contradicts','refines','depends_on','related_to','supersedes')),
-  note             TEXT,
-  weight           REAL NOT NULL DEFAULT 1.0 CHECK(weight BETWEEN 0.0 AND 1.0),
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE(source_memory_id, target_memory_id, relationship_type)
 );
@@ -128,76 +96,26 @@ CREATE INDEX IF NOT EXISTS idx_relations_source ON memory_relations(source_memor
 CREATE INDEX IF NOT EXISTS idx_relations_target ON memory_relations(target_memory_id);
 
 -- ============================================================
--- memory_layout: per-view position persistence (Phase 7)
--- Only saved on explicit drag/pin — simulation-placed nodes have no row.
--- ============================================================
-CREATE TABLE IF NOT EXISTS memory_layout (
-  memory_id  INTEGER NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
-  view       TEXT    NOT NULL,
-  x          REAL    NOT NULL,
-  y          REAL    NOT NULL,
-  pinned     INTEGER NOT NULL DEFAULT 0,
-  updated_at TEXT    NOT NULL DEFAULT (datetime('now')),
-  PRIMARY KEY (memory_id, view)
-);
-
-CREATE INDEX IF NOT EXISTS idx_layout_view ON memory_layout(view);
-
--- ============================================================
--- FTS5 virtual table for full-text search on memories (includes title)
+-- FTS5 virtual table for full-text search on memories
 -- ============================================================
 CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
-  title,
   content,
   content='memories',
-  content_rowid='id',
-  tokenize='porter unicode61 remove_diacritics 2'
+  content_rowid='id'
 );
 
 -- Triggers to keep FTS in sync with memories table
 CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories BEGIN
-  INSERT INTO memories_fts(rowid, title, content)
-    VALUES (new.id, coalesce(new.title, ''), new.content);
+  INSERT INTO memories_fts(rowid, content) VALUES (new.id, new.content);
 END;
 
 CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
-  INSERT INTO memories_fts(memories_fts, rowid, title, content)
-    VALUES ('delete', old.id, coalesce(old.title, ''), old.content);
+  INSERT INTO memories_fts(memories_fts, rowid, content) VALUES ('delete', old.id, old.content);
 END;
 
-CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE OF title, content ON memories BEGIN
-  INSERT INTO memories_fts(memories_fts, rowid, title, content)
-    VALUES ('delete', old.id, coalesce(old.title, ''), old.content);
-  INSERT INTO memories_fts(rowid, title, content)
-    VALUES (new.id, coalesce(new.title, ''), new.content);
-END;
-
--- ============================================================
--- FTS5 for context_items
--- ============================================================
-CREATE VIRTUAL TABLE IF NOT EXISTS context_items_fts USING fts5(
-  title,
-  content,
-  content='context_items',
-  content_rowid='id',
-  tokenize='porter unicode61 remove_diacritics 2'
-);
-
-CREATE TRIGGER IF NOT EXISTS context_items_ai AFTER INSERT ON context_items BEGIN
-  INSERT INTO context_items_fts(rowid, title, content)
-    VALUES (new.id, coalesce(new.title, ''), new.content);
-END;
-
-CREATE TRIGGER IF NOT EXISTS context_items_ad AFTER DELETE ON context_items BEGIN
-  INSERT INTO context_items_fts(context_items_fts, rowid, title, content)
-    VALUES ('delete', old.id, coalesce(old.title, ''), old.content);
-END;
-
-CREATE TRIGGER IF NOT EXISTS context_items_au AFTER UPDATE OF title, content ON context_items BEGIN
-  INSERT INTO context_items_fts(context_items_fts, rowid, title, content)
-    VALUES ('delete', old.id, coalesce(old.title, ''), old.content);
-  INSERT INTO context_items_fts(rowid, title, content)
-    VALUES (new.id, coalesce(new.title, ''), new.content);
+CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE ON memories BEGIN
+  INSERT INTO memories_fts(memories_fts, rowid, content) VALUES ('delete', old.id, old.content);
+  INSERT INTO memories_fts(rowid, content) VALUES (new.id, new.content);
 END;
 
 -- ============================================================
@@ -211,17 +129,3 @@ CREATE TABLE IF NOT EXISTS settings (
 
 -- workspace_id + agent_id indexes are created by migration 007_workspaces.sql
 -- after the columns are added via ALTER TABLE. Do not add them here.
-
--- Staged supersede/contradiction conflicts (review only — no auto-apply)
-CREATE TABLE IF NOT EXISTS memory_conflict_staging (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  older_id INTEGER NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
-  newer_id INTEGER NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
-  term TEXT,
-  status TEXT NOT NULL DEFAULT 'pending'
-    CHECK(status IN ('pending', 'accepted', 'rejected', 'coexist', 'stale')),
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  UNIQUE(older_id, newer_id)
-);
-CREATE INDEX IF NOT EXISTS idx_conflict_staging_status
-  ON memory_conflict_staging(status, created_at DESC);

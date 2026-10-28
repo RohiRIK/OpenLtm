@@ -3,7 +3,7 @@ import { Database } from "bun:sqlite";
 import { readFileSync, rmSync } from "fs";
 import { join } from "path";
 
-// SessionStart's semantic branch calls getSimilarMemories(db, vec, …). It used to
+// SessionStart's semantic branch calls getSimilarMemoriesByVec(db, vec, …). It used to
 // select memories.embedding, which migration 010 dropped — so on every migrated DB
 // it threw and SessionStart injected no memories whenever a provider was up.
 const dbPath = `/tmp/test-openltm-similar-${process.pid}-${Date.now()}.db`;
@@ -36,11 +36,11 @@ function withEmbedding(content: string, v: Float32Array, opts: { project?: strin
   return id;
 }
 
-describe("getSimilarMemories (db, vec) — reads memory_embeddings", () => {
+describe("getSimilarMemoriesByVec (db, vec) — reads memory_embeddings", () => {
   it("ranks by cosine similarity on a fully migrated DB", () => {
     const near = withEmbedding("Payments retry with idempotency keys", vec([1, 0, 0, 0]));
     const far = withEmbedding("Prefer tabs in Makefiles", vec([0, 0, 1, 0]));
-    const hits = core.getSimilarMemories(db, vec([0.9, 0.1, 0, 0]), { minImportance: 4, limit: 5 });
+    const hits = core.getSimilarMemoriesByVec(db, vec([0.9, 0.1, 0, 0]), { minImportance: 4, limit: 5 });
     expect(hits.map((m) => m.id)).toEqual([near, far]);
   });
 
@@ -50,7 +50,7 @@ describe("getSimilarMemories (db, vec) — reads memory_embeddings", () => {
     const wrongDim = core.learn({ content: "Embedded with another model", category: "pattern", importance: 3, project_scope: "shop-api", skipExport: true }).id;
     db.run("INSERT OR REPLACE INTO memory_embeddings (memory_id, embedding, model, dim) VALUES (?, ?, 'other', 2)",
       [wrongDim, Buffer.from(new Float32Array([1, 0]).buffer)]);
-    const hits = core.getSimilarMemories(db, vec([0, 1, 0, 0]), { projectScope: "shop-api", minImportance: 2, limit: 5 });
+    const hits = core.getSimilarMemoriesByVec(db, vec([0, 1, 0, 0]), { projectScope: "shop-api", minImportance: 2, limit: 5 });
     expect(hits.map((m) => m.id)).toEqual([scoped]);
   });
 });

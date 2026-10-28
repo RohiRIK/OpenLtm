@@ -57,10 +57,3 @@ export function getDbPath(configOverride?: DbPathOptions): string {
   return join(claudeDir, "memory", "openltm.db");
 }
 
-export function getSchemaPath(): string {
-  return join(import.meta.dir, "schema.sql");
-}
-
-export function getMigrationsDir(): string {
-  return join(import.meta.dir, "..", "migrations");
-}

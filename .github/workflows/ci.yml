@@ -8,8 +8,13 @@ on:
 
 jobs:
   check:
-    name: Typecheck & Test
-    runs-on: ubuntu-latest
+    # The ubuntu job keeps the plain name: release-button.yml gates on check names.
+    name: ${{ matrix.os == 'ubuntu-latest' && 'Typecheck & Test' || 'Typecheck & Test (macOS)' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -24,6 +29,10 @@ jobs:
 
       - name: Test
         run: bun run test
+
+      - name: QA smoke
+        if: matrix.os == 'ubuntu-latest'
+        run: bun run qa:smoke
 
   hermes:
     name: Hermes plugin (pytest)

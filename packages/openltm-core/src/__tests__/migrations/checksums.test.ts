@@ -54,6 +54,14 @@ describe("recorded migration checksums", () => {
     expect(recorded(db, 29)).toBe("deadbeef");
   });
 
+  it("migrateDb's up-to-date fast path still fails closed on an unknown checksum", async () => {
+    const { migrateDb } = await import("../../shared-db.js");
+    const db = await migratedDb();
+    db.run("UPDATE _schema_version SET checksum = 'deadbeef' WHERE version = 29");
+
+    await expect(migrateDb(db, CORE_SCHEMA)).rejects.toThrow(/checksum mismatch for applied version 29/);
+  });
+
   it("acceptChecksumMismatches re-records only the mismatched versions", async () => {
     const db = await migratedDb();
     db.run("UPDATE _schema_version SET checksum = 'deadbeef' WHERE version = 28");

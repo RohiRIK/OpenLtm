@@ -6,6 +6,7 @@ import type { Database } from "bun:sqlite";
 import { getDb } from "../shared-db.js";
 import { writeQueue } from "../lib/writeQueue.js";
 import { scrubOrRefuse } from "../secretsScrubber.js";
+import { scopeName } from "../project.js";
 import type { ContextItemRow, ContextItemType } from "./types.js";
 
 export function listByProject(project: string, type?: ContextItemType): ContextItemRow[] {
@@ -23,6 +24,7 @@ export function listByProject(project: string, type?: ContextItemType): ContextI
 }
 
 export function upsertGoal(project: string, content: string): void {
+  project = scopeName(project); // scopes are case-insensitive
   const { scrubbed } = scrubOrRefuse(content);
   writeQueue.enqueue(() => {
     const db = getDb();
@@ -56,6 +58,7 @@ function deleteIds(db: Database, ids: number[]): void {
  * Resolves once the write has run, so callers can await it to catch DB errors.
  */
 export function appendProgress(project: string, content: string, sessionId?: string): Promise<void> {
+  project = scopeName(project); // scopes are case-insensitive
   const { scrubbed } = scrubOrRefuse(content);
   return writeQueue.enqueue(() => {
     const db = getDb();
@@ -85,6 +88,7 @@ export function appendProgress(project: string, content: string, sessionId?: str
 
 /** Permanent items are kept forever, so an identical one is never added twice. */
 function insertPermanent(project: string, type: ContextItemType, content: string): void {
+  project = scopeName(project); // scopes are case-insensitive
   const { scrubbed } = scrubOrRefuse(content);
   writeQueue.enqueue(() => {
     getDb().run(

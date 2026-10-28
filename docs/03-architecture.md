@@ -1,6 +1,6 @@
 # ARCHITECTURE — OpenLTM Plugin
 
-* **Version:** 1.4 (against plugin v2.21.1)
+* **Version:** 1.4 (against plugin v2.22.0)
 * **Owner:** Rohi Rikman
 * **Status:** Baseline architecture spec; companion to `docs/internal/PRD.md`
 * **Last updated:** 2026-06-08
@@ -140,14 +140,14 @@ C4Component
   Container_Ext(claude, "Claude Code Harness", "MCP client")
   ContainerDb(db, "openltm.db")
 
-  Container_Boundary(mcp, "MCP Server (src/mcp-server.ts)") {
+  Container_Boundary(mcp, "MCP Server (packages/openltm-core/src/mcp/server.ts; paths below relative to packages/openltm-core/; src/mcp-server.ts is a thin plugin wrapper)") {
     Component(transport, "STDIO Transport", "@modelcontextprotocol/sdk", "JSON-RPC over stdin/stdout")
     Component(toolreg, "Tool Registry", "McpServer.tool()", "Declares recall, learn, forget, relate, context, context_items, graph with Zod schemas")
-    Component(recall, "Recall Engine", "src/db.ts:recall", "FTS5 query → semantic fallback → merge → rank by importance/recency/decay")
+    Component(recall, "Recall Engine", "src/db.ts:recall", "FTS5 BM25 ∥ semantic search → RRF fuse → rank by relevance/importance/decay")
     Component(learn, "Learn Engine", "src/db.ts:learn", "Validate → redact secrets → dedup-key check → insert → return id")
     Component(ctxmerge, "Context Merge", "src/db.ts:getContextMerge + src/context.ts:getItems", "Build the goal+decisions+progress+gotchas envelope for SessionStart")
     Component(graphtrav, "Graph Traversal", "src/graph.ts:traverseGraph", "BFS over memory_relations; powers graph and visualization feed")
-    Component(formatter, "Compact Formatter", "src/mcp-server.ts:compact/strip", "Strips embedding blob, truncates content to keep MCP responses small")
+    Component(formatter, "Compact Formatter", "src/mcp/server.ts:compact", "Keeps core fields, scrubs secrets, truncates content to 300 chars to keep MCP responses small")
     Component(config, "Config Reader", "src/config.ts", "Reads plugin config; respects mcp.enabled flag")
   }
 
@@ -179,8 +179,8 @@ C4Component
   Container_Boundary(hooks, "Hook Runners (hooks/*.ts)") {
     Component(start, "SessionStart hook", "Bun script", "Resolve project from cwd → registry; rebuild context-summary.md; emit injection block")
     Component(pre, "PreCompact hook", "Bun script", "Pull all 4 context types from DB; serialize to context-summary.md (~60 line cap)")
-    Component(eval, "EvaluateSession hook", "Bun script", "Score session; identify candidate insights; (proposes / auto-writes per OQ4)")
-    Component(update, "UpdateContext hook", "Bun script", "Append progress entries; trim to last 20; bump last-touched timestamps")
+    Component(eval, "EvaluateSession hook", "Bun script", "SessionEnd: write session summary; queue LLM-extracted proposals (ltm.evaluateSessionLlm) to proposals/<session>.json")
+    Component(update, "UpdateContext hook", "Bun script", "Stop (every turn): upsert this session's progress line; trim to last 20")
     Component(resolver, "Project Resolver", "shared util", "cwd → project name via registry; auto-register on first touch")
     Component(injector, "Context Injector", "shared util", "Compose ## Restored Project Context block; truncate to ~60 lines + footer")
     Component(redact, "Secret Redactor", "shared util", "Pattern-match API keys, JWTs, AWS keys; replace with [REDACTED:type]")
@@ -196,7 +196,7 @@ C4Component
   Rel(start, reg, "read / auto-register")
   Rel(pre, db, "SELECT all context types")
   Rel(pre, summary, "write")
-  Rel(eval, db, "INSERT memories (or pending)")
+  Rel(eval, db, "no direct memory writes; proposals go to a JSON queue")
   Rel(eval, redact, "scrub before write")
   Rel(update, db, "INSERT progress; UPDATE timestamps")
 ```
@@ -211,7 +211,7 @@ C4Component
 | Project Resolver | cwd → project | Authoritative map; auto-registration |
 | Secret Redactor | Pattern scrub | Redaction policy, called from learn + EvaluateSession |
 | Context Injector | Format injection | 60-line budget, footer rendering |
-| Compact Formatter | MCP response shaping | Stripping embedding blob, content truncation |
+| Compact Formatter | MCP response shaping | Field selection, secret scrub, content truncation |
 
 ---
 
@@ -246,13 +246,14 @@ sequenceDiagram
   Note over Dev,Sum: --- Recall before deciding ---
   Dev->>Claude: prompt that requires past context
   Claude->>MCP: recall({ query, project })
-  MCP->>DB: FTS5(MATCH) → ranked rowids
-  alt FTS5 returns < 3 results
-    MCP->>DB: semantic fallback (vec0 KNN if extensions loaded, else JS-cosine)
-    MCP->>MCP: merge + dedup by id
+  par in parallel
+    MCP->>DB: FTS5(MATCH) → BM25-ranked rowids
+  and
+    MCP->>DB: semantic search (vec0 KNN if extensions loaded, else JS-cosine; similarity ≥ 0.5, 2 s budget → FTS-only)
   end
-  MCP->>MCP: apply decay scoring + importance boost
-  MCP-->>Claude: top-N memories (compact, embedding-stripped)
+  MCP->>MCP: RRF-fuse both lists into query relevance
+  MCP->>MCP: rank by relevance + decay + importance; demote stale / near-duplicates
+  MCP-->>Claude: top-N memories (compact)
   Claude-->>Dev: answer informed by recalled context
 
   Note over Dev,Sum: --- Work + learn ---
@@ -271,12 +272,13 @@ sequenceDiagram
   Note over Claude: Next assistant turn re-reads context-summary.md if needed
 
   Note over Dev,Sum: --- Session end ---
-  Claude->>Update: spawn(UpdateContext)
-  Update->>DB: INSERT progress; trim oldest > 20; UPDATE last_touched
+  Claude->>Update: spawn(UpdateContext) — Stop, after every turn
+  Update->>DB: upsert this session's progress line; trim oldest > 20
   Update-->>Claude: ack
-  Claude->>Eval: spawn(EvaluateSession)
-  Eval->>DB: scan transcript-derived signals; propose / write candidate insights
+  Claude->>Eval: spawn(EvaluateSession) — SessionEnd
+  Eval->>Eval: summarise transcript; queue LLM-extracted proposals (proposals/<session>.json)
   Eval-->>Claude: ack
+  Note over Claude,DB: SessionEnd also spawns the janitor detached (if due)
   Claude-->>Dev: clean exit
 ```
 
@@ -288,7 +290,7 @@ sequenceDiagram
 | recall | DB (FTS5 + base) | DB (last_recalled_at, recall_count) | Returns empty array; never throws into Claude |
 | learn | — | DB (memories, memories_fts via trigger) | Reject duplicate dedup_key; redact before write |
 | PreCompact | DB | context-summary.md | If write fails, post-compact session loses fallback only |
-| EvaluateSession | transcript signals, DB | DB (memories) | OQ4 — propose vs. auto-write is open |
+| EvaluateSession | transcript | session summary + proposals JSON (never memories directly) | LLM extraction off/timeout → no proposals |
 | UpdateContext | — | DB (context_items progress) | Trim ensures bounded growth |
 
 ---
@@ -296,8 +298,9 @@ sequenceDiagram
 ## 5. Data Model Overview
 
 The persistent store is one SQLite file (`openltm.db`) under `${CLAUDE_PLUGIN_DATA}`.
-Schema lives in `src/schema.sql` and is extended idempotently by migrations in
-`src/shared-db.ts`. WAL mode is enabled for read-during-write concurrency.
+Schema lives in `packages/openltm-core/src/schema.sql` and is extended by the
+versioned migrations in `packages/openltm-core/migrations/` (run by
+`migrateDb()` in `packages/openltm-core/src/shared-db.ts`). WAL mode is enabled for read-during-write concurrency.
 
 ### 5.1 Tables
 
@@ -310,6 +313,8 @@ Schema lives in `src/schema.sql` and is extended idempotently by migrations in
 | `memory_relations` | Knowledge graph edges between memories with typed relationship. | Cascading on memory delete |
 | `memories_fts` | FTS5 virtual table mirroring `memories.content`. | Maintained by triggers (insert/update/delete) |
 | `settings` | Key-value config for janitor / provider settings. | Manual or migration-managed |
+| `memory_embeddings` | One float32 embedding BLOB per memory (+ `model`, `dim`), split out of `memories` by migration 010. When sqlite-vec loads, the derived vec0 table `vec_memories` indexes it for KNN. | Cascading on memory delete; queued and drained by the embedding worker |
+| `memory_conflict_staging` | Contradiction pairs staged by the janitor for review (migration 026). | Shown at SessionStart until resolved |
 
 ### 5.2 `memories` — key columns
 
@@ -323,8 +328,9 @@ Schema lives in `src/schema.sql` and is extended idempotently by migrations in
 | `project_scope` | NULL = global; else project_name (joined with registry) |
 | `dedup_key` | UNIQUE; prevents repeated learns of the same fact |
 | `status` | `active` / `pending` / `deprecated` / `superseded` — soft-delete + supersession |
-| `embedding` | Float32 BLOB; semantic fallback vector. Stripped from MCP responses (would balloon to ~260 KB). |
-| `last_used_at`, `last_recalled_at`, `recall_count` | Decay inputs |
+| `embedding` | Legacy: still declared in `schema.sql`, but migration 010 drops it — vectors live in `memory_embeddings`. |
+| `decay_score` | Stored decay score (migration 011), refreshed by the janitor |
+| `last_used_at`, `last_recalled_at`, `recall_count` | Decay / usage inputs |
 | `superseded_by`, `superseded_at` | Pointer to the memory that replaced this one (audit trail) |
 | `workspace_id`, `agent_id` | T16 multi-agent metadata; indexed |
 
@@ -346,19 +352,27 @@ Schema lives in `src/schema.sql` and is extended idempotently by migrations in
   insert/update/delete.
 - Recall path: parameterised `MATCH` query against `memories_fts`, joined back to
   `memories` for category/project/importance filters and decay scoring.
-- BM25 ranking is the default; the recall engine post-multiplies by importance and
-  decay factors before returning top-N.
+- BM25 is one of two retrievers: a query recall runs it in parallel with semantic
+  search, fuses both lists with Reciprocal Rank Fusion (k = 60), and then ranks by
+  fused relevance plus importance and decay before returning top-N.
 
 ### 5.5 Decay model (current)
 
-The current implementation applies decay at recall time, not as a stored score.
+Decay is a stored score (`memories.decay_score`), refreshed by the janitor
+(`janitor/decay.ts:runDecay`); recall falls back to `computeDecayScore` for rows
+without one.
 
-- **Inputs:** `last_recalled_at`, `recall_count`, `importance`, `created_at`.
-- **Rule sketch:**
-  - If `importance == 5`, no decay.
-  - If memory has not been recalled in 90+ days and `importance < 3`, multiply rank
-    by a decay factor (< 1).
-  - Recently-recalled memories get a freshness boost.
+- **Formula:** `importance × confidence × 0.5 ^ (days_since / half_life)`, where
+  `days_since` counts from the latest of `last_used_at`, `last_confirmed_at`,
+  `created_at`. Half-lives: importance 4 → 180 d, 3 → 90 d, 2 → 30 d, 1 → 14 d.
+- **No decay:** `importance == 5`, or (in the janitor) `confirm_count >= 10`.
+- **Deprecation:** the janitor deprecates active memories whose `decay_score < 0.25`
+  (same exemptions), and memories stale-flagged for 30+ days.
+- **Usage signal:** `last_used_at` is bumped only when a memory actually reaches the
+  model — SessionStart injection, prompt-time injection
+  (`hooks/lib/promptRecall.ts:recordPromptUsage`), and MCP `recall` / `context`.
+- **Ranking:** in a query recall the decay term is normalised to [0, 1] so it nudges
+  near-ties rather than overriding the match.
 - **Reporting:** `/openltm:health` summarises memories by decay bucket
   (`fresh` / `aging` / `stale`) and surfaces top-5 staleness candidates.
 - **OQ3** (PRD §9): the exact function (linear / exponential / recall-driven) is open
@@ -412,8 +426,9 @@ on first access and still read, never written. It is a JSON file (not a table) f
 cross-plugin readability and trivial inspection; writes take an `O_EXCL` lock file.
 
 Every host resolves a project name the same way (`packages/openltm-core/src/project.ts`):
-registry exact match → registry longest-prefix match → git repo root folder name →
-working-directory name, normalized. A host's previous name is kept while it is the only
+registry exact match → git repo root strictly inside a registered prefix (repo wins) →
+registry longest-prefix match → git repo root folder name → working-directory name,
+normalized. Scopes are stored lowercase (migration 031). A host's previous name is kept while it is the only
 one with rows in the DB, so upgrading never orphans memories.
 
 ---
@@ -458,10 +473,11 @@ machine sleep. Median write latency target: < 50 ms p95 (PRD §8.4 R3). Median r
 - (+) `bun:sqlite` is in-process; no IPC overhead per query.
 - (–) Single-writer constraint (mitigated by WAL); cross-process locking is the
   developer's responsibility to understand.
-- (–) Schema migrations must be hand-coded and idempotent (see `src/shared-db.ts`).
+- (–) Schema migrations must be hand-coded and idempotent (see `packages/openltm-core/src/shared-db.ts`).
   ADR-004 and §7 weakness W3 expand on this.
 - (–) Embedding column as BLOB grows the row size fast; the formatter strips it
-  before MCP transmission to avoid 260 KB-per-memory responses.
+  before MCP transmission to avoid 260 KB-per-memory responses. *(Superseded:
+  migration 010 moved vectors to `memory_embeddings`; recall never selects them.)*
 
 ---
 
@@ -477,7 +493,12 @@ progress at session end, and (d) propose learnings post-session. MCP tools cover
 **Decision.** Use Claude Code's hook surface for four lifecycle events:
 `SessionStart`, `PreCompact`, `EvaluateSession`, `UpdateContext`. Hooks are
 short-lived Bun scripts in `hooks/`. They share the DB connection logic with the MCP
-server via `src/shared-db.ts`.
+server via `packages/openltm-core/src/shared-db.ts`.
+
+*Since extended:* `hooks/hooks.json` now also wires `UserPromptSubmit`,
+`PostToolUse` (Bash) and `SessionEnd` (EvaluateSession + a detached janitor run);
+`UpdateContext` runs on `Stop`. A git post-commit hook (`GitCommit`) is installed
+separately by `scripts/install-wiring.ts`.
 
 **Alternatives considered.**
 
@@ -506,6 +527,14 @@ server via `src/shared-db.ts`.
 ### ADR-003 — FTS5 for recall (with semantic fallback)
 
 **Status:** Accepted, with semantic fallback as a deliberate hedge.
+
+**Superseded:** recall is now hybrid, not fallback. A query recall runs FTS5 BM25
+and semantic search (cosine similarity ≥ 0.5 over `memory_embeddings`, 2 s budget,
+FTS-only on timeout or failure) in parallel, fuses the two lists with Reciprocal
+Rank Fusion (k = 60), and ranks by fused relevance plus normalised decay,
+importance, recall frequency and project scope (`packages/openltm-core/src/db.ts`:
+`recall`, `fuseRecallRankings`, `rankRecallResults`). The text below is the
+original decision.
 
 **Context.** Recall is the primary read path (PRD G2). It must return relevant
 memories on natural-language queries in under 200 ms median. The data set is
@@ -552,6 +581,10 @@ boost, return top-N.
 ### ADR-004 — Memory decay model
 
 **Status:** Accepted (provisional). Function shape under experiment (PRD OQ3).
+
+**Superseded:** decay is now a stored `decay_score` (migration 011) with
+exponential half-lives, refreshed by the janitor, which also deprecates low-score
+and long-stale memories. See §5.5. The text below is the original decision.
 
 **Context.** Without decay, recall results stagnate as the DB grows. PRD US-5 demands
 that low-importance, never-recalled memories fade. PRD G2 demands fresh, fast recall.
@@ -710,6 +743,9 @@ expressed as a SQL `ORDER BY` over indexed columns.
 **Direction.** Materialise a `decay_score` column maintained by a low-frequency
 janitor; use it in `ORDER BY`. Trade write amplification for read latency.
 
+**Status:** Done — `decay_score` (migration 011) is refreshed by the janitor and
+recall's default SQL order is `decay_score DESC`.
+
 ### W5 — No structured observability
 
 **Symptom.** Latency, recall hit rate, learn frequency — none are recorded. PRD §8
@@ -739,6 +775,9 @@ band-aid, not a fix.
 **Direction.** Move embeddings out of the `memories` table into a sibling
 `memory_embeddings(memory_id, vec BLOB)` table; MCP queries never join it.
 
+**Status:** Done — migration 010 created `memory_embeddings` and dropped the
+column. The `compact` formatter now only trims fields and truncates content.
+
 ### W8 — Coupling between hooks and DB schema
 
 **Symptom.** A schema change requires updating hooks, MCP server, and graph server
@@ -764,6 +803,10 @@ behaviour is implementation-defined and not surfaced to the user.
 
 **Direction.** Add a config flag (`evaluate.auto_promote`); default to "propose,
 require user confirmation via a banner at next SessionStart".
+
+**Status:** Resolved — EvaluateSession only proposes, never writes memories. Only
+the LLM pass (`ltm.evaluateSessionLlm`, off by default) produces proposals; the
+heuristic error proposals were removed.
 
 ### W11 — No write audit trail
 
@@ -833,7 +876,7 @@ flowchart TB
 | C1 | Pluggable embedding provider | OQ1 | G-E |
 | C2 | Multi-device E2E sync | §1.1 portable | G-I |
 | C3 | Team memory bundles (signed) | persona Tara | G-A |
-| C4 | Conflict detection on learn | §1.1 self-curating | G-F |
+| C4 | Conflict detection (janitor-time, shipped) | §1.1 self-curating | G-F |
 | C5 | Provenance chain per memory | safety / audit | G-J |
 | C6 | Memory compression / rollups | §1.1 sub-linear growth | G-L |
 | C7 | Cross-plugin memory contract | ecosystem | G-M |
@@ -859,8 +902,8 @@ flowchart LR
   EI -- write/read --> DB[(memory_embeddings table)]
 ```
 
-Recall remains FTS5-first; the embedding step is a fallback **and** an enrichment
-(pre-rank pass for high-recall queries). Provider is hot-swappable: changing the
+Recall runs FTS5 and the embedding search in parallel and RRF-fuses them (see
+ADR-003); without a provider it is FTS-only. Provider is hot-swappable: changing the
 provider triggers a one-time re-embed pass via the janitor.
 
 ### 8.4 C2 — Multi-device E2E encrypted sync
@@ -908,6 +951,13 @@ the new memory is staged `pending` with a link to the conflicting memory. The us
 is asked at next SessionStart: *forget*, *supersede*, or *coexist*.
 
 This makes the LTM **self-curating** (PRD §1.1).
+
+**Status (shipped, janitor-time, not learn-time):** the janitor's `conflicts` step
+runs `detectContradictions` per active scope (`janitor/supersedes.ts`: a fixed list
+of opposing terms such as `npm`/`bun` within the same category) and
+`stageContradictions` writes pairs to `memory_conflict_staging`. SessionStart lists
+pending conflicts; accepting one supersedes the older memory. `learn` itself does
+no conflict check.
 
 ### 8.7 C5 — Provenance chain
 
@@ -1017,7 +1067,7 @@ Backwards compatible. No schema rename. No MCP contract change.
 ### Phase 1 — DAO + observability (non-breaking, 1.6.x)
 
 - Introduce `src/dao/` as the single point of DB access (W8).
-- Refactor `mcp-server.ts`, hooks, and graph-server to call through DAO.
+- Refactor the MCP server (now `packages/openltm-core/src/mcp/server.ts`), hooks, and graph-server to call through DAO.
 - Add latency / recall-hit telemetry to the DAO; surface in `/openltm:health`.
 - Move `embedding` BLOB into `memory_embeddings` sibling table (W7); migration is a
   copy + drop column. MCP responses naturally shrink.
@@ -1041,8 +1091,11 @@ Backwards compatible at the MCP contract level. Schema migrates idempotently.
 ### Phase 4 — Janitor (non-breaking, 1.9.x)
 
 - Materialise `decay_score` on `memories` (W4); janitor refreshes on a schedule.
-- Conflict detector (C4) runs on `learn` and stages conflicting memories
-  `pending`.
+- Conflict detector (C4) stages conflicting memories for review. *(Shipped as a
+  janitor step into `memory_conflict_staging`, not on `learn`.)*
+- *Shipped janitor order* (`janitor/index.ts`): embed missing → decay (incl.
+  30-day stale deprecation) → archive → promote → auto-accept pending promotions
+  after 7 days → conflicts → dedup.
 - Rollup proposer (C6) runs nightly; user reviews via SessionStart banner.
 
 ### Phase 5 — Cross-plugin contract (semver-major, 2.0.0)

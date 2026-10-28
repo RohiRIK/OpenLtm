@@ -8,7 +8,7 @@
 
 **Long-Term Memory for AI coding agents** — Claude Code, OpenCode, Pi, OpenClaw, and Hermes
 
-[![Version](https://img.shields.io/badge/version-2.21.1-blue?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.22.0-blue?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Runtime](https://img.shields.io/badge/runtime-Bun-f472b6?style=flat-square&logo=bun)](https://bun.sh)
 [![Database](https://img.shields.io/badge/database-SQLite-003B57?style=flat-square&logo=sqlite)](https://sqlite.org)
@@ -64,7 +64,7 @@ Full detail, including which write paths scrub secrets and which don't: [Securit
 
 **Decay is a feature, not a bug.** A gotcha from six months ago that you never revisited probably no longer applies. Set `importance: 5` and a memory never ages out. Everything else fades at a rate set by how confident you were and how often it proved true (`janitor/decay.ts`).
 
-**Semantic over keyword.** FTS5 full-text search runs first. If it returns nothing, vector embeddings kick in. You search by meaning — *"how we handle async errors"* finds the memory even if you never wrote those words.
+**Semantic over keyword.** FTS5 full-text search and vector search run in parallel and are fused with Reciprocal Rank Fusion. You search by meaning — *"how we handle async errors"* finds the memory even if you never wrote those words.
 
 **Own your data.** A file on your disk. When you leave the project, so does everything you taught it.
 

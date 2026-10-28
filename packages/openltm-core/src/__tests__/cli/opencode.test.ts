@@ -37,10 +37,8 @@ describe("installOpenCode", () => {
     const result = await installOpenCode({ homedir: tmpDir });
     expect(result.status).toBe("installed");
 
-    // Find the created file (either .config or Library path)
-    const linuxPath = join(tmpDir, ".config", "opencode", "opencode.json");
-    const darwinPath = join(tmpDir, "Library", "Application Support", "opencode", "opencode.json");
-    const created = existsSync(linuxPath) ? linuxPath : darwinPath;
+    // OpenCode reads ~/.config/opencode on every platform, macOS included.
+    const created = join(tmpDir, ".config", "opencode", "opencode.json");
     expect(existsSync(created)).toBe(true);
 
     const cfg = JSON.parse(readFileSync(created, "utf8")) as Record<string, unknown>;
@@ -142,11 +140,8 @@ describe("installOpenCode", () => {
     const result = await installOpenCode({ homedir: tmpDir });
     expect(result.status).toBe("installed");
 
-    // Components co-locate with the resolved config (.config on linux,
-    // Library/Application Support on darwin).
-    const linuxDir = join(tmpDir, ".config", "opencode");
-    const darwinDir = join(tmpDir, "Library", "Application Support", "opencode");
-    const configDir = existsSync(join(linuxDir, "agents")) ? linuxDir : darwinDir;
+    // Components co-locate with the resolved config.
+    const configDir = join(tmpDir, ".config", "opencode");
 
     // The bundled assets ship an aegis agent, three skills, and an aegis plugin.
     expect(existsSync(join(configDir, "agents", "aegis.md"))).toBe(true);

@@ -4,6 +4,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { Database } from "bun:sqlite";
+import { openQueryOnly } from "../../../packages/openltm-core/src/sql.js";
 import { mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import { initSandboxDb, makeSandbox, registerProject, runHook, seedMemory, writeConfig, type Sandbox } from "./hookHarness";
@@ -31,7 +32,7 @@ function commitFiles(files: Record<string, string>, env: Record<string, string> 
 }
 
 function staleOf(id: number): { stale_flagged_at: string | null; stale_reason: string | null } {
-  const db = new Database(sb.dbPath, { readonly: true });
+  const db = openQueryOnly(sb.dbPath);
   try {
     return db.query<{ stale_flagged_at: string | null; stale_reason: string | null }, [number]>(
       "SELECT stale_flagged_at, stale_reason FROM memories WHERE id = ?",

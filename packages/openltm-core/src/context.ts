@@ -6,10 +6,10 @@
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import { getDb, DB_PATH } from "./shared-db.js";
-import { learn, getContextMerge, type Memory } from "./db.js";
+import { learn, getContextMerge, updateLastUsed, type Memory } from "./db.js";
 import { scrubOrRefuse } from "./secretsScrubber.js";
 import { getDataDir, getProjectsDir } from "./paths.js";
-import { isSafeProjectDirName, migrateLegacyContextFiles } from "./project.js";
+import { isSafeProjectDirName, migrateLegacyContextFiles, scopeName } from "./project.js";
 
 export { DB_PATH };
 
@@ -54,6 +54,7 @@ export function addItem(
   skipExport = false
 ): void {
   const db = getDb();
+  project = scopeName(project); // scopes are case-insensitive
   const { scrubbed, redactions } = scrubOrRefuse(content);
   if (redactions.length > 0) {
     process.stderr.write(`[context] Scrubbed ${redactions.length} secret(s): ${redactions.join(", ")}\n`);
@@ -203,6 +204,8 @@ export function getProjectContext(project: string): ProjectContext {
   const items = getItems(project);
   const ofType = (type: ContextType) => items.filter((i) => i.type === type).map((i) => i.content);
   const merged = getContextMerge(project);
+  // An explicit fetch (MCP / opencode `context` tool) counts as use of what it returns.
+  updateLastUsed([...merged.globals, ...merged.scoped].map(m => m.id));
   return {
     project,
     goal: ofType("goal").at(-1) ?? null,

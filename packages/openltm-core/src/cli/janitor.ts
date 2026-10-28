@@ -252,7 +252,7 @@ async function runOnce(parsed: ParsedJanitorArgs): Promise<JanitorCommandResult>
     if (parsed.quiet) {
       return {
         exitCode,
-        output: `[${r.timestamp}] janitor ${exitCode === 0 ? "ok" : "errors"} embed=${r.embed.embedded} decay=${r.decay.refreshed}/${r.decay.deprecated} archive=${r.archive.archived} promote=${r.promote.promoted} dedup=${r.dedup.candidatesFound} (${r.durationMs}ms)${r.errors.length ? ` errors=${JSON.stringify(r.errors)}` : ""}`,
+        output: `[${r.timestamp}] janitor ${exitCode === 0 ? "ok" : "errors"} embed=${r.embed.embedded} decay=${r.decay.refreshed}/${r.decay.deprecated} archive=${r.archive.archived} promote=${r.promote.promoted} accept=${r.accept.accepted} conflicts=${r.conflicts.staged} dedup=${r.dedup.candidatesFound} (${r.durationMs}ms)${r.errors.length ? ` errors=${JSON.stringify(r.errors)}` : ""}`,
       };
     }
     const lines = [
@@ -261,6 +261,8 @@ async function runOnce(parsed: ParsedJanitorArgs): Promise<JanitorCommandResult>
       `    decay:   ${r.decay.refreshed} refreshed, ${r.decay.deprecated} deprecated`,
       `    archive: ${r.archive.archived} archived`,
       `    promote: ${r.promote.promoted} promoted of ${r.promote.scanned} scanned`,
+      `    accept:  ${r.accept.accepted} auto-accepted (pending over a week)`,
+      `    conflicts: ${r.conflicts.staged} staged for review`,
       `    dedup:   ${r.dedup.pairsCompared} pairs compared, ${r.dedup.candidatesFound} suggestions (pending review — nothing merged)`,
       ...r.errors.map((e) => `    error:   ${e}`),
     ];

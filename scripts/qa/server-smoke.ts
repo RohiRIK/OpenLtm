@@ -8,6 +8,7 @@
  * Usage (repo root): bun run scripts/qa/server-smoke.ts
  */
 import { Database } from "bun:sqlite";
+import { openQueryOnly } from "../../packages/openltm-core/src/sql.js";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { hostname, tmpdir } from "os";
 import { join } from "path";
@@ -52,7 +53,7 @@ try {
   const masked = (JSON.parse(got.body) as Record<string, string>)["ltm.openai.apiKey"];
   check("GET /api/settings masks the API key", !got.body.includes(KEY) && typeof masked === "string" && masked.endsWith("9876"), masked);
   await req("/api/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: got.body });
-  const stored = new Database(dbPath, { readonly: true }).query<{ value: string }, []>("SELECT value FROM settings WHERE key='ltm.openai.apiKey'").get()?.value;
+  const stored = openQueryOnly(dbPath).query<{ value: string }, []>("SELECT value FROM settings WHERE key='ltm.openai.apiKey'").get()?.value;
   check("PUTting the masked settings back keeps the real key", stored === KEY, stored);
 
   // Another process (e.g. `ltm janitor run`) holds the janitor lock → the server must not run a second janitor.

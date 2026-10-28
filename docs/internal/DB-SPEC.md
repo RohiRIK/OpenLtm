@@ -37,8 +37,8 @@ The entire data store is one SQLite file: `${CLAUDE_PLUGIN_DATA}/OpenLtm-openltm
 Accessed exclusively through `src/shared-db.ts:getDb()`. WAL mode, foreign keys on,
 busy_timeout 5 000 ms set on every connection.
 
-Schema source of truth: `src/schema.sql` (initial tables + FTS + triggers).
-Migration overlay: `src/shared-db.ts:runMigrations()` (idempotent column adds).
+Schema source of truth: `packages/openltm-core/src/schema.sql` (initial tables + FTS + triggers).
+Migration overlay: `packages/openltm-core/migrations/`, run by `migrateDb()` in `packages/openltm-core/src/shared-db.ts`.
 
 ### 1.1 `memories`
 

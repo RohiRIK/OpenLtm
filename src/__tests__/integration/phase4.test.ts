@@ -11,10 +11,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { Database } from "bun:sqlite";
 import { readFileSync, unlinkSync } from "fs";
-import { join } from "path";
+import { getSchemaPath } from "../../../packages/openltm-core/src/paths.js";
 
 const dbPath = `/tmp/test-ltm-phase4-int-${process.pid}-${Date.now()}.db`;
-const schemaPath = join(import.meta.dir, "..", "..", "..", "src", "schema.sql");
+const schemaPath = getSchemaPath();
 
 let learn: typeof import("@rohirik/openltm-core").learn;
 let recall: typeof import("@rohirik/openltm-core").recall;
@@ -81,7 +81,7 @@ describe("migration 012", () => {
       const row = db.query<{ value: string }, [string]>(
         "SELECT value FROM settings WHERE key=?",
       ).get(key);
-      expect(row).toBeDefined();
+      expect(row).not.toBeNull();
     }
   });
 });
@@ -147,6 +147,6 @@ describe("runDecay() + runArchive() round-trip", () => {
     const inMemories = db.query<{ id: number }, [number]>("SELECT id FROM memories WHERE id=?").get(row.id);
     const inArchive  = db.query<{ id: number }, [number]>("SELECT id FROM memory_archive WHERE id=?").get(row.id);
     expect(inMemories).toBeNull();
-    expect(inArchive).toBeDefined();
+    expect(inArchive).not.toBeNull();
   });
 });

@@ -4,12 +4,8 @@
  */
 import { describe, expect, it } from "bun:test";
 import { homedir, tmpdir } from "os";
-import { join, sep } from "path";
-import { realpathSync } from "fs";
-
-const real = (p: string) => { try { return realpathSync(p); } catch { return p; } };
-const under = (child: string, parent: string) =>
-  real(child) === real(parent) || real(child).startsWith(real(parent) + sep);
+import { join } from "path";
+import { isUnder as under, real } from "./setup/isolate-home.js";
 
 describe("test HOME isolation", () => {
   it("os.homedir() is the isolated HOME", () => {

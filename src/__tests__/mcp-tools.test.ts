@@ -1,10 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { readFileSync, unlinkSync } from "fs";
-import { join } from "path";
 import { Database } from "bun:sqlite";
+import { getSchemaPath } from "../../packages/openltm-core/src/paths.js";
 
 const dbPath = `/tmp/test-ltm-mcp-tools-${process.pid}-${Date.now()}.db`;
-const SCHEMA_PATH = join(import.meta.dir, "..", "..", "src", "schema.sql");
+const SCHEMA_PATH = getSchemaPath();
 
 let learn: (input: import("@rohirik/openltm-core").LearnInput) => import("@rohirik/openltm-core").LearnResult;
 let recall: (input?: import("@rohirik/openltm-core").RecallInput) => Promise<import("@rohirik/openltm-core").MemoryWithRelations[]>;

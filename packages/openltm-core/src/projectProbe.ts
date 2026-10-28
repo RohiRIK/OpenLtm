@@ -10,13 +10,13 @@
  * the bundled SQLite would silently disable sqlite-vec and Honker for the rest
  * of that process.
  */
-import { Database } from "bun:sqlite";
+import { openQueryOnly } from "./sql.js";
 import { ensureCustomSqlite } from "./extensions.js";
 import { projectHasData, type ProbeDb, type ProjectDataProbe } from "./project.js";
 
 function openReadonly(dbPath: string): ProbeDb {
   ensureCustomSqlite();
-  return new Database(dbPath, { readonly: true }) as unknown as ProbeDb;
+  return openQueryOnly(dbPath) as unknown as ProbeDb;
 }
 
 /** Probe `dbPath` (read-only, never created) for rows under a project name. */

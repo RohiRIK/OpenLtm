@@ -58,6 +58,14 @@ function writeTranscript(name: string, entries: Entry[]): string {
   return path;
 }
 
+/** The "Errors Encountered" bullets of a session's pattern file. */
+function errorsIn(shortId: string): string[] {
+  const dir = join(pluginData, "learned", "patterns");
+  const file = readdirSync(dir).find(f => f.endsWith(`-${shortId}.md`))!;
+  const section = readFileSync(join(dir, file), "utf-8").split("## Errors Encountered\n")[1]!.split("\n## ")[0]!;
+  return section.split("\n").filter(l => l.startsWith("- ")).map(l => l.slice(2));
+}
+
 async function runHook(payload: Record<string, unknown>) {
   const proc = Bun.spawn(["bun", "run", HOOK_SCRIPT], {
     stdin: new Blob([JSON.stringify(payload)]),
@@ -131,19 +139,9 @@ describe("EvaluateSession hook (SessionEnd)", () => {
     expect(summary).toContain("(Errors: 1)");
   }, 30_000);
 
-  it("queues only real, deduplicated errors as proposals", async () => {
-    const proposalsPath = join(pluginData, "proposals", `${sessionId}.json`);
-    expect(existsSync(proposalsPath)).toBe(true);
-    const { proposals, project } = JSON.parse(readFileSync(proposalsPath, "utf-8")) as {
-      proposals: Array<{ content: string; category: string; source: string }>;
-      project?: string;
-    };
-    expect(typeof project).toBe("string"); // accepted proposals are scoped to it
-    expect(project!.length).toBeGreaterThan(0);
-    expect(proposals).toHaveLength(1);
-    expect(proposals[0]!.content).toBe("error: Cannot find module 'left-pad' from '/repo/src/index.ts'"); // no "Exit code 1" prefix
-    expect(proposals[0]!.category).toBe("gotcha");
-    expect(proposals[0]!.source).toBe("evaluate-session");
+  it("queues no proposals without ltm.evaluateSessionLlm; real, deduplicated errors stay in the pattern file", async () => {
+    expect(existsSync(join(pluginData, "proposals", `${sessionId}.json`))).toBe(false);
+    expect(errorsIn(shortId)).toEqual(["error: Cannot find module 'left-pad' from '/repo/src/index.ts'"]); // no "Exit code 1" prefix
   });
 
   it("does not duplicate the summary line when a session ends twice", async () => {
@@ -164,6 +162,7 @@ describe("EvaluateSession hook (SessionEnd)", () => {
     expect(run.exitCode).toBe(0);
     expect(run.stdout).toBe("");
     expect(existsSync(join(pluginData, "proposals", "noisesess-0000.json"))).toBe(false);
+    expect(errorsIn("noiseses")).toEqual([]);
   }, 30_000);
 
   it("skips failures of read-only probes and one-off scripts, keeps a project command's", async () => {
@@ -180,8 +179,7 @@ describe("EvaluateSession hook (SessionEnd)", () => {
     ]);
     const run = await runHook({ session_id: "adhocsess-0000", transcript_path: transcript, cwd: "/tmp/ltm-evaluate-session-project" });
     expect(run.exitCode).toBe(0);
-    const { proposals } = JSON.parse(readFileSync(join(pluginData, "proposals", "adhocsess-0000.json"), "utf-8")) as { proposals: Array<{ content: string }> };
-    expect(proposals.map((p) => p.content)).toEqual(["TypeError: loadConfig is not a function. (In 'loadConfig()', 'loadConfig' is undefined)"]);
+    expect(errorsIn("adhocses")).toEqual(["TypeError: loadConfig is not a function. (In 'loadConfig()', 'loadConfig' is undefined)"]);
   }, 30_000);
 
   it("skips short sessions and missing transcripts", async () => {

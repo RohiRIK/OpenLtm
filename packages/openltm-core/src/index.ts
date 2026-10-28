@@ -2,19 +2,20 @@
 export type { LtmCoreConfig, LtmAdapterContext, LtmAdapterOptions } from "./adapterTypes.js";
 
 // DB singleton + configuration
-export { getDb, initDb, configure, waitForInit, _setDbForTesting, withRetry, DB_PATH,
+export { getDb, initDb, migrateDb, configure, waitForInit, _setDbForTesting, withRetry, DB_PATH,
          getSetting, setSetting, getAllSettings, getConfiguredDbPath } from "./shared-db.js";
 export { configureCore, configureDocs } from "./db.js";
+export { CONNECTION_PRAGMAS } from "./sql.js";
 
 // Core memory operations
 export {
-  learn, recall, getMemoryById, forget, relate, getSimilarMemories,
-  getContextMerge, getContextMergeWithGraph, computeDecayScore,
+  learn, recall, getMemoryById, forget, relate, getSimilarMemoriesByVec,
+  getContextMerge, getContextMergeWithGraph, computeDecayScore, updateLastUsed,
   exportMarkdown, exportGraphJson, flagStaleByPaths, revalidate,
 } from "./db.js";
 export type {
   Memory, MemoryWithRelations, MemoryCategory, RelationshipType, MemoryRelation,
-  LearnInput, LearnResult, RecallInput, DecayResult, FlagStaleResult,
+  LearnInput, LearnResult, RecallInput, FlagStaleResult,
 } from "./db.js";
 
 // Context items
@@ -57,7 +58,7 @@ export type { MemoryTemperature, RecallExplainer, ExplainerInput } from "./recal
 
 // Project identity — the one cwd → project_scope resolver every host uses
 export {
-  normalizeProjectName, findRepoRoot, repoIdentityRoot, fallbackProjectName,
+  normalizeProjectName, scopeName, findRepoRoot, repoIdentityRoot, fallbackProjectName,
   resolveProjectName, resolveProjectNameDetailed,
   legacyClaudeSlug, legacyLastSegment,
   readRegistryFile, loadProjectRegistry, migrateLegacyRegistry,
@@ -105,7 +106,7 @@ export type { PendingProposal } from "./proposals.js";
 export {
   runJanitor, runJanitorExclusive, getJanitorStatus, startAutoRun, stopAutoRun,
   runArchive, touchMemory,
-  approveMemory, getPendingMemories, rejectMemory,
+  approveMemory, getPendingMemories, rejectMemory, listRecentlyAutoAccepted,
   mergeMemories, parseDedupSource,
   supersede, stageContradictions, listStagedConflicts, detectContradictions, sanitizeStagingTerm,
   acceptStagedConflict, rejectStagedConflict, coexistStagedConflict,

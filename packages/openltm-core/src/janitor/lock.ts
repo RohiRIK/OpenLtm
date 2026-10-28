@@ -76,8 +76,8 @@ export function isJanitorLockStale(path: string, maxAgeMs = JANITOR_LOCK_MAX_AGE
  * Try once to take the janitor lock for `dbPath`. Never blocks.
  * Reclaims a stale lock (dead owner / too old) before trying.
  */
-export function acquireJanitorLock(dbPath: string, opts: { maxAgeMs?: number } = {}): JanitorLockResult {
-  const path = janitorLockPath(dbPath);
+export function acquireJanitorLock(dbPath: string, opts: { maxAgeMs?: number; lockPath?: string } = {}): JanitorLockResult {
+  const path = opts.lockPath ?? janitorLockPath(dbPath);
   const maxAgeMs = opts.maxAgeMs ?? JANITOR_LOCK_MAX_AGE_MS;
 
   if (existsSync(path) && isJanitorLockStale(path, maxAgeMs)) {

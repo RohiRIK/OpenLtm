@@ -7,7 +7,8 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import { normalizeAnchorPath, normalizeAnchorPaths } from "../anchors.js";
 import { _setDbForTesting } from "../shared-db.js";
-import { learn, flagStaleByPaths, revalidate, recall, decayMemories } from "../db.js";
+import { learn, flagStaleByPaths, revalidate, recall } from "../db.js";
+import { runDecay } from "../janitor/decay.js";
 import { getMigrationFiles, parseMigration } from "../migrations.js";
 
 // Full schema = schema.sql baseline + every migration `up` (later columns like
@@ -177,6 +178,15 @@ describe("flagStaleByPaths (invalidate-on-commit)", () => {
     expect(staleAt(m.id)).toBeNull();
   });
 
+  it("never flags preferences or owner statements: a code change does not invalidate them", () => {
+    const pref = learn({ content: "owner prefers small focused commits here", category: "preference", project_scope: "p", files: ["src/pref.ts"], skipExport: true });
+    const said = learn({ content: "owner said keep the retry loop in fetcher", category: "pattern", origin: "owner-statement", project_scope: "p", files: ["src/pref.ts"], skipExport: true });
+    const observed = learn({ content: "fetcher retries three times on 503s", category: "pattern", project_scope: "p", files: ["src/pref.ts"], skipExport: true });
+    expect(flagStaleByPaths(["src/pref.ts"], { project_scope: "p" }).ids).toEqual([observed.id]);
+    expect(staleAt(pref.id)).toBeNull();
+    expect(staleAt(said.id)).toBeNull();
+  });
+
   it("returns flagged:0 when no memory is anchored to the path (AC14)", () => {
     learn({ content: "anchored to a different file entirely", category: "pattern", project_scope: "p", files: ["src/other.ts"], skipExport: true });
     expect(flagStaleByPaths(["src/unrelated.ts"], { project_scope: "p" }).flagged).toBe(0);
@@ -230,15 +240,25 @@ describe("stale-aware recall + decay + revalidate", () => {
     expect(ids.indexOf(fresh.id)).toBeLessThan(ids.indexOf(stale.id));
   });
 
-  it("decay deprecates a flagged memory but never importance:5 or unflagged-fresh (AC16)", () => {
-    const flagged = learn({ content: "beta flagged should decay now", category: "pattern", project_scope: "p", files: ["src/a.ts"], skipExport: true });
-    const permanent = learn({ content: "beta permanent rule stays", category: "architecture", importance: 5, project_scope: "p", files: ["src/a.ts"], skipExport: true });
+  it("runDecay deprecates a memory stale for 30+ days, not a recent flag, a revalidated one or importance:5 (AC16)", () => {
+    const old = learn({ content: "beta flagged long ago should decay", category: "pattern", project_scope: "p", files: ["src/a.ts"], skipExport: true });
+    const recent = learn({ content: "beta flagged yesterday stays", category: "pattern", project_scope: "p", files: ["src/c.ts"], skipExport: true });
+    const revalidated = learn({ content: "beta revalidated memory stays", category: "pattern", project_scope: "p", files: ["src/d.ts"], skipExport: true });
+    const permanent = learn({ content: "beta permanent rule stays", category: "architecture", importance: 5, project_scope: "p", skipExport: true });
     const freshUnflagged = learn({ content: "beta fresh untouched stays", category: "pattern", project_scope: "p", files: ["src/b.ts"], skipExport: true });
 
-    flagStaleByPaths(["src/a.ts"], { project_scope: "p" }); // flags `flagged`; skips imp5 `permanent`
-    decayMemories();
+    flagStaleByPaths(["src/a.ts", "src/c.ts", "src/d.ts"], { project_scope: "p" });
+    revalidate(revalidated.id);
+    // flagStaleByPaths never flags importance 5; backdate it anyway to prove the decay guard too.
+    db.run("UPDATE memories SET stale_flagged_at = datetime('now', '-31 days') WHERE id IN (?, ?)", [old.id, permanent.id]);
+    db.run("UPDATE memories SET confirm_count = 20 WHERE id = ?", [old.id]); // recall traffic is no protection
+    db.run("UPDATE memories SET stale_flagged_at = datetime('now', '-1 days') WHERE id = ?", [recent.id]);
 
-    expect(statusOf(flagged.id)).toBe("deprecated");
+    runDecay();
+
+    expect(statusOf(old.id)).toBe("deprecated");
+    expect(statusOf(recent.id)).toBe("active");
+    expect(statusOf(revalidated.id)).toBe("active");
     expect(statusOf(permanent.id)).toBe("active");
     expect(statusOf(freshUnflagged.id)).toBe("active");
   });
