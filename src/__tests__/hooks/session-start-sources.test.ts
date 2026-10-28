@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { Database } from "bun:sqlite";
+import { openQueryOnly } from "../../../packages/openltm-core/src/sql.js";
 import {
   HOOKS_SRC, initSandboxDb, makeSandbox, markOnboarded, registerProject, runHook, seedMemory, writeConfig,
   type Sandbox,
@@ -172,7 +173,7 @@ describe("SessionStart — injection", () => {
     const bullets = projectBlock.split("\n\n")[0]!.split("\n").filter(l => l.startsWith("- ["));
     expect(bullets.length).toBe(2);
     // Only the two injected memories count as used.
-    db = new Database(sb.dbPath, { readonly: true });
+    db = openQueryOnly(sb.dbPath);
     const used = db.query<{ id: number }, [string]>("SELECT id FROM memories WHERE last_used_at <> ?").all(OLD).map(r => r.id);
     db.close();
     expect(used.sort()).toEqual(bullets.map(l => Number(l.match(/^- \[(\d+)\]/)![1])).sort());

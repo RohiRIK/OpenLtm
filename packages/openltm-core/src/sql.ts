@@ -1,7 +1,19 @@
 /**
- * sql.ts — Shared SQL fragments. Dependency-free: hooks import it by relative
- * path without loading core.
+ * sql.ts — Shared SQL fragments and connection helpers. Dependency-free (only
+ * bun:sqlite): hooks import it by relative path without loading core.
  */
+import { Database } from "bun:sqlite";
+
+/**
+ * Open an existing database for reads only. Not `{ readonly: true }`: a WAL
+ * database whose last writer closed cleanly has no -shm file, and a readonly
+ * connection cannot create one, so the open fails with SQLITE_CANTOPEN.
+ */
+export function openQueryOnly(path: string): Database {
+  const db = new Database(path, { readwrite: true, create: false });
+  db.exec("PRAGMA busy_timeout=500; PRAGMA query_only=ON;");
+  return db;
+}
 
 // busy_timeout first: journal_mode=WAL needs a lock and would fail fast with
 // SQLITE_BUSY while another process is writing.

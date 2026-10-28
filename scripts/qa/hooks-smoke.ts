@@ -7,6 +7,7 @@
  * Usage (repo root): bun run scripts/qa/hooks-smoke.ts
  */
 import { Database } from "bun:sqlite";
+import { openQueryOnly } from "../../packages/openltm-core/src/sql.js";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { dirname, join } from "path";
@@ -90,7 +91,7 @@ try {
   writeFileSync(join(repo, "src", "parser.ts"), "export {}\n");
   git("add", "-A"); git("commit", "-qm", "parser");
   const ptu = hook("PostToolUse.ts", { cwd: repo, session_id: "s1", tool_name: "Bash", tool_input: { command: "git commit -m parser" }, tool_response: { stdout: "", stderr: "", interrupted: false } });
-  const stale = new Database(dbPath, { readonly: true }).query<{ n: number }, [number]>("SELECT COUNT(*) n FROM memories WHERE id=? AND stale_flagged_at IS NOT NULL").get(anchored)!.n;
+  const stale = openQueryOnly(dbPath).query<{ n: number }, [number]>("SELECT COUNT(*) n FROM memories WHERE id=? AND stale_flagged_at IS NOT NULL").get(anchored)!.n;
   check("PostToolUse flags the anchored memory stale after git commit", ptu.code === 0 && ptu.out === "" && stale === 1, ptu.out);
   const logged = existsSync(join(data, "logs", "ltm.jsonl"))
     ? readFileSync(join(data, "logs", "ltm.jsonl"), "utf-8").trim().split("\n").map((l) => JSON.parse(l).event as string) : [];
@@ -101,7 +102,7 @@ try {
   const stop1 = hook("UpdateContext.ts", { cwd: repo, session_id: "sess-AAA", transcript_path: t1 });
   writeFileSync(t1, readFileSync(t1, "utf-8") + JSON.stringify(edit("/repo/b.ts")) + "\n");
   hook("UpdateContext.ts", { cwd: repo, session_id: "sess-AAA", transcript_path: t1 });
-  const rows = new Database(dbPath, { readonly: true }).query<{ content: string }, []>("SELECT content FROM context_items WHERE type='progress' AND session_id='sess-AAA'").all();
+  const rows = openQueryOnly(dbPath).query<{ content: string }, []>("SELECT content FROM context_items WHERE type='progress' AND session_id='sess-AAA'").all();
   check("Stop prints nothing", stop1.out === "", stop1.out);
   check("Stop keeps one progress row per session, updated each turn", rows.length === 1 && rows[0]!.content.includes("b.ts"), JSON.stringify(rows));
 

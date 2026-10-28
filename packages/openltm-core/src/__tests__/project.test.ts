@@ -6,6 +6,7 @@
  */
 import { afterAll, describe, expect, it } from "bun:test";
 import { Database } from "bun:sqlite";
+import { openQueryOnly } from "../sql.js";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -238,7 +239,7 @@ describe("continuity rule", () => {
 });
 
 describe("projectHasData", () => {
-  const open = (p: string) => new Database(p, { readonly: true }) as never;
+  const open = (p: string) => openQueryOnly(p) as never;
 
   it("true/false per table, false for a missing DB or missing tables", () => {
     const dbPath = join(tmp(), "probe.db");

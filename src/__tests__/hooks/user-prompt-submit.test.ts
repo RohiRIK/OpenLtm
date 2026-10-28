@@ -4,6 +4,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { Database } from "bun:sqlite";
+import { openQueryOnly } from "../../../packages/openltm-core/src/sql.js";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import { RECALLED_MEMORY_NOTICE } from "../../../packages/openltm-core/src/memoryFrame.js";
@@ -105,7 +106,7 @@ describe("UserPromptSubmit hook (subprocess)", () => {
   it("counts injected memories as used, like core recall()", async () => {
     type Usage = { recall_count: number; last_recalled_at: string | null; first_recalled_at: string | null; last_used_at: string | null };
     const usage = (id: number) => {
-      const db = new Database(sb.dbPath, { readonly: true });
+      const db = openQueryOnly(sb.dbPath);
       try {
         return db.query<Usage, [number]>("SELECT recall_count, last_recalled_at, first_recalled_at, last_used_at FROM memories WHERE id = ?").get(id)!;
       } finally { db.close(); }

@@ -5,6 +5,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { Database } from "bun:sqlite";
+import { openQueryOnly } from "../sql.js";
 import { mkdirSync, mkdtempSync, readdirSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -54,7 +55,7 @@ describe("multi-process writers on one WAL database", () => {
     for (const r of results) expect(r).toMatchObject({ exitCode: 0 });
     expect(results.map((r) => r.stderr).join("")).not.toContain("SQLITE_BUSY");
 
-    const db = new Database(env.LTM_DB_PATH!, { readonly: true });
+    const db = openQueryOnly(env.LTM_DB_PATH!);
     try {
       for (let w = 0; w < WRITERS; w++) {
         const { n } = db.query<{ n: number }, [string]>("SELECT COUNT(*) AS n FROM memories WHERE content LIKE ?")
@@ -78,7 +79,7 @@ describe("multi-process writers on one WAL database", () => {
     })));
     for (const r of results) expect(r).toEqual({ exitCode: 0, stderr: "" });
 
-    const db = new Database(dbPath, { readonly: true });
+    const db = openQueryOnly(dbPath);
     try {
       const { n } = db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM _schema_version").get()!;
       expect(n).toBe(readdirSync(join(import.meta.dir, "..", "..", "migrations")).filter((f) => f.endsWith(".sql")).length);
