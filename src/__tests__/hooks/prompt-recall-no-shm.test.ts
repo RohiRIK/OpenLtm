@@ -4,7 +4,6 @@
  * silently disabled prompt-time injection whenever no other process held the DB.
  */
 import { describe, expect, it } from "bun:test";
-import { Database } from "bun:sqlite";
 import { existsSync, rmSync } from "fs";
 import { searchPromptMemories } from "../../../hooks/lib/promptRecall";
 import { initSandboxDb, makeSandbox, seedMemory } from "./hookHarness";
@@ -18,7 +17,7 @@ describe("prompt recall on a WAL database with no -shm file", () => {
       // What a clean last close leaves behind (Homebrew SQLite removes these itself).
       for (const ext of ["-wal", "-shm"]) rmSync(sb.dbPath + ext, { force: true });
       expect(existsSync(sb.dbPath + "-shm")).toBe(false);
-      expect(() => new Database(sb.dbPath, { readonly: true }).query("SELECT 1 FROM memories").get()).toThrow();
+      // (A readonly open fails here on macOS; Linux builds of SQLite may tolerate it.)
 
       const hits = searchPromptMemories(sb.dbPath, { prompt: "how are payments webhook signatures verified?", project: "shop", limit: 5 });
       expect(hits.map((h) => h.id)).toContain(id);
