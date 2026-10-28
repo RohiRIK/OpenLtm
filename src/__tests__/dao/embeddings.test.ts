@@ -6,9 +6,10 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { Database } from "bun:sqlite";
 import { readFileSync, unlinkSync } from "fs";
 import { join } from "path";
+import { getSchemaPath } from "../../../packages/openltm-core/src/paths.js";
 
 const dbPath = `/tmp/test-dao-embeddings-${process.pid}-${Date.now()}.db`;
-const schemaPath = join(import.meta.dir, "..", "..", "..", "packages", "openltm-core", "src", "schema.sql");
+const schemaPath = getSchemaPath();
 const mig010Path = join(import.meta.dir, "..", "..", "..", "packages", "openltm-core", "migrations", "010_memory_embeddings_split.sql");
 
 let db: Database;

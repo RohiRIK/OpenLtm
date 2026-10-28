@@ -1,11 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { Database } from "bun:sqlite";
 import { readFileSync, unlinkSync } from "fs";
-import { join } from "path";
+import { getSchemaPath } from "../../../packages/openltm-core/src/paths.js";
 
 // Unique path per process+timestamp to avoid collisions when tests run in parallel
 const dbPath = `/tmp/test-ltm-dao-${process.pid}-${Date.now()}.db`;
-const schemaPath = join(import.meta.dir, "..", "..", "..", "packages", "openltm-core", "src", "schema.sql");
+const schemaPath = getSchemaPath();
 
 // Deferred — imported after the DB is injected
 let listByProject: typeof import("@rohirik/openltm-core").listByProject;

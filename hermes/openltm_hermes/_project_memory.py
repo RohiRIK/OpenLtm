@@ -19,6 +19,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+from ._db import _scope
+
 CATEGORIES = frozenset({"preference", "architecture", "gotcha", "pattern", "workflow", "constraint"})
 STATES = frozenset({"proposed", "approved", "rejected", "superseded", "expired"})
 MAX_CONTENT_CHARS = 2_000
@@ -107,8 +109,7 @@ def _validate_content(content: str) -> str:
 
 
 def _validate_project_scope(project_scope: str) -> str:
-    # Lowercased: scopes are case-insensitive (core migration 031).
-    value = project_scope.strip().lower()
+    value = _scope(project_scope) or ""
     if not value or len(value) > MAX_PROJECT_CHARS or not _SAFE_PROJECT.fullmatch(value):
         raise ProjectMemoryError("project must be a bounded, relative identifier")
     if value.startswith("/") or ".." in value.split("/"):

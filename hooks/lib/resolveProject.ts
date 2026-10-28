@@ -146,9 +146,11 @@ export function resolveProject(cwd: string): ProjectResolution {
   // The resolver lowercases the slug; Claude's legacy dir keeps the path's casing.
   const slug = legacyClaudeSlug(cwd);
   const legacyDir = (name: string): string => (name === scopeName(slug) ? slug : name);
-  const hasContext = (name: string): boolean =>
-    isSafeProjectDirName(name) && isSafeProjectDirName(legacyDir(name)) &&
-    (hasContextFiles(join(projectsDir, name)) || hasContextFiles(join(getClaudeTranscriptsDir(), legacyDir(name))));
+  const hasContext = (name: string): boolean => {
+    const legacy = legacyDir(name);
+    return isSafeProjectDirName(name) && isSafeProjectDirName(legacy) &&
+      (hasContextFiles(join(projectsDir, name)) || hasContextFiles(join(getClaudeTranscriptsDir(), legacy)));
+  };
 
   const resolved = resolveProjectNameDetailed(cwd, {
     registry,

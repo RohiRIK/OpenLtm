@@ -136,12 +136,15 @@ export async function runJanitor(): Promise<JanitorRunResult> {
 
     // 5. Stage contradictions for review in every active scope (null = global)
     try {
-      const scopes = getDb()
+      const db = getDb();
+      const scopes = db
         .query<{ scope: string | null }, []>("SELECT DISTINCT project_scope AS scope FROM memories WHERE status = 'active'")
         .all()
         .map(r => r.scope);
       if (!scopes.includes(null)) scopes.push(null);
-      for (const scope of scopes) conflictsStaged += stageContradictions(detectContradictions(scope));
+      db.transaction(() => {
+        for (const scope of scopes) conflictsStaged += stageContradictions(detectContradictions(scope));
+      })();
     } catch (e) {
       errors.push(`conflicts: ${String(e)}`);
     }

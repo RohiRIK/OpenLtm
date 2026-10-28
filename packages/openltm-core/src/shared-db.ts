@@ -7,7 +7,8 @@ import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, readFileSync } from "fs";
 import { dirname } from "path";
 import { getDbPath, getSchemaPath } from "./paths.js";
-import { runPendingMigrations } from "./migrations.js";
+import { getMigrationFiles, runPendingMigrations, verifyRecordedChecksums } from "./migrations.js";
+import { CONNECTION_PRAGMAS } from "./sql.js";
 import { writeQueue } from "./lib/writeQueue.js";
 import { ensureCustomSqlite, loadExtensions, getCapabilities } from "./extensions.js";
 import { syncVecIndex } from "./vec/index.js";
@@ -41,9 +42,7 @@ export async function initDb(opts?: { dbPath?: string; schemaPath?: string }): P
   // system SQLite. No-op (degrades to FTS-only) when none is available.
   ensureCustomSqlite();
   const db = new Database(DB_PATH, { create: true });
-  // busy_timeout first: journal_mode=WAL needs a lock and would fail fast with
-  // SQLITE_BUSY while another process is writing.
-  db.exec("PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
+  db.exec(CONNECTION_PRAGMAS);
   loadExtensions(db);
   await migrateDb(db);
   // Index embeddings the vec0 index is missing: a DB that predates vec wiring,
@@ -60,30 +59,50 @@ export async function initDb(opts?: { dbPath?: string; schemaPath?: string }): P
  * database at once do not both run the same migrations.
  */
 export async function migrateDb(db: Database, schemaPath: string = SCHEMA_PATH): Promise<void> {
+  const schema = readFileSync(schemaPath, "utf-8");
+  const hasMemories = tableExists(db, "memories");
+  // Fast path: already current. schema.sql is CREATE IF NOT EXISTS, safe without the lock.
+  if (hasMemories && await migrationsCurrent(db)) {
+    db.exec(schema);
+    return;
+  }
   const file = db.filename;
   let release = (): void => {};
   if (file && file !== ":memory:") {
     // Waits for the holder; a lock left by a dead process is reclaimed.
     for (;;) {
+      // Generic file lock; the janitor name is historical.
       const lock = acquireJanitorLock(file, { lockPath: `${file}.migrate.lock`, maxAgeMs: 10 * 60_000 });
       if (lock.acquired) { release = lock.release; break; }
       await Bun.sleep(25);
     }
   }
   try {
-    const schema = readFileSync(schemaPath, "utf-8");
-    try {
-      db.exec(schema);
-    } catch {
-      // A database from an older release: schema.sql indexes columns that only a
-      // later migration adds (e.g. stale_flagged_at). Migrate it first.
-      await runPendingMigrations(db);
-      db.exec(schema);
-    }
-    await runPendingMigrations(db);
+    // An existing DB migrates first: schema.sql indexes columns that only a
+    // later migration adds (e.g. stale_flagged_at).
+    if (hasMemories) await runPendingMigrations(db);
+    db.exec(schema);
+    if (!hasMemories) await runPendingMigrations(db);
   } finally {
     release();
   }
+}
+
+function tableExists(db: Database, name: string): boolean {
+  return db.query("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name) != null;
+}
+
+/** True when the newest migration file is recorded as applied (and every applied checksum still matches). */
+async function migrationsCurrent(db: Database): Promise<boolean> {
+  if (!tableExists(db, "_schema_version")) return false;
+  const files = await getMigrationFiles();
+  const latest = files.at(-1)?.version ?? 0;
+  const row = db.query<{ v: number | null }, []>("SELECT MAX(version) AS v FROM _schema_version").get();
+  if (row?.v !== latest) return false;
+  // Keep the fail-closed checksum check on every open, as runPendingMigrations did.
+  const applied = new Set(db.query<{ version: number }, []>("SELECT version FROM _schema_version").all().map((r) => r.version));
+  verifyRecordedChecksums(db, files, applied);
+  return true;
 }
 
 /** Path of the database this process opens (after configure()/initDb overrides). */
@@ -118,10 +137,11 @@ export function getDb(): Database {
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     ensureCustomSqlite();
     _db = new Database(DB_PATH, { create: true });
-    _db.exec("PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
+    _db.exec(CONNECTION_PRAGMAS);
     loadExtensions(_db);
-    // An older database fails schema.sql until migrated; initDb (above) does that.
-    try { _db.exec(readFileSync(SCHEMA_PATH, "utf-8")); } catch { /* old DB */ }
+    // schema.sql indexes columns only later migrations add, so it throws on an
+    // unmigrated DB; initDb (above) migrates it and swaps _db.
+    try { _db.exec(readFileSync(SCHEMA_PATH, "utf-8")); } catch { /* unmigrated DB */ }
   }
   return _db;
 }

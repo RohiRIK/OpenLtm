@@ -30,6 +30,7 @@ import type { Config } from "../../src/config.js";
 // Dependency-free module — importing it directly does not load core.
 import { scrubForEgress } from "../../packages/openltm-core/src/secretsScrubber.js";
 import { frameRecalledMemory } from "../../packages/openltm-core/src/memoryFrame.js";
+import { RECORD_USAGE_SQL } from "../../packages/openltm-core/src/sql.js";
 
 export const MIN_PROMPT_CHARS = 15;
 export const MAX_CONTENT_CHARS = 200;
@@ -222,13 +223,7 @@ export function recordPromptUsage(dbPath: string, ids: number[]): void {
   try {
     db = new Database(dbPath, { readwrite: true, create: false });
     db.run("PRAGMA busy_timeout = 500"); // short: the hook has a 5s budget
-    db.run(
-      `UPDATE memories SET last_used_at = datetime('now'), last_recalled_at = datetime('now'),
-              recall_count = recall_count + 1,
-              first_recalled_at = COALESCE(first_recalled_at, datetime('now'))
-       WHERE id IN (${ids.map(() => "?").join(",")})`,
-      ids,
-    );
+    db.run(`${RECORD_USAGE_SQL}(${ids.map(() => "?").join(",")})`, ids);
   } catch (err) {
     process.stderr.write(`[promptRecall] usage not recorded: ${err}\n`);
   } finally {

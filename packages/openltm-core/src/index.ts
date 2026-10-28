@@ -5,6 +5,7 @@ export type { LtmCoreConfig, LtmAdapterContext, LtmAdapterOptions } from "./adap
 export { getDb, initDb, migrateDb, configure, waitForInit, _setDbForTesting, withRetry, DB_PATH,
          getSetting, setSetting, getAllSettings, getConfiguredDbPath } from "./shared-db.js";
 export { configureCore, configureDocs } from "./db.js";
+export { CONNECTION_PRAGMAS } from "./sql.js";
 
 // Core memory operations
 export {

@@ -132,7 +132,7 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
   };
 
   /** An explicit `project` arg as a scope name (case-insensitive), or undefined. */
-  const projectArg = (project: string | undefined): string | undefined => (project ? scopeName(project) : "") || undefined;
+  const projectArg = (p?: string): string | undefined => scopeName(p ?? "") || undefined;
 
   /** Explicit `project`, else the host's default project, else null. */
   async function resolveProjectArg(project: string | undefined): Promise<string | null> {
@@ -141,7 +141,7 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
     if (!options.defaultProject) return null;
     try {
       const fallback = await options.defaultProject();
-      return (fallback ? scopeName(fallback) : "") || null;
+      return projectArg(fallback) ?? null;
     } catch (err) {
       process.stderr.write(`[ltm-mcp] defaultProject failed: ${err}\n`);
       return null;
@@ -707,7 +707,9 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
   // the embedding queue (inert without Honker). Honker claims are atomic with a
   // visibility timeout, so several servers plus graph-server can run workers at once.
   const worker = startEmbeddingWorker();
-  if (worker.running) process.stderr.write("[ltm-mcp] embedding worker running (honker queue)\n");
+  // An inert worker does not hold the event loop, so there is nothing to shut down.
+  if (!worker.running) return;
+  process.stderr.write("[ltm-mcp] embedding worker running (honker queue)\n");
   let stopping = false;
   const shutdown = () => {
     if (stopping) return;

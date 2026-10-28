@@ -31,7 +31,7 @@ import {
   checkRequest, dropMaskedSecretsDeep, isMaskedValue, maskSecretsDeep, maskSettings,
   nonLoopbackWarning, resolveRevealTarget, resolveServerHost, sanitizeSettingsUpdate,
 } from "./serverGuard.js";
-import { getConfigPath } from "@rohirik/openltm-core";
+import { getConfigPath, CONNECTION_PRAGMAS } from "@rohirik/openltm-core";
 import type { Cluster } from "./graph-app/lib/types.js";
 
 const CLAUDE_DIR = join(homedir(), ".claude");
@@ -191,7 +191,7 @@ await Bun.write(PID_PATH, String(process.pid));
 // Persistent DB — opened once, PRAGMAs run once
 const db = new Database(DB_PATH);
 // busy_timeout before WAL: hooks and the MCP server write this DB concurrently.
-db.exec("PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
+db.exec(CONNECTION_PRAGMAS);
 // schema.sql + pending migrations (idempotent), same path as the MCP server's initDb.
 await migrateDb(db);
 

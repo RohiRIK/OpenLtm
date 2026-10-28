@@ -12,6 +12,7 @@ import { normalizeAnchorPaths } from "./anchors.js";
 import { DEFAULT_ORIGIN, type MemoryOrigin } from "./origin.js";
 import { getDb, DB_PATH, configure as configureDb } from "./shared-db.js";
 import { scopeName } from "./project.js";
+import { RECORD_USAGE_SQL } from "./sql.js";
 import { enqueueEmbedding } from "./queue/index.js";
 import { notifyLtm, notifyMemoryAdded } from "./events/index.js";
 import { scrubOrRefuse, scrubForEgress } from "./secretsScrubber.js";
@@ -1119,13 +1120,7 @@ export async function recall(input: RecallInput = {}): Promise<MemoryWithRelatio
   });
   if (sorted.length > 0) {
     const placeholders = sorted.map(() => "?").join(",");
-    db.run(
-      `UPDATE memories SET last_used_at = datetime('now'), last_recalled_at = datetime('now'),
-              recall_count = recall_count + 1,
-              first_recalled_at = COALESCE(first_recalled_at, datetime('now'))
-       WHERE id IN (${placeholders})`,
-      sorted.map(m => m.id),
-    );
+    db.run(`${RECORD_USAGE_SQL}(${placeholders})`, sorted.map(m => m.id));
   }
   let enriched = sorted.map(m => enrichMemory(db, m));
   enriched = filterPrivateMemories(enriched, input.includePrivate === true);

@@ -10,12 +10,13 @@ import { readdirSync, existsSync, statSync, lstatSync, unlinkSync, chmodSync } f
 import { join, dirname, basename } from "path";
 import { createHash } from "crypto";
 import { getDbPath, getMigrationsDir } from "./paths.js";
+import { CONNECTION_PRAGMAS } from "./sql.js";
 
 const DB_PATH = getDbPath();
 
 function openDb(): Database {
   const db = new Database(DB_PATH, { create: true });
-  db.exec("PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
+  db.exec(CONNECTION_PRAGMAS);
   return db;
 }
 

@@ -163,17 +163,18 @@ export function runAutoAccept(): { accepted: number } {
         WHERE status = 'pending' AND source = 'auto-promote' AND (title IS NULL OR title = '')`,
     )
     .all();
-  for (const m of untitled) db.run("UPDATE memories SET title = ? WHERE id = ?", [deriveTitle(m.content), m.id]);
-
   const due = db
     .query<{ id: number }, [string]>(
       `SELECT id FROM memories
         WHERE status = 'pending' AND source = 'auto-promote' AND created_at < datetime('now', ?)`,
     )
     .all(`-${AUTO_ACCEPT_DAYS} days`);
-  let accepted = 0;
-  for (const m of due) if (approveMemory(m.id, AUTO_ACCEPT_ACTOR)) accepted++;
-  return { accepted };
+  return db.transaction(() => {
+    for (const m of untitled) db.run("UPDATE memories SET title = ? WHERE id = ?", [deriveTitle(m.content), m.id]);
+    let accepted = 0;
+    for (const m of due) if (approveMemory(m.id, AUTO_ACCEPT_ACTOR)) accepted++;
+    return { accepted };
+  })();
 }
 
 /** Ids of `project`'s memories the janitor auto-accepted in the last AUTO_ACCEPT_DAYS that are still active. */
@@ -182,7 +183,7 @@ export function listRecentlyAutoAccepted(project: string): number[] {
     .query<{ id: number }, [string, string, string]>(
       `SELECT DISTINCT a.memory_id AS id FROM memory_audit a
          JOIN memories m ON m.id = a.memory_id
-        WHERE a.actor = ? AND a.created_at >= datetime('now', ?)
+        WHERE a.op = 'update' AND a.actor = ? AND a.created_at >= datetime('now', ?)
           AND m.status = 'active' AND m.project_scope = ?
         ORDER BY a.memory_id`,
     )

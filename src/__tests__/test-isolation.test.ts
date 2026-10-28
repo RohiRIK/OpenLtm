@@ -4,18 +4,9 @@
  * (scripts/test-isolated.ts + src/__tests__/setup/isolate-home.ts).
  */
 import { describe, expect, it } from "bun:test";
-import { realpathSync } from "fs";
-import { basename, dirname, join, sep } from "path";
+import { isUnder } from "./setup/isolate-home.js";
 
-// Resolve the nearest existing ancestor: a not-yet-created dir under /var must
-// still compare equal to its /private/var parent on macOS.
-const real = (p: string): string => {
-  try { return realpathSync(p); } catch {}
-  const parent = dirname(p);
-  return parent === p ? p : join(real(parent), basename(p));
-};
-const inside = (child: string | undefined, parent: string) =>
-  !!child && (real(child) === real(parent) || real(child).startsWith(real(parent) + sep));
+const inside = (child: string | undefined, parent: string) => !!child && isUnder(child, parent);
 
 describe("test environment isolation", () => {
   it("CLAUDE_CONFIG_DIR and the XDG base dirs are inside the isolated HOME", () => {

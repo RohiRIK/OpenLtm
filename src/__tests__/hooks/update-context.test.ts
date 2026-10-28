@@ -8,10 +8,11 @@ import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
+import { getSchemaPath } from "../../../packages/openltm-core/src/paths.js";
 
 const PROJECT_ROOT = join(import.meta.dir, "..", "..", "..");
 const HOOK_SCRIPT = join(PROJECT_ROOT, "hooks", "src", "UpdateContext.ts");
-const SCHEMA_PATH = join(PROJECT_ROOT, "packages", "openltm-core", "src", "schema.sql");
+const SCHEMA_PATH = getSchemaPath();
 
 let tmp: string;
 let home: string;

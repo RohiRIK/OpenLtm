@@ -4,18 +4,8 @@
  */
 import { describe, expect, it } from "bun:test";
 import { homedir, tmpdir } from "os";
-import { basename, dirname, join, sep } from "path";
-import { realpathSync } from "fs";
-
-// Resolve the nearest existing ancestor: a not-yet-created dir under /var must
-// still compare equal to its /private/var parent on macOS.
-const real = (p: string): string => {
-  try { return realpathSync(p); } catch {}
-  const parent = dirname(p);
-  return parent === p ? p : join(real(parent), basename(p));
-};
-const under = (child: string, parent: string) =>
-  real(child) === real(parent) || real(child).startsWith(real(parent) + sep);
+import { join } from "path";
+import { isUnder as under, real } from "./setup/isolate-home.js";
 
 describe("test HOME isolation", () => {
   it("os.homedir() is the isolated HOME", () => {
