@@ -41,6 +41,9 @@ function printHelp(): void {
       "                          evolve, archive, restore) — run 'collection --help'",
       "    record <cmd>          Records in a collection (list, get, put, archive,",
       "                          export) — run 'record --help'",
+      "    export --project <p>  Write a project's memory to one portable file",
+      "                          (optional --encrypt); 'export --help'",
+      "    import <file>         Load a capsule (checksum verified, deduplicated)",
       "    doctor [--fix]        Check the database (integrity, indexes, orphan rows,",
       "                          stale vectors); --fix repairs after a backup",
       "    conflict [list]       List staged memory conflicts; resolve one with",
@@ -105,6 +108,14 @@ async function main(): Promise<void> {
     }
     process.stdout.write(JSON.stringify({ ok, action, id }) + "\n");
     process.exit(ok ? 0 : 1);
+  }
+
+  // Sub-commands: export / import — a project's memory as one capsule file
+  if (argv[0] === "export" || argv[0] === "import") {
+    const { runExportCommand, runImportCommand } = await import("./capsule.js");
+    const result = argv[0] === "export" ? await runExportCommand(argv.slice(1)) : await runImportCommand(argv.slice(1));
+    (result.exitCode === 0 ? process.stdout : process.stderr).write(result.output + "\n");
+    process.exit(result.exitCode);
   }
 
   // Sub-command: doctor — database health checks and safe repair
