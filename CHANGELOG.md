@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.22.1] — 2026-10-28
+
+### Fixed
+- **False memory conflicts.** The contradiction check matched substrings, so "js" hit `.mjs` and `json`, and "ts" hit "its" and "tests". 2.22.0 started running it in the janitor, which staged unrelated gotchas as "js vs ts" conflicts. It now matches whole words, ignores file extensions and paths, and skips a memory that mentions both sides. To clear a false conflict 2.22.0 staged, run `ltm conflict reject <id>`.
+
 ## [2.22.0] — 2026-10-28
 
 An audit of two weeks of real use found the automatic memory loop mostly idle: no memory had an embedding, prompt-time injection did all retrieval but never counted as use, every session-end proposal was a raw tool error, and auto-promoted memories waited for a review nobody did. This release makes those loops work without the user or the agent having to remember to run them.
