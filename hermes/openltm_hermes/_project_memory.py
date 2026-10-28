@@ -68,6 +68,11 @@ class ProjectMemoryError(ValueError):
 def init_project_memory_schema(conn: sqlite3.Connection) -> None:
     """Create the additive review ledger and indexes without touching memories."""
     conn.executescript(_SCHEMA_SQL)
+    # Fold review rows written before scopes were lowercased (idempotent).
+    conn.execute(
+        "UPDATE project_memory_reviews SET project_scope = lower(project_scope)"
+        " WHERE project_scope <> lower(project_scope)"
+    )
     conn.commit()
 
 
@@ -102,7 +107,8 @@ def _validate_content(content: str) -> str:
 
 
 def _validate_project_scope(project_scope: str) -> str:
-    value = project_scope.strip()
+    # Lowercased: scopes are case-insensitive (core migration 031).
+    value = project_scope.strip().lower()
     if not value or len(value) > MAX_PROJECT_CHARS or not _SAFE_PROJECT.fullmatch(value):
         raise ProjectMemoryError("project must be a bounded, relative identifier")
     if value.startswith("/") or ".." in value.split("/"):

@@ -199,17 +199,28 @@ export interface ProjectNameResolution {
   legacyVerified: boolean;
 }
 
+/**
+ * Scope names are case-insensitive: "SummonOS" and "summonos" are one project.
+ * Only trims and lowercases — any other rewrite would orphan existing rows.
+ */
+export function scopeName(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+function isInside(child: string, parent: string): boolean {
+  return child.startsWith(parent + "/") || child.startsWith(parent + sep);
+}
+
 function matchRegistry(cwd: string, registry: ProjectRegistry | null | undefined): { name: string; path: string; exact: boolean } | null {
   if (!registry) return null;
   const key = stripTrailingSep(cwd);
   for (const p of [cwd, key]) {
-    if (registry[p]) return { name: registry[p]!, path: p, exact: true };
+    if (registry[p]?.trim()) return { name: scopeName(registry[p]!), path: p, exact: true };
   }
   const paths = Object.keys(registry).sort((a, b) => b.length - a.length);
   for (const p of paths) {
-    const base = stripTrailingSep(p);
-    if (registry[p] && (key.startsWith(base + "/") || key.startsWith(base + sep))) {
-      return { name: registry[p]!, path: p, exact: false };
+    if (registry[p]?.trim() && isInside(key, stripTrailingSep(p))) {
+      return { name: scopeName(registry[p]!), path: p, exact: false };
     }
   }
   return null;
@@ -226,13 +237,20 @@ export function fallbackProjectName(cwd: string): { name: string; source: "repo-
 }
 
 export function resolveProjectNameDetailed(cwd: string, opts: ResolveProjectNameOptions = {}): ProjectNameResolution {
-  const hit = matchRegistry(cwd, opts.registry);
+  let hit = matchRegistry(cwd, opts.registry);
+  // A registered parent folder (e.g. ~/Documents) must not swallow a git repo
+  // inside it: a prefix match loses to a repo root strictly below the registered path.
+  if (hit && !hit.exact) {
+    const root = findRepoRoot(cwd);
+    if (root && isInside(stripTrailingSep(root), stripTrailingSep(hit.path))) hit = null;
+  }
   const fb = hit ? null : fallbackProjectName(cwd);
   const base: ProjectNameResolution = hit
     ? { name: hit.name, source: hit.exact ? "registry" : "registry-prefix", registeredPath: hit.path, candidate: hit.name, legacyVerified: false }
     : { name: fb!.name, source: fb!.source, registeredPath: null, candidate: fb!.name, legacyVerified: false };
 
-  const legacy = opts.legacyName?.trim() || null;
+  // Lowercased like every scope (migration 031 lowercased the stored rows).
+  const legacy = opts.legacyName ? scopeName(opts.legacyName) || null : null;
   const useLegacy = (verified: boolean): ProjectNameResolution =>
     ({ ...base, name: legacy!, source: "legacy", registeredPath: null, legacyVerified: verified });
 
@@ -327,12 +345,13 @@ export function hasContextFiles(dir: string): boolean {
  * `<projectsDir>/<name>/` when the new dir has none of them. Legacy files are
  * never modified or deleted (Claude Code owns that directory). Idempotent:
  * once any context file exists in the new dir, nothing is copied again.
- * Returns the copied file names.
+ * Returns the copied file names. `sourceName` is the legacy dir's own spelling
+ * when it differs from the (lowercased) scope name.
  */
-export function migrateLegacyContextFiles(name: string, projectsDir: string, legacyProjectsDir: string = getClaudeTranscriptsDir()): string[] {
-  if (!isSafeProjectDirName(name)) return [];
+export function migrateLegacyContextFiles(name: string, projectsDir: string, legacyProjectsDir: string = getClaudeTranscriptsDir(), sourceName: string = name): string[] {
+  if (!isSafeProjectDirName(name) || !isSafeProjectDirName(sourceName)) return [];
   const target = join(projectsDir, name);
-  const source = join(legacyProjectsDir, name);
+  const source = join(legacyProjectsDir, sourceName);
   if (resolve(target) === resolve(source) || hasContextFiles(target)) return [];
   const present = CONTEXT_FILES.filter((f) => existsSync(join(source, f)));
   if (present.length === 0) return [];

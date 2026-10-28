@@ -22,7 +22,8 @@ import { findLtmHooksInUserSettings, userSettingsPath } from "../lib/settingsHoo
 import { getContextMerge, getSimilarMemoriesByVec, getContextMergeWithGraph,
          embedText, getDb, listMemoryIdsMissingEmbedding, exportContextMarkdown,
          waitForInit, getRecentConflicts, listStagedConflicts, emitEvent, listPendingProposals,
-         scrubForEgress, frameRecalledMemory, listRecentlyAutoAccepted } from "@rohirik/openltm-core";
+         scrubForEgress, frameRecalledMemory, listRecentlyAutoAccepted, updateLastUsed,
+         explicitEmbedProvider } from "@rohirik/openltm-core";
 import { readConfigSync } from "../../src/config.js";
 import type { Config } from "../../src/config.js";
 
@@ -74,11 +75,13 @@ async function buildLtmSection(
   sessionContext: string | undefined,
   topN: number,
   graphReasoning = false,
-): Promise<{ text: string; ids: number[] }> {
-  const none = { text: "", ids: [] };
+): Promise<{ text: string; ids: number[]; embedFailed: boolean }> {
+  const none = { text: "", ids: [], embedFailed: false };
   if (!existsSync(DB_PATH)) return none;
   try {
     const queryVec = sessionContext ? await embedText(scrubForEgress(sessionContext)) : null;
+    // Null from an attempted embed: provider disabled or unreachable (caller tells them apart).
+    const embedFailed = !!sessionContext && !queryVec;
     const merged = graphReasoning ? await getContextMergeWithGraph(project) : getContextMerge(project);
 
     let globals: IndexMemory[] = merged.globals;
@@ -97,13 +100,15 @@ async function buildLtmSection(
     ({ globals, scoped } = applyInjectTopN(globals, scoped, topN));
     const graphInsights = (merged as { graphInsights?: string }).graphInsights;
 
-    if (globals.length === 0 && scoped.length === 0) return none;
+    if (globals.length === 0 && scoped.length === 0) return { ...none, embedFailed };
+    const ids = [...globals, ...scoped].map(m => m.id);
+    updateLastUsed(ids); // only what is injected counts as used
 
     const lines: string[] = ["LTM index (use MCP get <id> for full memory):", ""];
     if (globals.length > 0) lines.push("globals:", ...globals.map(indexLine), "");
     if (scoped.length > 0)  lines.push("project:", ...scoped.map(indexLine), "");
     if (graphInsights) lines.push(...scrubForEgress(graphInsights).split("\n").slice(0, MAX_GRAPH_LINES), "");
-    return { text: frameRecalledMemory(lines.join("\n")), ids: [...globals, ...scoped].map(m => m.id) };
+    return { text: frameRecalledMemory(lines.join("\n")), ids, embedFailed };
   } catch (err) {
     process.stderr.write(`[SessionStart:buildLtmSection] ${err}\n`);
     return none;
@@ -137,6 +142,13 @@ function buildConflictSection(project: string): string {
     process.stderr.write(`[SessionStart:buildConflictSection] ${err}\n`);
     return "";
   }
+}
+
+/** Provider configured (not disabled) but the session embed came back null: say recall is full-text only. */
+function buildSemanticOffNotice(cfg: Cfg, embedFailed: boolean): string {
+  const provider = explicitEmbedProvider() ?? cfg.embeddings?.provider ?? "llamacpp";
+  if (!embedFailed || provider === "disabled") return "";
+  return `ℹ semantic recall off: no embedding provider reachable (${provider}) — full-text only\n`;
 }
 
 const BACKFILL_HINT_FILE = join(TMP_DIR, "ltm-backfill-hint.flag");
@@ -314,6 +326,7 @@ async function main(): Promise<void> {
   output += buildAutoAcceptNotice(name);
   output += buildDuplicateHooksNotice();
   output += buildBackfillHint(cfg);
+  output += buildSemanticOffNotice(cfg, ltm.embedFailed);
 
   process.stdout.write(output);
   // A new context window (anything but resume) starts UserPromptSubmit's dedupe

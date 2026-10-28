@@ -10,7 +10,7 @@
  *   - near-duplicate entries are suppressed
  *   - the block is hard-capped by line budget for every host
  */
-import { getContextMerge, computeDecayScore, type Memory } from "./db.js";
+import { getContextMerge, computeDecayScore, updateLastUsed, type Memory } from "./db.js";
 import { readConfigSync } from "./config.js";
 import { isNearDuplicate } from "./similarity.js";
 import { DB_PATH } from "./shared-db.js";
@@ -223,6 +223,7 @@ export function buildPrefillContext(opts: PrefillOptions): string {
   const maxLines = clampPositiveInt(opts.maxLines, 18);
   const { globals, scoped } = selectPrefillMemories(opts.project, opts);
   if (globals.length === 0 && scoped.length === 0) return "";
+  updateLastUsed([...scoped, ...globals].map(m => m.id)); // only what is injected counts as used
 
   const lines: string[] = [];
 

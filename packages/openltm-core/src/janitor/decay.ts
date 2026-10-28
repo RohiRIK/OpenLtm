@@ -47,10 +47,20 @@ const SQL_DEPRECATE_STALE = `
     AND stale_flagged_at < datetime('now', '-30 days')
 `;
 
+// Flags set before flagStaleByPaths skipped preferences/owner statements: a code
+// change never invalidates those, so clear the flag rather than deprecate them.
+const SQL_UNFLAG_EXEMPT = `
+  UPDATE memories
+  SET stale_flagged_at = NULL, stale_reason = NULL
+  WHERE stale_flagged_at IS NOT NULL
+    AND (category = 'preference' OR origin = 'owner-statement')
+`;
+
 export function runDecay(): DecayResult {
   const db = getDb();
 
   const run = db.transaction(() => {
+    db.run(SQL_UNFLAG_EXEMPT);
     db.run(SQL_REFRESH);
     const refreshed = db.query<{ n: number }, []>("SELECT changes() AS n").get()!.n;
 

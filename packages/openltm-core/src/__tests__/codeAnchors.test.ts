@@ -263,6 +263,19 @@ describe("stale-aware recall + decay + revalidate", () => {
     expect(statusOf(freshUnflagged.id)).toBe("active");
   });
 
+  it("runDecay clears old stale flags on preferences and owner statements instead of deprecating them", () => {
+    const pref = learn({ content: "delta owner prefers tabs in this repo", category: "preference", project_scope: "p", skipExport: true });
+    const said = learn({ content: "delta owner said keep the panel minimal", category: "pattern", origin: "owner-statement", project_scope: "p", skipExport: true });
+    db.run("UPDATE memories SET stale_flagged_at = datetime('now', '-31 days'), stale_reason = 'old commit' WHERE id IN (?, ?)", [pref.id, said.id]);
+
+    runDecay();
+
+    for (const id of [pref.id, said.id]) {
+      expect(statusOf(id)).toBe("active");
+      expect(staleAt(id)).toBeNull();
+    }
+  });
+
   it("reinforce (re-learn same content) clears the stale flag (AC17)", () => {
     const m = learn({ content: "gamma reconfirm body text", category: "gotcha", project_scope: "p", files: ["src/a.ts"], skipExport: true });
     flagStaleByPaths(["src/a.ts"], { project_scope: "p" });

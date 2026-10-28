@@ -54,7 +54,7 @@ Plugin `openltm`, MCP server key `memory`: in Claude Code each tool is `mcp__plu
 You do not need to repeat these by hand:
 
 - **SessionStart** injects project context and an index of top memories — this project's (importance ≥ 3) plus globals with importance ≥ 4; other globals surface through `recall` and prompt recall. If that block is present, skip a redundant `context` call.
-- **UserPromptSubmit** injects a few memories relevant to the current prompt.
+- **UserPromptSubmit** injects a few memories relevant to the current prompt — this is the primary retrieval. Call `recall` for a deeper or explicit dig (a different query, a category, a past decision the prompt did not name).
 - **Stop** records a per-session `progress` row. **SessionEnd** *proposes* memories (never auto-writes) — review them with `proposals`.
 - **PostToolUse** on `git commit` flags memories anchored to the touched files as stale; `recall` downranks them until revalidated.
 

@@ -102,6 +102,26 @@ describe("UserPromptSubmit hook (subprocess)", () => {
     expect(lines[4]).toBe(`- [${ids.global}] (gotcha) SQLite WAL needs busy_timeout: hooks and the MCP server write concurrently`);
   }, 30_000);
 
+  it("counts injected memories as used, like core recall()", async () => {
+    type Usage = { recall_count: number; last_recalled_at: string | null; first_recalled_at: string | null; last_used_at: string | null };
+    const usage = (id: number) => {
+      const db = new Database(sb.dbPath, { readonly: true });
+      try {
+        return db.query<Usage, [number]>("SELECT recall_count, last_recalled_at, first_recalled_at, last_used_at FROM memories WHERE id = ?").get(id)!;
+      } finally { db.close(); }
+    };
+    const before = usage(ids.global!);
+    const untouched = usage(ids.weak!);
+    const { stdout } = await run({ prompt: PROMPT, session_id: "s-usage" });
+    expect(stdout).toContain(`[${ids.global}]`);
+    const after = usage(ids.global!);
+    expect(after.recall_count).toBe(before.recall_count + 1);
+    expect(after.last_recalled_at).not.toBeNull();
+    expect(after.first_recalled_at).not.toBeNull();
+    expect(after.last_used_at).toBe(after.last_recalled_at);
+    expect(usage(ids.weak!)).toEqual(untouched);
+  }, 30_000);
+
   it("excludes stale, non-active, private, single-weak-token and other-project memories", async () => {
     const { stdout } = await run({ prompt: PROMPT, session_id: "s-filters" });
     expect(stdout).not.toContain(`[${ids.stale}]`);

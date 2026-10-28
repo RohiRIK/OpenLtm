@@ -47,12 +47,16 @@ Three surfaces — **commands** (you talk), **skills** (Claude's prompt workflow
 
 | Phase | What Happens |
 |-------|-------------|
-| **Session Start** | `SessionStart` injects project context (goals, decisions, gotchas) + a compact LTM index (id + title) of global and project memories |
-| **Each prompt** | `UserPromptSubmit` adds a few memories relevant to the prompt. `PostToolUse` flags memories stale when Claude commits files they reference. |
+| **Session Start** | `SessionStart` injects project context (goals, decisions, gotchas) + a compact LTM index (id + title) of global and project memories. Only the memories it actually injects count as used (`last_used_at`). When an embedding provider is configured but unreachable it adds one line: `ℹ semantic recall off: … — full-text only`. |
+| **Each prompt** | `UserPromptSubmit` adds a few memories relevant to the prompt — the primary way memories reach the model. Injected memories are counted as recalled (`recall_count`, `last_recalled_at`), exactly like an MCP `recall`. `PostToolUse` flags memories stale when Claude commits files they reference. |
 | **During Work** | Use `/openltm:memory recall` before tasks, `/openltm:memory learn` after discoveries. MCP tools called automatically. |
 | **Every turn (Stop)** | `UpdateContext` updates this session's single progress line. |
 | **Session End** | `EvaluateSession` writes a session summary and queues memory proposals for review; the janitor runs if due. |
 | **Pre-Compact** | `PreCompact` snapshots context to `context-summary.md` so it survives compaction. |
+
+The long-lived MCP server also runs the embedding worker: `learn` only queues an embedding (Honker), and every running MCP server (and the graph server) drains that queue. Honker claims jobs atomically, so several workers can run at once.
+
+**Which project am I in?** The project name for a working directory is resolved in this order: an exact registry entry; the longest registered parent folder — unless a git repository root lies strictly inside that folder, in which case the repository wins (so registering `~/Documents` does not swallow every repo under it); the git repository root's name; the folder name. Project names are case-insensitive and stored lowercase (`SummonOS` = `summonos`).
 
 You never have to remember any of this. The hooks are wired on install. If you want the playbook, see [Hooks](06-hooks.md).
 

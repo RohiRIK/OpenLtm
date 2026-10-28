@@ -11,6 +11,7 @@ import { filterPrivateMemories, hasPrivateTag, notPrivateSql } from "./privacy.j
 import { normalizeAnchorPaths } from "./anchors.js";
 import { DEFAULT_ORIGIN, type MemoryOrigin } from "./origin.js";
 import { getDb, DB_PATH, configure as configureDb } from "./shared-db.js";
+import { scopeName } from "./project.js";
 import { enqueueEmbedding } from "./queue/index.js";
 import { notifyLtm, notifyMemoryAdded } from "./events/index.js";
 import { scrubOrRefuse, scrubForEgress } from "./secretsScrubber.js";
@@ -678,6 +679,8 @@ export function isOperationalNoise(content: string): boolean {
 
 export function learn(input: LearnInput): LearnResult {
   const db = getDb();
+  // Backstop for every host: scopes are case-insensitive ("SummonOS" = "summonos").
+  if (input.project_scope) input = { ...input, project_scope: scopeName(input.project_scope) || undefined };
 
   // Scrub secrets before any DB write or dedup check
   const { scrubbed, redactions } = scrubOrRefuse(input.content);
@@ -1251,17 +1254,17 @@ export function getContextMerge(project: string): { globals: Memory[]; scoped: M
   ).all());
 
   const scoped = sortByDecay(db.query<Memory, [string]>(
-    `SELECT ${SLIM} FROM memories WHERE project_scope=? AND importance >= 3 AND status = 'active' LIMIT 15`
+    // Ordered before LIMIT so the 15 are the strongest, not whichever rows come first.
+    `SELECT ${SLIM} FROM memories WHERE project_scope=? AND importance >= 3 AND status = 'active'
+      ORDER BY decay_score DESC, importance DESC, id DESC LIMIT 15`
   ).all(project));
 
-  const gEnriched = globals.map(m => enrichMemory(db, m));
-  const sEnriched = scoped.map(m => enrichMemory(db, m));
-  const gVis = filterPrivateMemories(gEnriched, false);
-  const sVis = filterPrivateMemories(sEnriched, false);
-  const allIds = [...gVis, ...sVis].map(m => m.id);
-  updateLastUsed(allIds);
-
-  return { globals: gVis, scoped: sVis };
+  // No last_used_at bump here: callers bump only what they actually show
+  // (SessionStart after injectTopN, prefill, the explicit `context` fetch).
+  return {
+    globals: filterPrivateMemories(globals.map(m => enrichMemory(db, m)), false),
+    scoped: filterPrivateMemories(scoped.map(m => enrichMemory(db, m)), false),
+  };
 }
 
 /**

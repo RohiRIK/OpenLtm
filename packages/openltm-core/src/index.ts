@@ -9,7 +9,7 @@ export { configureCore, configureDocs } from "./db.js";
 // Core memory operations
 export {
   learn, recall, getMemoryById, forget, relate, getSimilarMemoriesByVec,
-  getContextMerge, getContextMergeWithGraph, computeDecayScore,
+  getContextMerge, getContextMergeWithGraph, computeDecayScore, updateLastUsed,
   exportMarkdown, exportGraphJson, flagStaleByPaths, revalidate,
 } from "./db.js";
 export type {
@@ -57,7 +57,7 @@ export type { MemoryTemperature, RecallExplainer, ExplainerInput } from "./recal
 
 // Project identity — the one cwd → project_scope resolver every host uses
 export {
-  normalizeProjectName, findRepoRoot, repoIdentityRoot, fallbackProjectName,
+  normalizeProjectName, scopeName, findRepoRoot, repoIdentityRoot, fallbackProjectName,
   resolveProjectName, resolveProjectNameDetailed,
   legacyClaudeSlug, legacyLastSegment,
   readRegistryFile, loadProjectRegistry, migrateLegacyRegistry,

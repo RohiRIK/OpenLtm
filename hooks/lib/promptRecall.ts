@@ -3,7 +3,8 @@
  *
  * Runs on every prompt, so it stays off the heavy paths on purpose:
  *   - never imports @rohirik/openltm-core (module graph + sqlite-vec/Honker probing)
- *   - opens the DB read-only and never writes (no recall_count bumps, no migrations)
+ *   - searches over a read-only connection (no migrations); only recordPromptUsage
+ *     writes, on its own connection, to count the injected ids as used
  *   - never calls an embedding provider (no network in the prompt hot path)
  *
  * Filters mirror core recall(): status = 'active', project_scope NULL-or-current,
@@ -205,6 +206,31 @@ export function searchPromptMemories(
     // Old schema / locked / corrupt DB: prompt recall is best-effort, stay silent.
     process.stderr.write(`[promptRecall] ${err}\n`);
     return [];
+  } finally {
+    try { db?.close(); } catch { /* already closed */ }
+  }
+}
+
+/**
+ * Count injected memories as used — the same columns core recall() bumps — so
+ * decay and health see prompt-time retrieval. Best-effort: a locked or old DB
+ * loses the bump, never the injection.
+ */
+export function recordPromptUsage(dbPath: string, ids: number[]): void {
+  if (ids.length === 0) return;
+  let db: Database | null = null;
+  try {
+    db = new Database(dbPath, { readwrite: true, create: false });
+    db.run("PRAGMA busy_timeout = 500"); // short: the hook has a 5s budget
+    db.run(
+      `UPDATE memories SET last_used_at = datetime('now'), last_recalled_at = datetime('now'),
+              recall_count = recall_count + 1,
+              first_recalled_at = COALESCE(first_recalled_at, datetime('now'))
+       WHERE id IN (${ids.map(() => "?").join(",")})`,
+      ids,
+    );
+  } catch (err) {
+    process.stderr.write(`[promptRecall] usage not recorded: ${err}\n`);
   } finally {
     try { db?.close(); } catch { /* already closed */ }
   }

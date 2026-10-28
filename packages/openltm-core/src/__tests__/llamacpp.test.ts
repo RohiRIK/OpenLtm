@@ -51,6 +51,25 @@ describe("llamacpp embedding provider", () => {
     expect(await provider.generate("hello")).toBeNull();
   });
 
+  it("re-probes a cached miss after a minute (long-lived MCP worker recovers)", async () => {
+    let up = false;
+    globalThis.fetch = (async () => {
+      if (!up) throw new Error("offline");
+      return new Response("{}", { status: 200 });
+    }) as typeof fetch;
+    const provider = new LlamaCppProvider({ baseUrl: "http://127.0.0.1:9" });
+    const realNow = Date.now;
+    try {
+      expect(await provider.available()).toBe(false);
+      up = true;
+      expect(await provider.available()).toBe(false); // still cached
+      Date.now = () => realNow() + 61_000;
+      expect(await provider.available()).toBe(true);
+    } finally {
+      Date.now = realNow;
+    }
+  });
+
   it("unset LTM_EMBED_PROVIDER defaults to llamacpp and a down server never calls Gemini", async () => {
     const urls: string[] = [];
     globalThis.fetch = (async (input: RequestInfo | URL) => {
