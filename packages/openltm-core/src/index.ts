@@ -22,6 +22,8 @@ export { detectQueryIntent, recencyRanks, type QueryIntent } from "./recall/inte
 export { adaptiveCutoff, matchStrengths, ADAPTIVE_DEFAULTS } from "./recall/adaptive.js";
 export { checkIntegrity, repairIntegrity } from "./integrity.js";
 export { buildCapsule, openCapsule, importCapsule, CAPSULE_FORMAT, CAPSULE_VERSION } from "./capsule.js";
+export { extractFacts, scanMemoryFacts, applyFacts, FACTS_COLLECTION, FACTS_FIELDS } from "./facts.js";
+export type { Fact, FactCandidate, ApplyFactsResult } from "./facts.js";
 export type { CapsulePayload, CapsuleEnvelope, CapsuleMemory, ExportOptions, ImportOptions, ImportResult } from "./capsule.js";
 export { maskPii, maskPiiForProvider, maskPiiForAgent, piiMode, introducesPiiPlaceholder, luhnValid, PII_PATTERNS, PII_PLACEHOLDERS, PII_MODES, _resetPiiModeForTesting } from "./pii.js";
 export type { PiiMode, PiiMaskResult } from "./pii.js";

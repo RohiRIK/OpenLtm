@@ -41,6 +41,8 @@ function printHelp(): void {
       "                          evolve, archive, restore) — run 'collection --help'",
       "    record <cmd>          Records in a collection (list, get, put, archive,",
       "                          export) — run 'record --help'",
+      "    facts extract         Pull entity/slot/value facts (ports, versions, …)",
+      "                          from memories; --apply stores them as records",
       "    export --project <p>  Write a project's memory to one portable file",
       "                          (optional --encrypt); 'export --help'",
       "    import <file>         Load a capsule (checksum verified, deduplicated)",
@@ -108,6 +110,14 @@ async function main(): Promise<void> {
     }
     process.stdout.write(JSON.stringify({ ok, action, id }) + "\n");
     process.exit(ok ? 0 : 1);
+  }
+
+  // Sub-command: facts — rule-based fact extraction into the facts collection
+  if (argv[0] === "facts") {
+    const { runFactsCommand } = await import("./facts.js");
+    const result = await runFactsCommand(argv.slice(1));
+    (result.exitCode === 0 ? process.stdout : process.stderr).write(result.output + "\n");
+    process.exit(result.exitCode);
   }
 
   // Sub-commands: export / import — a project's memory as one capsule file
