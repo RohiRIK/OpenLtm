@@ -55,6 +55,17 @@ Claude Code's plugin keeps its database here, and the other hosts share it by de
 If no target flags are given, agents are auto-detected by probing well-known
 config directories.
 
+## Maintenance commands
+
+| Command | What it does |
+|---------|-------------|
+| `openltm-core doctor [--deep] [--fix] [--json]` | Check SQLite, FTS and vector-index integrity; `--fix` backs up, then repairs |
+| `openltm-core export --project <p> [--out f] [--encrypt]` | Write a project's memory as one checksummed capsule file (passphrase from `LTM_CAPSULE_PASSPHRASE`) |
+| `openltm-core import <file> [--project p] [--dry-run]` | Import a capsule through normal dedup, labelled `external-source` |
+| `openltm-core facts extract [--apply]` | Extract entity / slot / value facts from memories into a `facts` collection |
+
+Full reference: [Commands](https://github.com/RohiRIK/OpenLtm/blob/main/docs/05-commands.md#terminal-cli-integrity-capsules-facts-2230).
+
 ## Programmatic API
 
 Installers are registry-driven under `INSTALL_TARGETS`, so adding a new host now means defining one target entry (detect + install) instead of editing the CLI orchestrator in multiple places.

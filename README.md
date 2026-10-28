@@ -96,6 +96,12 @@ Full detail, including which write paths scrub secrets and which don't: [Securit
 | Visualize | A browser explorer over the live database, with janitor controls | `src/graph-server.ts` · `graph-app/` |
 | Extensions | sqlite-vec and Honker loaded from disk, with a working fallback when absent | `openltm-core/src/extensions.ts:160` |
 | Deduplicate | Queues near-duplicate pairs as pending suggestions; nothing merges until you approve | `openltm-core/src/janitor/dedup.ts` |
+| Time-aware recall | `occurred_at` on learn, `as_of` point-in-time recall, recency / "list all" intent detection, and an adaptive cutoff that drops weak tail hits | `openltm-core/src/recall/intent.ts` · `openltm-core/src/recall/adaptive.ts` |
+| Supersede | A new memory `updates`, `retracts` or `extends` an old one; an agent can't retire something the owner said | `openltm-core/src/db.ts` · `openltm-core/src/janitor/supersedes.ts` |
+| Collections | Agent-defined typed records (hosts, releases, endpoints) next to prose memories; `ltm facts extract` fills a `facts` collection from prose | `openltm-core/src/collections/` · `openltm-core/src/facts.ts` |
+| PII masking | Emails, phones, card numbers, SSNs and IPs become placeholders before text reaches an LLM or embedding provider (`LTM_MASK_PII`) | `openltm-core/src/pii.ts` |
+| Doctor | `ltm doctor [--fix]` checks SQLite, FTS and vector-index integrity and repairs after a backup | `openltm-core/src/integrity.ts` |
+| Capsules | `ltm export` / `ltm import` move a project's memory as one checksummed, optionally encrypted file | `openltm-core/src/capsule.ts` |
 
 ---
 
@@ -214,6 +220,17 @@ bunx @rohirik/openltm-core memory forget --id 42 --reason "outdated"
 bunx @rohirik/openltm-core memory context --project homelab
 ```
 
+Integrity, portability and structured facts:
+
+```bash
+bunx @rohirik/openltm-core doctor --deep          # add --fix to repair (backs up first)
+bunx @rohirik/openltm-core export --project homelab --out homelab.capsule.json
+bunx @rohirik/openltm-core import homelab.capsule.json --project homelab --dry-run
+bunx @rohirik/openltm-core facts extract --project homelab   # add --apply to write the facts collection
+```
+
+Retrieval benchmark from a checkout: `bun run bench:locomo` (LoCoMo, no LLM calls, reproducible).
+
 ### Curate without graph-server
 
 The janitor (embed backfill → decay → archive → promote → dedup *suggestions*, never auto-merge) runs straight against the SQLite file. No graph-server and no Honker are needed:
@@ -257,6 +274,8 @@ Three things worth knowing before this holds anything you care about.
 | See how it works under the hood | [How It Works](docs/02-how-it-works.md) · [Architecture](docs/03-architecture.md) |
 | Understand the schema and data model | [DB Spec](docs/internal/DB-SPEC.md) |
 | Curate the DB without graph-server | [Janitor](docs/13-janitor.md) |
+| Store typed records (hosts, releases, endpoints) | [Collections](docs/16-collections.md) |
+| Check integrity, export or import a project | [Commands](docs/05-commands.md#terminal-cli-integrity-capsules-facts-2230) |
 | See all hooks, skills, and MCP tools | [Hooks](docs/06-hooks.md) · [Skills](docs/07-skills.md) · [MCP Tools](docs/08-mcp-tools.md) |
 | Publish a release | [Publishing](docs/11-publishing.md) |
 | Fix a problem | [Troubleshooting](docs/09-troubleshooting.md) |
@@ -281,6 +300,8 @@ Three things worth knowing before this holds anything you care about.
 | `LTM_HONKER_EXT` | Explicit path to the Honker extension. Loads native code. |
 | `LTM_CHANNEL` | Honker pub-sub channel. |
 | `LTM_BACKUP_RETENTION` | How many rotated backups to keep. |
+| `LTM_MASK_PII` | Personal-data masking: `providers` (default, mask text sent to LLM / embedding providers), `all` (also what the agent sees), `off`. |
+| `LTM_CAPSULE_PASSPHRASE` | Passphrase for `ltm export --encrypt` / `ltm import` of an encrypted capsule. |
 
 ---
 
