@@ -1,5 +1,32 @@
 # Changelog
 
+## [2.22.0] — 2026-10-28
+
+An audit of two weeks of real use found the automatic memory loop mostly idle: no memory had an embedding, prompt-time injection did all retrieval but never counted as use, every session-end proposal was a raw tool error, and auto-promoted memories waited for a review nobody did. This release makes those loops work without the user or the agent having to remember to run them.
+
+### Changed
+- **Session-end proposals come only from the LLM pass.** With `ltm.evaluateSessionLlm` off (the default), raw tool errors stay in `learned/patterns` and nothing is queued for review. In real use, 13 of 13 proposals built from tool errors were noise (`fatal: not a git repository`, test output, hook errors).
+- **Auto-promoted memories are accepted after 7 days.** The janitor gives decisions and gotchas promoted from project context a title and origin, then approves any still pending after a week (audited as `janitor:auto-accept`). SessionStart lists the ones accepted this week, with `forget <id>` as the undo.
+- **Prompt-time injection counts as use.** Memories the UserPromptSubmit hook injects now update `last_used_at`, `last_recalled_at` and `recall_count`, the same as a `recall`. SessionStart updates only the memories it actually injects; `getContextMerge` picks the project's top memories by decay score instead of 15 arbitrary rows.
+- **Project names are case-insensitive.** Every write lowercases the project scope, and migration 031 folds stored casings (`SummonOS` and `summonos` were two projects). A git repository inside a registered folder now keeps its own name instead of taking the folder's (`~/Documents/OpenLtm` resolved to `documents`).
+- **Stale flags no longer touch preferences or owner statements**, and flags already set on them are cleared. A memory flagged stale by a commit and not revalidated within 30 days is deprecated (importance 5 exempt).
+- `src/schema.sql` and the root `migrations/` copy are gone; `packages/openltm-core` holds the only copy. `getSimilarMemories` in `db.ts` is renamed `getSimilarMemoriesByVec`.
+
+### Fixed
+- **Embeddings never drained.** With Honker available, `learn` queues the embedding and only the graph server ran the worker, so a plugin without the visualizer never embedded anything and recall was full-text only. The MCP server now runs the worker too. SessionStart says when semantic recall is off because no embedding provider answers.
+- **Staged conflicts were never detected.** The janitor now runs contradiction detection and stages pairs for review, so SessionStart's conflict section has data.
+- **The git post-commit hook could not open the database.** The bundle inlined core, which then looked for `schema.sql` next to `hooks/`. Core is now external to the bundle.
+- **A database from an older release (e.g. 1.8.0) failed to open**: `schema.sql` indexes columns a later migration adds. It is now migrated first.
+- **Processes opening a brand-new database at once raced on migrations** (`table _honker_notifications already exists`). Migrations run under a `<db>.migrate.lock`.
+- **`SQLITE_BUSY_RECOVERY` when a process opened the database while another wrote.** `busy_timeout` is now set before `journal_mode=WAL`, and the graph server sets one at all.
+- **OpenCode on macOS:** the installer created `~/Library/Application Support/opencode/opencode.json`, which OpenCode does not read. It now uses `~/.config/opencode`.
+- `configure()` with a new database path dropped nothing, so the old handle kept serving the old database.
+- The MCP server exits when its stdin closes.
+
+### Tests & CI
+- CI runs typecheck and tests on macOS as well as Linux, and `qa:smoke` on Linux. The suite passes on macOS (10 tests assumed Linux temp paths or a case-sensitive disk).
+- New tests: hooks with a corrupt database exit 0, concurrent writers and concurrent first open, upgrade from the 1.8.0 schema, the Hermes schema against core's, and several assertions that passed on `null`.
+
 ## [2.21.1] — 2026-10-24
 
 ### Added

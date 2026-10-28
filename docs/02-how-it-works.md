@@ -112,7 +112,7 @@ OpenLTM loads optional SQLite extensions to accelerate recall and enable backgro
 
 | Extension | What it does | Availability |
 |-----------|-------------|--------------|
-| **sqlite-vec** (vec0 / KNN) | Vector similarity search for semantic recall. When available, the recall engine's semantic fallback uses real KNN instead of JS-cosine. | Any platform where a system extension-enabled libsqlite3 is found (Homebrew `/opt/homebrew/opt/sqlite` on macOS, system `libsqlite3.so` on Linux). |
+| **sqlite-vec** (vec0 / KNN) | Vector similarity search for semantic recall. When available, recall's semantic retriever (run alongside FTS5) uses real KNN instead of JS-cosine. | Any platform where a system extension-enabled libsqlite3 is found (Homebrew `/opt/homebrew/opt/sqlite` on macOS, system `libsqlite3.so` on Linux). |
 | **Honker** (libhonker_ext) | Durable async embedding queue (claim/embed/ack, retry, dead-letter), leader-elected janitor cron (@every 6h), and pub-sub push liveness for the graph app. | Binaries vendored per-platform; currently darwin-arm64 only. Other platforms degrade to inline embed, file-watch poll, and in-process janitor. |
 
 Both load via `Database.setCustomSQLite()` + `loadExtension()` and degrade gracefully — a missing binary or library leaves the capability `false` with zero fallout. Controlled by env vars `LTM_DISABLE_VEC`, `LTM_DISABLE_HONKER` (force-disable) and `LTM_SQLITE_LIB`, `LTM_HONKER_EXT` (path override).
@@ -122,8 +122,9 @@ Both load via `Database.setCustomSQLite()` + `loadExtension()` and degrade grace
 ## Project structure
 
 ```
-src/                  MCP server, DB layer, embeddings, graph traversal
-hooks/src/            4 Claude Code hooks (SessionStart, UpdateContext, EvaluateSession, PreCompact) + 1 git hook (GitCommit)
+src/                  Plugin entrypoints (mcp-server.ts thin wrapper, graph-server.ts, migrate, onboard)
+packages/openltm-core/src/  MCP server (mcp/server.ts), DB layer, embeddings, janitor, graph traversal
+hooks/src/            Claude Code hooks: SessionStart, UserPromptSubmit, PostToolUse (Bash), UpdateContext (Stop), EvaluateSession + SessionEnd (SessionEnd), PreCompact — plus 1 git post-commit hook (GitCommit)
 hooks/lib/            Shared hook utilities (resolveProject, llmExtract)
 hooks/bin/            run-hook.sh — bun resolver wrapper for stripped-PATH environments
 hooks/hooks.json      Claude Code hook registrations (auto-wired on install)
