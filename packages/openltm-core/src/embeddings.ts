@@ -7,7 +7,7 @@
 import type { Database } from "bun:sqlite";
 import type { EmbeddingProvider } from "./providers/embeddingProvider.js";
 import { setEmbedding, listMemoryIdsNeedingEmbedding } from "./dao/embeddings.js";
-import { scrubForEgress, isEgressScrubFailed } from "./secretsScrubber.js";
+import { scrubForProvider, isEgressScrubFailed } from "./secretsScrubber.js";
 import { notPrivateSql } from "./privacy.js";
 
 // --- Provider config (retained for LLM/auto-relate path) ---
@@ -208,7 +208,7 @@ export async function embedText(text: string): Promise<Float32Array | null> {
   try {
     const provider = await getEmbeddingProvider();
     if (!await provider.available()) return null;
-    return provider.generate(scrubForEgress(text));
+    return provider.generate(scrubForProvider(text));
   } catch (e) {
     process.stderr.write(`[embeddings] embedText error: ${e}\n`);
     return null;
@@ -228,7 +228,7 @@ export async function embedMemory(db: Database, id: number): Promise<void> {
   const provider = await getEmbeddingProvider();
   if (!await provider.available()) return;
 
-  const vec = await provider.generate(scrubForEgress(row.content));
+  const vec = await provider.generate(scrubForProvider(row.content));
   if (!vec) return;
 
   await setEmbedding(db, id, vecToBlob(vec), provider.model, provider.dim);
@@ -256,7 +256,7 @@ export async function backfill(db: Database): Promise<void> {
         `SELECT content FROM memories WHERE id=?`
       ).get(id);
       if (!row) return;
-      const vec = await provider.generate(scrubForEgress(row.content));
+      const vec = await provider.generate(scrubForProvider(row.content));
       if (vec) {
         await setEmbedding(db, id, vecToBlob(vec), provider.model, provider.dim);
         done++;
@@ -364,7 +364,8 @@ export async function callLlm(
     model: cfg.model,
     messages: [
       { role: "system", content: options?.systemPrompt ?? CLASSIFY_PROMPT },
-      { role: "user", content: userMessage },
+      // Secrets and personal data never reach the provider (classifyRelation pre-scrubs; extraction does not).
+      { role: "user", content: scrubForProvider(userMessage) },
     ],
     max_tokens: options?.maxTokens ?? 10,
     temperature: 0,
@@ -406,8 +407,8 @@ export async function classifyRelation(a: string, b: string): Promise<AutoRelati
 
   // Egress: never send raw memory text. If scrubbing fails for either side,
   // skip the call entirely (no stub-vs-text classification is meaningful).
-  const safeA = scrubForEgress(a);
-  const safeB = scrubForEgress(b);
+  const safeA = scrubForProvider(a);
+  const safeB = scrubForProvider(b);
   if (isEgressScrubFailed(safeA) || isEgressScrubFailed(safeB)) return null;
   const userMessage = `Memory A: ${safeA}\n\nMemory B: ${safeB}`;
   const raw = await callLlm(cfg, userMessage);

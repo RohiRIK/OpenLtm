@@ -10,7 +10,7 @@
  */
 import type { Database } from "bun:sqlite";
 import { getDb } from "../shared-db.js";
-import { scrubForEgress, isEgressScrubFailed } from "../secretsScrubber.js";
+import { scrubForProvider, isEgressScrubFailed } from "../secretsScrubber.js";
 import { blobToVec, cosineSimilarity, getEmbeddingProvider, vecToBlob } from "../embeddings.js";
 import { searchRecords, type RecordHit } from "./query.js";
 import { collectionsById, _toRecordView, type RecordRow } from "./store.js";
@@ -45,7 +45,7 @@ export async function embedRecord(id: number, db: Database = getDb()): Promise<b
   if (!(await semanticEnabled())) return false;
   const row = db.query<{ search_text: string }, [number]>("SELECT search_text FROM records WHERE id=? AND status='active'").get(id);
   if (!row) return false;
-  const text = scrubForEgress(row.search_text);
+  const text = scrubForProvider(row.search_text);
   if (isEgressScrubFailed(text)) return false;
   const provider = await getEmbeddingProvider();
   if (!(await provider.available())) return false;
@@ -82,7 +82,7 @@ export async function backfillRecordEmbeddings(db: Database = getDb(), max = 100
 
 /** Records whose vector is closest to `query`, among active collections visible from `project`. */
 async function vectorRecordHits(query: string, topN: number, project: string | null, db: Database): Promise<Array<{ id: number; similarity: number }>> {
-  const text = scrubForEgress(query);
+  const text = scrubForProvider(query);
   if (isEgressScrubFailed(text)) return [];
   const provider = await getEmbeddingProvider();
   if (!(await provider.available())) return [];

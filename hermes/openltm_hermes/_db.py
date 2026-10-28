@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import re
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -290,8 +291,16 @@ def learn(
     embedder=None,
     origin: str | None = None,
     actor: str = "hermes:openltm",
+    occurred_at: str | None = None,
+    supersedes: dict | None = None,
 ) -> dict:
     """Store or reinforce a memory. Returns {action, id, confirm_count}.
+
+    ``occurred_at`` is when the fact became true (date or date-time; core's
+    migration 032). ``supersedes`` = {"id": n, "relation": "updates" |
+    "extends" | "retracts"} changes an older memory, with core's rules: an
+    owner statement is never retired by another origin (linked as
+    contradicts instead). The outcome comes back under "supersede".
 
     Dedup happens in two passes:
     1. Exact-key hash (fast path, no embedder needed).
@@ -312,6 +321,13 @@ def learn(
         tags = [scrub_or_refuse(t) or "" for t in tags]  # scrub before _attach_tags lowercases
     now = datetime.now(timezone.utc).isoformat()
     dedup = _dedup_key(content)
+    event_time = normalize_event_time(conn, occurred_at) if occurred_at else None
+
+    def _done(result: dict) -> dict:
+        if supersedes:
+            result["supersede"] = _apply_supersede(conn, result["id"], supersedes, origin)
+            conn.commit()
+        return result
 
     # Check for existing (exact key)
     existing = conn.execute(
@@ -327,12 +343,13 @@ def learn(
                last_confirmed_at = ?,
                last_used_at = ?,
                confidence = MIN(1.0, confidence + 0.1),
+               occurred_at = COALESCE(occurred_at, ?),
                origin = CASE WHEN ? = 'owner-statement' THEN 'owner-statement' ELSE origin END
              WHERE id = ?""",
-            (new_count, now, now, origin, existing["id"]),
+            (new_count, now, now, event_time, origin, existing["id"]),
         )
         conn.commit()
-        return {"action": "reinforced", "id": existing["id"], "confirm_count": new_count}
+        return _done({"action": "reinforced", "id": existing["id"], "confirm_count": new_count})
 
     # Semantic dedup pass
     if embedder is not None:
@@ -355,17 +372,18 @@ def learn(
                                last_confirmed_at = ?,
                                last_used_at = ?,
                                confidence = MIN(1.0, confidence + 0.1),
+                               occurred_at = COALESCE(occurred_at, ?),
                                origin = CASE WHEN ? = 'owner-statement' THEN 'owner-statement' ELSE origin END
                              WHERE id = ?""",
-                            (new_count, now, now, origin, existing_id),
+                            (new_count, now, now, event_time, origin, existing_id),
                         )
                         conn.commit()
-                        return {
+                        return _done({
                             "action": "reinforced_semantic",
                             "id": existing_id,
                             "confirm_count": new_count,
                             "similarity": round(top_sim, 4),
-                        }
+                        })
         except Exception as e:
             logger.debug("OpenLTM semantic dedup failed: %s", e)
 
@@ -373,10 +391,10 @@ def learn(
     cursor = conn.execute(
         """INSERT INTO memories
            (content, title, category, importance, dedup_key, project_scope,
-            workspace_id, agent_id, created_at, last_confirmed_at, last_used_at, origin)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            workspace_id, agent_id, created_at, last_confirmed_at, last_used_at, origin, occurred_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (content, title, category, importance, dedup, project,
-         workspace_id, agent_id, now, now, now, origin),
+         workspace_id, agent_id, now, now, now, origin, event_time),
     )
     memory_id = cursor.lastrowid
     if memory_id is None:
@@ -401,7 +419,55 @@ def learn(
         _attach_tags(conn, memory_id, tags)
 
     conn.commit()
-    return {"action": "created", "id": memory_id, "confirm_count": 1, "origin": origin}
+    return _done({"action": "created", "id": memory_id, "confirm_count": 1, "origin": origin})
+
+
+SUPERSEDE_RELATIONS = ("updates", "extends", "retracts")
+
+
+def normalize_event_time(conn: sqlite3.Connection, value: str) -> str:
+    """SQLite's "YYYY-MM-DD HH:MM:SS" (UTC), core's created_at format. Raises ValueError if unreadable."""
+    row = conn.execute("SELECT datetime(?)", (value.strip(),)).fetchone()
+    if not row or not row[0]:
+        raise ValueError(f'Invalid date "{value}": use YYYY-MM-DD or an ISO 8601 date-time')
+    return row[0]
+
+
+def normalize_as_of(conn: sqlite3.Connection, value: str) -> str:
+    """A bare date means the end of that day."""
+    v = value.strip()
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", v):
+        v = f"{v} 23:59:59"
+    return normalize_event_time(conn, v)
+
+
+def _apply_supersede(conn: sqlite3.Connection, new_id: int, target: dict, origin: str | None) -> dict:
+    """Twin of core's applySupersede (db.ts)."""
+    relation = target.get("relation") or "updates"
+    old_id = target.get("id")
+    base = {"id": old_id, "relation": relation}
+    if relation not in SUPERSEDE_RELATIONS or not isinstance(old_id, int):
+        return {**base, "applied": False, "reason": "invalid"}
+    if old_id == new_id:
+        return {**base, "applied": False, "reason": "self"}
+    old = conn.execute("SELECT status, origin FROM memories WHERE id = ?", (old_id,)).fetchone()
+    if old is None:
+        return {**base, "applied": False, "reason": "not_found"}
+    if old["status"] != "active":
+        return {**base, "applied": False, "reason": "not_active"}
+    if relation == "extends":
+        relate(conn, new_id, old_id, "refines")
+        return {**base, "applied": True}
+    if old["origin"] == "owner-statement" and origin != "owner-statement":
+        relate(conn, new_id, old_id, "contradicts")
+        return {**base, "applied": False, "reason": "owner_statement_protected"}
+    relate(conn, new_id, old_id, "supersedes")
+    conn.execute(
+        """UPDATE memories SET status = 'superseded', superseded_by = ?,
+           superseded_at = datetime('now'), supersede_kind = ? WHERE id = ?""",
+        (new_id, relation, old_id),
+    )
+    return {**base, "applied": True}
 
 
 def recall(
@@ -412,10 +478,29 @@ def recall(
     category: str | None = None,
     limit: int = 10,
     sort_by: str = "relevance",
+    adaptive: bool = True,
+    as_of: str | None = None,
 ) -> list[dict]:
-    """Search memories using FTS5. Returns list of memory dicts."""
-    conditions = ["m.status = 'active'"]
+    """Search memories using FTS5. Returns list of memory dicts.
+
+    With a query, hits far weaker than the best (BM25 relative to the best
+    hit) are trimmed unless ``adaptive`` is False or the query asks for every
+    instance; "current / latest" queries boost newer memories. ``as_of``
+    returns what was known and not yet superseded at that date and does not
+    count as a recall. Same rules as core's recall().
+    """
+    from ._recall_shape import RECENCY_BOOST, adaptive_cutoff, detect_query_intent, recency_ranks
+
     params: list[Any] = []
+    if as_of:
+        bound = normalize_as_of(conn, as_of)
+        conditions = [
+            "datetime(COALESCE(m.occurred_at, m.created_at)) <= ?",
+            "(m.status = 'active' OR (m.status = 'superseded' AND datetime(m.superseded_at) > ?))",
+        ]
+        params += [bound, bound]
+    else:
+        conditions = ["m.status = 'active'"]
 
     if project:
         conditions.append("m.project_scope = ?")
@@ -425,10 +510,12 @@ def recall(
         params.append(category)
 
     where = " AND ".join(conditions)
+    intent = detect_query_intent(query)
 
     if query:
         # FTS5 search, with a small recency boost: memories recalled in the
         # last 7 days get a 15% rank bonus so active context surfaces first.
+        # Over-fetch so the recency boost and the adaptive cutoff pick from more.
         fts_query = _build_fts_query(query)
         sql = f"""
             SELECT m.*, rank
@@ -441,7 +528,7 @@ def recall(
             LIMIT ?
         """
         params.insert(0, fts_query)
-        params.append(limit)
+        params.append(limit * 3)
     else:
         # No query — sort by importance/recency
         order = {
@@ -460,26 +547,36 @@ def recall(
         """
         params.append(limit)
 
-    rows = conn.execute(sql, params).fetchall()
+    rows = [dict(r) for r in conn.execute(sql, params).fetchall()]
+    if query and rows:
+        best = rows[0]["rank"] or 0.0
+        strength = {r["id"]: (r["rank"] / best if best < 0 else 1.0) for r in rows}
+        if intent == "recency":
+            fresh = recency_ranks(rows)
+            rows.sort(key=lambda r: strength[r["id"]] + RECENCY_BOOST * fresh[r["id"]], reverse=True)
+        rows = rows[:limit]
+        if adaptive and intent != "aggregate":
+            rows = adaptive_cutoff(rows, strength)
+
     results = []
-    for row in rows:
-        mem = dict(row)
+    for mem in rows:
         # Attach tags
         mem["tags"] = _get_tags(conn, mem["id"])
         results.append(mem)
 
-    # Update recall stats
-    now = datetime.now(timezone.utc).isoformat()
-    for mem in results:
-        conn.execute(
-            """UPDATE memories SET
-               last_recalled_at = ?,
-               recall_count = recall_count + 1,
-               last_used_at = ?
-             WHERE id = ?""",
-            (now, now, mem["id"]),
-        )
-    conn.commit()
+    # Update recall stats (a point-in-time look is history, not use)
+    if not as_of:
+        now = datetime.now(timezone.utc).isoformat()
+        for mem in results:
+            conn.execute(
+                """UPDATE memories SET
+                   last_recalled_at = ?,
+                   recall_count = recall_count + 1,
+                   last_used_at = ?
+                 WHERE id = ?""",
+                (now, now, mem["id"]),
+            )
+        conn.commit()
 
     return results
 
@@ -1016,6 +1113,7 @@ def hybrid_search(
     category: str | None = None,
     limit: int = 10,
     model: str | None = None,
+    adaptive: bool = True,
 ) -> list[dict]:
     """Hybrid search: FTS5 + semantic vector, merged by a weighted score.
 
@@ -1026,7 +1124,7 @@ def hybrid_search(
     semantically-close memories surface even when they share no keywords with
     the query. Falls back to FTS5-only when no embedding is available.
     """
-    fts_results = recall(conn, query=query, project=project, category=category, limit=limit)
+    fts_results = recall(conn, query=query, project=project, category=category, limit=limit, adaptive=False)
     if not query_embedding:
         return fts_results
 
@@ -1072,4 +1170,8 @@ def hybrid_search(
         merged.append(mem)
 
     merged.sort(key=lambda x: x["score"], reverse=True)
-    return merged[:limit]
+    merged = merged[:limit]
+    from ._recall_shape import adaptive_cutoff, detect_query_intent
+    if adaptive and detect_query_intent(query) != "aggregate":
+        merged = adaptive_cutoff(merged, {m["id"]: m["score"] for m in merged})
+    return merged

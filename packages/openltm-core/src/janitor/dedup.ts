@@ -4,7 +4,8 @@
  * Two modes: automatic (high-confidence merges) and suggested (for review).
  */
 import { getDb, getSetting } from "../shared-db.js";
-import { scrubOrRefuse, scrubForEgress } from "../secretsScrubber.js";
+import { scrubOrRefuse, scrubForProvider } from "../secretsScrubber.js";
+import { introducesPiiPlaceholder } from "../pii.js";
 import { hasPrivateTag } from "../privacy.js";
 import {
   blobToVector,
@@ -145,7 +146,12 @@ export async function findDuplicates(
             const llmResult = await verifyWithLLM(candidate);
             candidate.verdict = llmResult.verdict;
             candidate.reasoning = llmResult.reasoning;
-            candidate.mergedContent = llmResult.mergedContent;
+            // A merge written from masked input would replace real data with
+            // placeholders ([EMAIL]…): keep the verdict, drop that suggestion.
+            const originals = `${candidate.memoryA.content}\n${candidate.memoryB.content}`;
+            candidate.mergedContent = llmResult.mergedContent && introducesPiiPlaceholder(llmResult.mergedContent, originals)
+              ? undefined
+              : llmResult.mergedContent;
           } catch {
             // LLM unavailable — save candidate without verdict
           }
@@ -182,7 +188,7 @@ Respond in JSON format: { "verdict": "duplicate"|"related"|"distinct", "reasonin
       },
       {
         role: "user",
-        content: `Memory A [${candidate.memoryA.category}]: ${scrubForEgress(candidate.memoryA.content)}\n\nMemory B [${candidate.memoryB.category}]: ${scrubForEgress(candidate.memoryB.content)}\n\nCosine similarity: ${candidate.similarity.toFixed(3)}`,
+        content: `Memory A [${candidate.memoryA.category}]: ${scrubForProvider(candidate.memoryA.content)}\n\nMemory B [${candidate.memoryB.category}]: ${scrubForProvider(candidate.memoryB.content)}\n\nCosine similarity: ${candidate.similarity.toFixed(3)}`,
       },
     ],
     jsonMode: true,

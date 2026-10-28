@@ -114,6 +114,14 @@ RECALL_SCHEMA = {
                 "type": "boolean",
                 "description": "Also return up to 3 matching collection records (default true; only with a query and no category).",
             },
+            "adaptive": {
+                "type": "boolean",
+                "description": "Trim hits far weaker than the best match (default true; never below 3; skipped for 'list all / how many' queries).",
+            },
+            "as_of": {
+                "type": "string",
+                "description": "Point-in-time recall (YYYY-MM-DD or date-time): what was known and not yet superseded then.",
+            },
         },
         "required": [],
     },
@@ -151,6 +159,26 @@ LEARN_SCHEMA = {
                 "type": "string",
                 "enum": list(MEMORY_ORIGINS),
                 "description": ORIGIN_PARAM_DESCRIPTION,
+            },
+            "occurred_at": {
+                "type": "string",
+                "description": "When the fact became true or the event happened (YYYY-MM-DD or date-time), if it differs from now.",
+            },
+            "supersedes": {
+                "type": "object",
+                "description": (
+                    "Set when this memory changes an older one. An owner statement is never "
+                    "retired by another origin: it is linked as contradicts instead."
+                ),
+                "properties": {
+                    "id": {"type": "integer", "description": "The older memory this one changes."},
+                    "relation": {
+                        "type": "string",
+                        "enum": ["updates", "extends", "retracts"],
+                        "description": "updates (default): a new value replaces it. retracts: no longer true. extends: adds to it; both stay active.",
+                    },
+                },
+                "required": ["id"],
             },
         },
         "required": ["content"],
@@ -527,7 +555,21 @@ class OpenLtmpMemoryProvider(MemoryProvider):
                     except Exception:
                         pass
 
-                if query_embedding:
+                if args.get("as_of"):
+                    # Point in time is full-text only: vectors carry no history.
+                    try:
+                        results = db_mod.recall(
+                            self._conn,
+                            query=args.get("query"),
+                            project=args.get("project"),
+                            category=args.get("category"),
+                            limit=args.get("limit", 10),
+                            adaptive=args.get("adaptive", True),
+                            as_of=args["as_of"],
+                        )
+                    except ValueError as e:
+                        return json.dumps({"error": str(e)})
+                elif query_embedding:
                     results = db_mod.hybrid_search(
                         self._conn,
                         args.get("query", ""),
@@ -536,6 +578,7 @@ class OpenLtmpMemoryProvider(MemoryProvider):
                         category=args.get("category"),
                         limit=args.get("limit", 10),
                         model=getattr(self._embedder, "model", None),
+                        adaptive=args.get("adaptive", True),
                     )
                 else:
                     results = db_mod.recall(
@@ -544,6 +587,7 @@ class OpenLtmpMemoryProvider(MemoryProvider):
                         project=args.get("project"),
                         category=args.get("category"),
                         limit=args.get("limit", 10),
+                        adaptive=args.get("adaptive", True),
                     )
                 # Compact output
                 compact = []
@@ -556,6 +600,11 @@ class OpenLtmpMemoryProvider(MemoryProvider):
                         "origin": r.get("origin"),
                         "tags": scrub_payload(r.get("tags", [])),
                         "project_scope": r.get("project_scope"),
+                        **({"occurred_at": r["occurred_at"]} if r.get("occurred_at") else {}),
+                        **({"status": "superseded", "superseded_by": r.get("superseded_by"),
+                            "superseded_at": r.get("superseded_at"),
+                            "supersede_kind": r.get("supersede_kind") or "updates"}
+                           if r.get("status") == "superseded" else {}),
                     })
                 # Matching collection records follow the memories (same shape as core's recall).
                 if args.get("query") and not args.get("category") and args.get("include_records", True):
@@ -582,18 +631,23 @@ class OpenLtmpMemoryProvider(MemoryProvider):
                     safe_tags = [scrub_or_refuse(str(t)) or "" for t in (args.get("tags") or [])] or None
                 except ScrubRefusedError as e:
                     return json.dumps({"error": str(e)})
-                result = db_mod.learn(
-                    self._conn,
-                    safe_content,
-                    title=safe_title,
-                    category=args.get("category", "pattern"),
-                    importance=args.get("importance", 3),
-                    tags=safe_tags,
-                    project=args.get("project"),
-                    embedder=self._embedder,
-                    origin=args.get("origin"),
-                    actor="hermes:openltm_learn",
-                )
+                try:
+                    result = db_mod.learn(
+                        self._conn,
+                        safe_content,
+                        title=safe_title,
+                        category=args.get("category", "pattern"),
+                        importance=args.get("importance", 3),
+                        tags=safe_tags,
+                        project=args.get("project"),
+                        embedder=self._embedder,
+                        origin=args.get("origin"),
+                        actor="hermes:openltm_learn",
+                        occurred_at=args.get("occurred_at"),
+                        supersedes=args.get("supersedes"),
+                    )
+                except ValueError as e:
+                    return json.dumps({"error": str(e)})
                 # Compute embedding in background if provider available
                 if self._embedder and result.get("action") == "created":
                     try:

@@ -215,7 +215,10 @@ def scrub_payload(obj, _depth: int = 0):
         return SCRUB_FAILED_PLACEHOLDER
     if isinstance(obj, str):
         out = scrub_line_for_egress(obj)
-        return SCRUB_FAILED_PLACEHOLDER if out is None else out
+        if out is None:
+            return SCRUB_FAILED_PLACEHOLDER
+        from ._pii import mask_pii_for_agent
+        return mask_pii_for_agent(out)
     if isinstance(obj, dict):
         return {k: scrub_payload(v, _depth + 1) for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):

@@ -21,6 +21,8 @@ export type {
 export { detectQueryIntent, recencyRanks, type QueryIntent } from "./recall/intent.js";
 export { adaptiveCutoff, matchStrengths, ADAPTIVE_DEFAULTS } from "./recall/adaptive.js";
 export { checkIntegrity, repairIntegrity } from "./integrity.js";
+export { maskPii, maskPiiForProvider, maskPiiForAgent, piiMode, introducesPiiPlaceholder, luhnValid, PII_PATTERNS, PII_PLACEHOLDERS, PII_MODES, _resetPiiModeForTesting } from "./pii.js";
+export type { PiiMode, PiiMaskResult } from "./pii.js";
 export type { IntegrityCheck, IntegrityCheckId, IntegrityReport, IntegrityOptions, RepairResult } from "./integrity.js";
 
 // Context items
@@ -65,7 +67,7 @@ export { listStaleMemories, memoryStats } from "./stats.js";
 export type { StaleMemory, ListStaleOptions, MemoryStats } from "./stats.js";
 
 // Utilities
-export { scrubSecrets, scrubOrRefuse, scrubForEgress, isEgressScrubFailed, SCRUB_FAILED_PLACEHOLDER, _forceScrubThrowForTesting } from "./secretsScrubber.js";
+export { scrubSecrets, scrubOrRefuse, scrubForEgress, scrubForProvider, isEgressScrubFailed, SCRUB_FAILED_PLACEHOLDER, _forceScrubThrowForTesting } from "./secretsScrubber.js";
 export { PRIVATE_TAG, hasPrivateTag, filterPrivateMemories } from "./privacy.js";
 export { normalizeKey } from "./dedup.js";
 export { normalizeAnchorPath, normalizeAnchorPaths } from "./anchors.js";

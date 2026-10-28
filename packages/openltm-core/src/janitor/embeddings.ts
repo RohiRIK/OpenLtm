@@ -5,7 +5,7 @@
  */
 import { getDb, getSetting } from "../shared-db.js";
 import { setEmbedding, getEmbedding, listMemoryIdsMissingEmbedding, listMemoryIdsNeedingEmbedding } from "../dao/embeddings.js";
-import { scrubForEgress } from "../secretsScrubber.js";
+import { scrubForProvider } from "../secretsScrubber.js";
 import { hasPrivateTag } from "../privacy.js";
 import { llamaCppModel, LLAMACPP_DEFAULT_DIM } from "../providers/llamacpp.js";
 import { cohereEmbedding } from "./providers/cohere.js";
@@ -138,7 +138,7 @@ export async function embedMissingMemories(
 
   for (let i = 0; i < publicRows.length; i += batchSize) {
     const batch = publicRows.slice(i, i + batchSize);
-    const texts = batch.map((r) => scrubForEgress(r.content));
+    const texts = batch.map((r) => scrubForProvider(r.content));
 
     const result = await provider.embed({ texts });
 
@@ -171,7 +171,7 @@ export async function semanticSearch(
   const provider = getEmbeddingProvider();
 
   // Generate embedding for the query
-  const result = await provider.embed({ texts: [scrubForEgress(query)] });
+  const result = await provider.embed({ texts: [scrubForProvider(query)] });
   const queryVector = result.vectors[0];
   if (!queryVector) return [];
 

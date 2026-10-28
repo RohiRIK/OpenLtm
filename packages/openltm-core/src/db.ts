@@ -1174,7 +1174,8 @@ export async function recall(input: RecallInput = {}): Promise<MemoryWithRelatio
   // superseded by then. Otherwise only active rows.
   const asOf = input.as_of ? normalizeAsOf(db, input.as_of) : null;
   if (asOf) {
-    filters.push("COALESCE(occurred_at, created_at) <= ? AND (status = 'active' OR (status = 'superseded' AND superseded_at > ?))");
+    // datetime() normalises both writers' formats (core "YYYY-MM-DD HH:MM:SS", Hermes ISO 8601).
+    filters.push("datetime(COALESCE(occurred_at, created_at)) <= ? AND (status = 'active' OR (status = 'superseded' AND datetime(superseded_at) > ?))");
     filterParams.push(asOf, asOf);
   } else {
     filters.push("status = 'active'");

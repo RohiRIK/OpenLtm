@@ -41,17 +41,30 @@ export function buildTools(opts: { directory?: string } = {}): LtmTool[] {
           limit: { type: "number", description: "Max results (default 10)", minimum: 1, maximum: 50 },
           category: { type: "string", enum: ["preference", "architecture", "gotcha", "pattern", "workflow", "constraint"] },
           include_records: { type: "boolean", description: "Append up to 3 matching collection records (type: \"record\") after the memories (default true)" },
+          adaptive: { type: "boolean", description: "Trim hits far weaker than the best match (default true; never below 3; skipped for 'list all / how many' queries)" },
+          as_of: { type: "string", description: "Point-in-time recall (YYYY-MM-DD or date-time): what was known and not yet superseded then" },
         },
       },
       async execute(input) {
-        const { query, project, limit, category, include_records } = input as Record<string, unknown>;
-        const results = await recall({
-          query: query as string | undefined,
-          project: project as string | undefined,
-          limit: limit as number | undefined,
-          category: category as MemoryCategory | undefined,
-        });
-        const memories = results.map(m => ({ id: m.id, content: scrubForEgress(m.content), category: m.category, importance: m.importance, origin: m.origin ?? null }));
+        const { query, project, limit, category, include_records, adaptive, as_of } = input as Record<string, unknown>;
+        let results: Awaited<ReturnType<typeof recall>>;
+        try {
+          results = await recall({
+            query: query as string | undefined,
+            project: project as string | undefined,
+            limit: limit as number | undefined,
+            category: category as MemoryCategory | undefined,
+            adaptive: typeof adaptive === "boolean" ? adaptive : undefined,
+            as_of: typeof as_of === "string" && as_of ? as_of : undefined,
+          });
+        } catch (err) {
+          return text({ ok: false, error: (err as Error).message });
+        }
+        const memories = results.map(m => ({
+          id: m.id, content: scrubForEgress(m.content), category: m.category, importance: m.importance, origin: m.origin ?? null,
+          ...(m.occurred_at ? { occurred_at: m.occurred_at } : {}),
+          ...(m.status === "superseded" ? { status: m.status, superseded_by: m.superseded_by, supersede_kind: m.supersede_kind ?? "updates" } : {}),
+        }));
         // Records follow the memories, as in the MCP recall tool.
         const records = typeof query === "string" && query && !category && include_records !== false
           ? (await recallRecords(query, { project: currentProject(input as Record<string, unknown>), limit: 3 })).map((r) => ({
@@ -76,24 +89,44 @@ export function buildTools(opts: { directory?: string } = {}): LtmTool[] {
           importance: { type: "number", description: "Importance 1-5 (default 3)", minimum: 1, maximum: 5 },
           project: { type: "string", description: "Scope to a specific project" },
           origin: { type: "string", enum: [...MEMORY_ORIGINS], description: ORIGIN_PARAM_DESCRIPTION },
+          occurred_at: { type: "string", description: "When the fact became true or the event happened (YYYY-MM-DD or date-time), if not now" },
+          supersedes: {
+            type: "object",
+            description: "Set when this memory changes an older one. An owner statement is never retired by another origin (linked as contradicts instead)",
+            properties: {
+              id: { type: "number", description: "The older memory this one changes" },
+              relation: { type: "string", enum: ["updates", "extends", "retracts"], description: "updates (default) replaces it, retracts: no longer true, extends: adds to it" },
+            },
+            required: ["id"],
+          },
         },
         required: ["content"],
       },
       async execute(input) {
-        const { content, title, category, importance, project, origin } = input as Record<string, unknown>;
+        const { content, title, category, importance, project, origin, occurred_at, supersedes } = input as Record<string, unknown>;
         // Like the MCP learn tool: an omitted category is auto-detected (heuristic only, no LLM).
         const resolved = (category as MemoryCategory | undefined) ?? (await categorise(content as string, 0).catch(() => ({ category: "pattern" as const }))).category;
-        const result = learn({
-          content: content as string,
-          title: title as string | undefined,
-          category: resolved,
-          importance: importance as number | undefined,
-          project_scope: project as string | undefined,
-          origin: isMemoryOrigin(origin) ? origin : undefined,
-          actor: "opencode:ltm_learn",
-          skipExport: true,
-        });
-        return text({ id: result.id, action: result.action, category: resolved, origin: result.origin });
+        const sup = supersedes as { id?: unknown; relation?: unknown } | undefined;
+        let result: ReturnType<typeof learn>;
+        try {
+          result = learn({
+            content: content as string,
+            title: title as string | undefined,
+            category: resolved,
+            importance: importance as number | undefined,
+            project_scope: project as string | undefined,
+            origin: isMemoryOrigin(origin) ? origin : undefined,
+            occurred_at: typeof occurred_at === "string" && occurred_at ? occurred_at : undefined,
+            supersedes: sup && typeof sup.id === "number"
+              ? { id: sup.id, relation: (["updates", "extends", "retracts"] as const).find((r) => r === sup.relation) }
+              : undefined,
+            actor: "opencode:ltm_learn",
+            skipExport: true,
+          });
+        } catch (err) {
+          return text({ ok: false, error: (err as Error).message });
+        }
+        return text({ id: result.id, action: result.action, category: resolved, origin: result.origin, ...(result.supersede ? { supersede: result.supersede } : {}) });
       },
     },
 

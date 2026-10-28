@@ -365,6 +365,8 @@ export default definePluginEntry({
           Type.Union(CATEGORIES.map((c) => Type.Literal(c)), { description: "Restrict to one category" }),
         ),
         limit: Type.Optional(Type.Integer({ description: "Max results (default 10)", minimum: 1, maximum: 50 })),
+        adaptive: Type.Optional(Type.Boolean({ description: "Trim hits far weaker than the best match (default true; never below 3)" })),
+        as_of: Type.Optional(Type.String({ description: "Point-in-time recall (YYYY-MM-DD): what was known and not yet superseded then" })),
       }),
       async (params) => {
         const results = await run(
@@ -374,6 +376,8 @@ export default definePluginEntry({
               project: params["project"],
               category: params["category"],
               limit: params["limit"],
+              adaptive: params["adaptive"],
+              as_of: params["as_of"],
             }),
         );
         if (results.length === 0) return textResult("No memories found.");
@@ -396,6 +400,13 @@ export default definePluginEntry({
         importance: Type.Optional(Type.Integer({ description: "1-5, where 5 never decays", minimum: 1, maximum: 5 })),
         project: Type.Optional(Type.String({ description: "Project scope" })),
         origin: Type.Optional(Type.Union(ORIGINS.map((o) => Type.Literal(o)), { description: ORIGIN_DESCRIPTION })),
+        occurred_at: Type.Optional(Type.String({ description: "When the fact became true (YYYY-MM-DD or date-time), if not now" })),
+        supersedes: Type.Optional(Type.Object({
+          id: Type.Integer({ description: "The older memory this one changes" }),
+          relation: Type.Optional(Type.Union([Type.Literal("updates"), Type.Literal("extends"), Type.Literal("retracts")], {
+            description: "updates (default) replaces it, retracts: no longer true, extends: adds to it",
+          })),
+        }, { description: "Set when this memory changes an older one; an owner statement is never retired by another origin" })),
       }),
       async (params) =>
         run(
@@ -403,6 +414,8 @@ export default definePluginEntry({
             textResult(
               await b.call("learn", {
                 origin: params["origin"],
+                occurred_at: params["occurred_at"],
+                supersedes: params["supersedes"],
                 content: params["content"],
                 title: params["title"],
                 category: params["category"],
