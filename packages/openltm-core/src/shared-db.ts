@@ -18,6 +18,12 @@ let SCHEMA_PATH = getSchemaPath();
 
 /** Configure openltm-core with host-specific paths. Call before first getDb(). */
 export function configure(config: LtmCoreConfig): void {
+  if (config.dbPath !== DB_PATH) {
+    // A handle opened on the old path would keep serving the old database.
+    try { _db?.close(); } catch {}
+    _db = null;
+    _initPromise = null;
+  }
   DB_PATH = config.dbPath;
   if (config.schemaPath) SCHEMA_PATH = config.schemaPath;
 }
@@ -34,7 +40,9 @@ export async function initDb(opts?: { dbPath?: string; schemaPath?: string }): P
   // system SQLite. No-op (degrades to FTS-only) when none is available.
   ensureCustomSqlite();
   const db = new Database(DB_PATH, { create: true });
-  db.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;");
+  // busy_timeout first: journal_mode=WAL needs a lock and would fail fast with
+  // SQLITE_BUSY while another process is writing.
+  db.exec("PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
   loadExtensions(db);
   // Apply schema.sql first (CREATE IF NOT EXISTS — safe for fresh + existing DBs)
   db.exec(readFileSync(SCHEMA_PATH, "utf-8"));
@@ -57,14 +65,17 @@ export function getDb(): Database {
   // Synchronous callers: run initDb eagerly and block via Bun's top-level await support.
   // _initPromise guards against concurrent initialisation during async startup paths.
   if (!_initPromise) {
-    _initPromise = initDb().then((db) => {
+    const init: Promise<Database> = initDb().then((db) => {
+      // configure() switched paths while this ran: this handle is for the old DB.
+      if (_initPromise !== init) { db.close(); return db; }
       _db = db;
       return db;
     }).catch((err) => {
       // Reset so the next call retries; swallow here — sync fallback below handles the cold path.
-      _initPromise = null;
+      if (_initPromise === init) _initPromise = null;
       throw err;
     });
+    _initPromise = init;
     _initPromise.catch(() => {/* prevent unhandled rejection — sync fallback is active */});
   }
   // For synchronous callers on cold start: open a schema-only DB immediately.
@@ -76,7 +87,7 @@ export function getDb(): Database {
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     ensureCustomSqlite();
     _db = new Database(DB_PATH, { create: true });
-    _db.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;");
+    _db.exec("PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
     loadExtensions(_db);
     _db.exec(readFileSync(SCHEMA_PATH, "utf-8"));
   }

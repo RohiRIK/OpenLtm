@@ -194,8 +194,8 @@ await Bun.write(PID_PATH, String(process.pid));
 
 // Persistent DB — opened once, PRAGMAs run once
 const db = new Database(DB_PATH);
-db.exec("PRAGMA journal_mode=WAL;");
-db.exec("PRAGMA foreign_keys=ON;");
+// busy_timeout before WAL: hooks and the MCP server write this DB concurrently.
+db.exec("PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
 db.exec(SCHEMA);
 // Run all pending migrations (idempotent — adds Phase 7 columns to existing DBs)
 await runPendingMigrations(db);

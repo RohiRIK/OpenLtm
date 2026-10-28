@@ -3,10 +3,13 @@
  * Measured with Claude Code 2.1.296: plugins/data/<plugin>-<marketplace> → openltm-OpenLtm.
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getClaudePluginDataDir, sharedDbPath } from "../project.js";
+
+// On a case-insensitive FS (APFS default) OpenLtm-openltm and openltm-OpenLtm are one dir.
+const caseInsensitiveFs = existsSync(tmpdir().toUpperCase());
 
 let root: string;
 let savedConfigDir: string | undefined;
@@ -22,7 +25,7 @@ describe("getClaudePluginDataDir", () => {
   it("defaults to openltm-OpenLtm, the dir Claude Code creates", () => {
     expect(getClaudePluginDataDir(root)).toBe(join(root, "plugins", "data", "openltm-OpenLtm"));
   });
-  it("keeps a database that exists only under the older OpenLtm-openltm name", () => {
+  it.skipIf(caseInsensitiveFs)("keeps a database that exists only under the older OpenLtm-openltm name", () => {
     withDb(root, "OpenLtm-openltm");
     expect(getClaudePluginDataDir(root)).toBe(join(root, "plugins", "data", "OpenLtm-openltm"));
   });

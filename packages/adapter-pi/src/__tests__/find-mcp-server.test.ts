@@ -6,10 +6,13 @@
  * second one under the name OpenLTM ≤ 2.16 assumed (OpenLtm-openltm).
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { findMcpServer } from "../index.js";
+
+// On a case-insensitive FS (APFS default) OpenLtm-openltm and openltm-OpenLtm are one dir.
+const caseInsensitiveFs = existsSync(tmpdir().toUpperCase());
 
 let home: string;
 const saved: Record<string, string | undefined> = {};
@@ -47,7 +50,7 @@ describe("Pi finds the Claude Code plugin's MCP server and database", () => {
     expect(found?.dbPath).toBe(real);
   });
 
-  it("keeps using a database under the older OpenLtm-openltm name when that is the one that exists", () => {
+  it.skipIf(caseInsensitiveFs)("keeps using a database under the older OpenLtm-openltm name when that is the one that exists", () => {
     plugin("2.17.0");
     const legacy = db("OpenLtm-openltm");
     expect(findMcpServer()?.dbPath).toBe(legacy);

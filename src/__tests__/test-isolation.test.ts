@@ -5,9 +5,15 @@
  */
 import { describe, expect, it } from "bun:test";
 import { realpathSync } from "fs";
-import { sep } from "path";
+import { basename, dirname, join, sep } from "path";
 
-const real = (p: string) => { try { return realpathSync(p); } catch { return p; } };
+// Resolve the nearest existing ancestor: a not-yet-created dir under /var must
+// still compare equal to its /private/var parent on macOS.
+const real = (p: string): string => {
+  try { return realpathSync(p); } catch {}
+  const parent = dirname(p);
+  return parent === p ? p : join(real(parent), basename(p));
+};
 const inside = (child: string | undefined, parent: string) =>
   !!child && (real(child) === real(parent) || real(child).startsWith(real(parent) + sep));
 

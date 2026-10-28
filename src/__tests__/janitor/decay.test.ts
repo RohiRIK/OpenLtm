@@ -81,7 +81,7 @@ describe("runDecay() SQL batch", () => {
     const row = db.query<{ decay_score: number }, [number]>(
       "SELECT decay_score FROM memories WHERE id=?",
     ).get(1001);
-    expect(row).toBeDefined();
+    expect(row).not.toBeNull();
     expect(row!.decay_score).toBeGreaterThan(0);
   });
 

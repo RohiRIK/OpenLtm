@@ -16,7 +16,7 @@ const MIGRATIONS_DIR = getMigrationsDir();
 
 function openDb(): Database {
   const db = new Database(DB_PATH, { create: true });
-  db.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
+  db.exec("PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
   return db;
 }
 

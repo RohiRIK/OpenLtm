@@ -68,7 +68,7 @@ export function openCodeConfigDirs(homedir: string): string[] {
 
 /**
  * Resolve the OpenCode config file: the first `opencode.json` that exists in
- * openCodeConfigDirs(homedir), else the default creation path for the platform.
+ * openCodeConfigDirs(homedir), else the first of those dirs.
  */
 function resolveConfigPath(homedir: string): { path: string; exists: boolean } {
   for (const dir of openCodeConfigDirs(homedir)) {
@@ -76,13 +76,9 @@ function resolveConfigPath(homedir: string): { path: string; exists: boolean } {
     if (existsSync(p)) return { path: p, exists: true };
   }
 
-  // Default creation path
-  const defaultPath =
-    process.platform === "darwin"
-      ? join(homedir, "Library", "Application Support", "opencode", "opencode.json")
-      : join(homedir, ".config", "opencode", "opencode.json");
-
-  return { path: defaultPath, exists: false };
+  // Default creation path: OpenCode reads its global config from the XDG config
+  // dir on every platform, macOS included (~/.config/opencode).
+  return { path: join(openCodeConfigDirs(homedir)[0]!, "opencode.json"), exists: false };
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────

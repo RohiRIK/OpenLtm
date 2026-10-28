@@ -81,7 +81,7 @@ describe("migration 012", () => {
       const row = db.query<{ value: string }, [string]>(
         "SELECT value FROM settings WHERE key=?",
       ).get(key);
-      expect(row).toBeDefined();
+      expect(row).not.toBeNull();
     }
   });
 });
@@ -147,6 +147,6 @@ describe("runDecay() + runArchive() round-trip", () => {
     const inMemories = db.query<{ id: number }, [number]>("SELECT id FROM memories WHERE id=?").get(row.id);
     const inArchive  = db.query<{ id: number }, [number]>("SELECT id FROM memory_archive WHERE id=?").get(row.id);
     expect(inMemories).toBeNull();
-    expect(inArchive).toBeDefined();
+    expect(inArchive).not.toBeNull();
   });
 });
