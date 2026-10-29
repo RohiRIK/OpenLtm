@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.22.2] — 2026-10-29
+
+### Fixed
+- **Codex plugin hooks failed before execution.** First-use dependency installation wrote Bun's executable and workspace symlinks into the plugin cache. Codex rejected them while fingerprinting the plugin (`unsupported plugin entry type: .../node_modules/.bin/esbuild`). Codex launchers now install and execute a source copy under the plugin's writable data directory, keeping dependencies outside the cached package. The Codex dependency install also skips Claude's global hook wiring.
+
 ## [2.22.1] — 2026-10-28
 
 ### Fixed
@@ -335,7 +340,7 @@ After the round-4 approval.
 - **Pi plugin registered nothing for users without Claude Code** — the Pi adapter had the same `@rohirik/openltm-core/package.json` lookup. Pi first tries the Claude Code plugin cache, so Claude Code users were unaffected; a Pi-only user fell through to the broken lookup and got zero tools and no Prior Knowledge, silently. Both adapters now share the same lookup in `src/find-core.ts`.
 - **Core now exports `./package.json`** — so adapters already published (2.15.1, which depend on `^2.15.1`) start working as soon as this core is installed, without an adapter update. Verified with the published Pi 2.15.1 bundle against the new core.
 - **Adapters are now tested under Node** — `src/__tests__/adapters-under-node.test.ts` bundles each adapter's core lookup and runs it with `node` against a core whose `exports` hide `package.json`, as 2.15.1's did. With the old lookup put back, it fails.
-- **Hooks broke when the plugin path contained a space** — `hooks.json` ran `${CLAUDE_PLUGIN_ROOT}/hooks/bin/run-hook.sh ${CLAUDE_PLUGIN_ROOT}/…` unquoted, so a path such as `/Users/Jane Doe/…` split into several words and every hook failed with "not found" (exit 127). Both placeholders are now quoted.
+- **Hooks broke when the plugin path contained a space** — `hooks.json` ran `${CLAUDE_PLUGIN_ROOT}/hooks/bin/run-hook.sh ${CLAUDE_PLUGIN_ROOT}/…` unquoted, so a path such as `~/My Plugins/OpenLtm/…` split into several words and every hook failed with "not found" (exit 127). Both placeholders are now quoted.
 - **Hooks died on common shell profiles** — when bun is not in a well-known location, `run-hook.sh` sources the user's `.zprofile`/`.bash_profile`/`.profile`, but did so under `set -u`, so any profile that reads an unset variable aborted the hook ("parameter not set"), and anything a profile printed leaked into the hook's stdout (for SessionStart, into the session). Profiles are now sourced with `set +u` and their output discarded.
 
 

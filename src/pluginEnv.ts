@@ -21,7 +21,9 @@ export function expandedOrUndefined(value: string | undefined): string | undefin
 
 /** Fix up CLAUDE_PLUGIN_DATA / LTM_DB_PATH in place. */
 export function normalizePluginEnv(env: NodeJS.ProcessEnv = process.env): void {
-  const pluginData = expandedOrUndefined(env["CLAUDE_PLUGIN_DATA"]) ?? expandedOrUndefined(env["LTM_PLUGIN_DATA"]);
+  const pluginData = expandedOrUndefined(env["PLUGIN_DATA"])
+    ?? expandedOrUndefined(env["CLAUDE_PLUGIN_DATA"])
+    ?? expandedOrUndefined(env["LTM_PLUGIN_DATA"]);
   if (pluginData) env["CLAUDE_PLUGIN_DATA"] = pluginData;
   else delete env["CLAUDE_PLUGIN_DATA"];
   const dbPath = expandedOrUndefined(env["LTM_DB_PATH"]);

@@ -180,8 +180,14 @@ describe("OpenClaw adapter — behaviour over the real bridge", () => {
       category: "architecture",
     })) as { id: number };
     const db = new Database(dbPath);
-    db.run("UPDATE memories SET stale_flagged_at = datetime('now'), stale_reason = 'probe' WHERE id = ?", [learned.id]);
-    db.close();
+    try {
+      // The bridge can still be recording the learn's background work. Match
+      // production's bounded lock wait instead of racing its SQLite writer.
+      db.run("PRAGMA busy_timeout = 5000");
+      db.run("UPDATE memories SET stale_flagged_at = datetime('now'), stale_reason = 'probe' WHERE id = ?", [learned.id]);
+    } finally {
+      db.close();
+    }
 
     expect(await text(stale, "s2", { action: "list" })).toContain("OpenClaw stale probe");
     expect(JSON.parse(await text(stale, "s3", { action: "clear", memory_id: learned.id }))).toEqual({ id: learned.id, revalidated: true });
