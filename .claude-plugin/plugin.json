@@ -1,6 +1,6 @@
 {
   "name": "openltm",
-  "description": "OpenLTM — Long-Term Memory for AI coding agents: semantic search, context injection, session learning",
+  "description": "OpenLTM: local long-term memory for AI coding agents. Hybrid semantic and full-text recall, session context injection and learning, over one SQLite file.",
   "version": "2.23.0",
   "author": {
     "name": "RohiRIK"

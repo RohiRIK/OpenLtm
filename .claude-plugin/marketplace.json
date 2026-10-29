@@ -5,14 +5,14 @@
     "email": "rohi5054@gmail.com"
   },
   "metadata": {
-    "description": "OpenLTM — Long-Term Memory for AI coding agents (Claude Code, OpenCode, Pi)",
+    "description": "OpenLTM: local long-term memory for AI coding agents (Claude Code, OpenCode, Pi, OpenClaw, Hermes)",
     "version": "2.23.0"
   },
   "plugins": [
     {
       "name": "openltm",
       "source": "./",
-      "description": "Persistent semantic memory for AI coding agents — semantic search, context injection, session learning, and memory graph visualizer.",
+      "description": "Local long-term memory for AI coding agents: hybrid semantic and full-text recall, session context injection, learning, and a memory graph explorer, over one SQLite file.",
       "version": "2.23.0",
       "author": {
         "name": "RohiRIK"
@@ -25,7 +25,12 @@
         "semantic-search",
         "context",
         "sqlite",
-        "mcp"
+        "mcp",
+        "ai-memory",
+        "agent-memory",
+        "persistent-memory",
+        "claude-code",
+        "local-first"
       ]
     }
   ]

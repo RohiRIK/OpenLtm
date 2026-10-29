@@ -136,6 +136,30 @@ CHANGELOG.md          Version history
 
 ---
 
+## Capability map
+
+What each feature does and where its code lives (paths relative to the repository root).
+
+| Capability | What it actually does | Where it lives |
+|---|---|---|
+| Recall | Hybrid: full-text (FTS5) and vector results fused with Reciprocal Rank Fusion, filtered by project, status and privacy — search by meaning, not exact words | `packages/openltm-core/src/db.ts:981` · `packages/openltm-core/src/vec/` |
+| Learn | Stores a memory with category, importance, and confidence; secrets are scrubbed on every write | `packages/openltm-core/src/db.ts:691` |
+| Inject | At session start, the project's goal/decisions/gotchas/progress and a compact `- [id] title` index of top memories | `hooks/src/SessionStart.ts:72` |
+| Prompt recall | Adds up to 5 memories relevant to each prompt you type, never the same one twice in a session | `hooks/lib/promptRecall.ts:146` |
+| Stale flags | A commit through Claude flags the memories anchored to the files it touched | `packages/openltm-core/src/db.ts:411` |
+| Privacy | Memories tagged `private` never leave the machine or reach the model unasked; egress is secret-scrubbed | `packages/openltm-core/src/secretsScrubber.ts` · `packages/openltm-core/src/privacy.ts` |
+| Decay | Ages memories by importance × confidence; `importance: 5` is permanent | `packages/openltm-core/src/janitor/decay.ts` |
+| Graph | Traverses relations between memories and builds a reasoning chain | `packages/openltm-core/src/graph.ts:71` |
+| Visualize | A browser explorer over the live database, with janitor controls | `src/graph-server.ts` · `graph-app/` |
+| Extensions | sqlite-vec and Honker loaded from disk, with a working fallback when absent | `packages/openltm-core/src/extensions.ts:160` |
+| Deduplicate | Queues near-duplicate pairs as pending suggestions; nothing merges until you approve | `packages/openltm-core/src/janitor/dedup.ts` |
+| Time-aware recall | `occurred_at` on learn, `as_of` point-in-time recall, recency / "list all" intent detection, and an adaptive cutoff that drops weak tail hits | `packages/openltm-core/src/recall/intent.ts` · `packages/openltm-core/src/recall/adaptive.ts` |
+| Supersede | A new memory `updates`, `retracts` or `extends` an old one; an agent can't retire something the owner said | `packages/openltm-core/src/db.ts` · `packages/openltm-core/src/janitor/supersedes.ts` |
+| Collections | Agent-defined typed records (hosts, releases, endpoints) next to prose memories; `ltm facts extract` fills a `facts` collection from prose | `packages/openltm-core/src/collections/` · `packages/openltm-core/src/facts.ts` |
+| PII masking | Emails, phones, card numbers, SSNs and IPs become placeholders before text reaches an LLM or embedding provider (`LTM_MASK_PII`) | `packages/openltm-core/src/pii.ts` |
+| Doctor | `ltm doctor [--fix]` checks SQLite, FTS and vector-index integrity and repairs after a backup | `packages/openltm-core/src/integrity.ts` |
+| Capsules | `ltm export` / `ltm import` move a project's memory as one checksummed, optionally encrypted file | `packages/openltm-core/src/capsule.ts` |
+
 ## Where to go from here
 
 - [Architecture](03-architecture.md) — C4 diagrams, ADRs, schema, migration path, the works
