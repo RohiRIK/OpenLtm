@@ -69,14 +69,29 @@ fi
 # than one workspace), so install them on first use — see scripts/ensure-deps.ts.
 # SessionStart waits for the install; other hooks give it a moment, then skip
 # this run quietly rather than crash.
-if [ -n "$PLUGIN_ROOT" ] && [ -f "$PLUGIN_ROOT/scripts/ensure-deps.ts" ] && {
+if [ -n "$PLUGIN_ROOT" ] && [ -f "$PLUGIN_ROOT/scripts/plugin-runtime.ts" ] && {
+  [ -n "${PLUGIN_DATA:-}" ] ||
+  case "$PLUGIN_ROOT" in "${CODEX_HOME:-$HOME/.codex}"/plugins/cache/*) true ;; *) false ;; esac ||
   [ ! -f "$PLUGIN_ROOT/node_modules/@rohirik/openltm-core/package.json" ] || [ -d "$PLUGIN_ROOT/.deps-install.lock" ]
 }; then
   case "${1:-}" in
     */SessionStart.ts) WAIT_MS=12000 ;;
     *) WAIT_MS=2000 ;;
   esac
-  "$BUN" --no-env-file --config="$BUNFIG" "$PLUGIN_ROOT/scripts/ensure-deps.ts" "$PLUGIN_ROOT" --wait-ms "$WAIT_MS" || exit 0
+  RUNTIME=$("$BUN" --no-env-file --config="$BUNFIG" "$PLUGIN_ROOT/scripts/plugin-runtime.ts" "$PLUGIN_ROOT" --wait-ms "$WAIT_MS") || exit 0
+  if [ "$RUNTIME" != "$PLUGIN_ROOT" ]; then
+    HOOK_DIR=$(CDPATH= cd -- "$(dirname -- "${1:-}")" 2>/dev/null && pwd -P)
+    HOOK_PATH="$HOOK_DIR/$(basename -- "${1:-}")"
+    case "$HOOK_PATH" in
+      "$PLUGIN_ROOT"/*) HOOK="$RUNTIME/${HOOK_PATH#"$PLUGIN_ROOT"/}"; shift; set -- "$HOOK" "$@" ;;
+    esac
+    CLAUDE_PLUGIN_ROOT=$RUNTIME
+    CLAUDE_PLUGIN_DATA=${PLUGIN_DATA:-${CLAUDE_PLUGIN_DATA:-}}
+    LTM_CODEX_RUNTIME=$RUNTIME
+    export CLAUDE_PLUGIN_ROOT CLAUDE_PLUGIN_DATA LTM_CODEX_RUNTIME
+    BUNFIG="$RUNTIME/bunfig.toml"
+    [ -f "$BUNFIG" ] || BUNFIG=/dev/null
+  fi
 fi
 
 exec "$BUN" --no-env-file --config="$BUNFIG" run "$@"

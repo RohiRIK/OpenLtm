@@ -45,7 +45,7 @@ function sleep(ms: number): void {
 }
 
 /** Take the lock and start a detached install. False when another one holds the lock. */
-function startInstall(root: string, bun: string, logPath: string): boolean {
+function startInstall(root: string, bun: string, logPath: string, env: NodeJS.ProcessEnv): boolean {
   const lock = join(root, DEPS_LOCK);
   try {
     mkdirSync(lock);
@@ -66,7 +66,7 @@ function startInstall(root: string, bun: string, logPath: string): boolean {
       cwd: root,
       detached: true,
       stdio: ["ignore", log, log],
-      env: process.env,
+      env,
     });
     child.unref();
     return true;
@@ -84,6 +84,8 @@ export interface EnsureDepsOptions {
   bun?: string;
   /** Install log (default: $CLAUDE_PLUGIN_DATA/deps-install.log, else in the plugin root). */
   logPath?: string;
+  /** Environment for the installer and its lifecycle scripts. */
+  env?: NodeJS.ProcessEnv;
 }
 
 /**
@@ -94,7 +96,7 @@ export interface EnsureDepsOptions {
 export function ensurePluginDeps(root: string, opts: EnsureDepsOptions = {}): boolean {
   if (pluginDepsReady(root)) return true;
   const logPath = opts.logPath ?? join(process.env.CLAUDE_PLUGIN_DATA || root, "deps-install.log");
-  if (startInstall(root, opts.bun ?? process.execPath, logPath)) {
+  if (startInstall(root, opts.bun ?? process.execPath, logPath, opts.env ?? process.env)) {
     process.stderr.write(
       `openltm: installing the plugin's packages (bun install --frozen-lockfile in ${root}); log: ${logPath}\n`,
     );

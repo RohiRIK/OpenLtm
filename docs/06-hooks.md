@@ -106,6 +106,12 @@ git commit (any repo)   ─▶ GitCommit (extract from diffs, if enabled)
 
 **Other hook hosts** can use the portable dispatcher, which needs no plugin checkout: `ltm hook --name SessionStart` (prefill) and `ltm hook --name SessionEnd` (janitor if due; set `LTM_DB_PATH`).
 
+### Codex plugin cache
+
+Codex fingerprints plugin files before running hooks and rejects symbolic links. Its launchers execute a source copy in `${PLUGIN_DATA}/runtime/<source-and-dependency-hash>` and install Bun dependencies there, outside the cached plugin package. Hooks and the MCP server share that runtime; dependency installation does not wire Claude's global hooks. Memory data stays at the plugin data location. An already affected installation needs its cached `node_modules` directories moved outside the plugin cache before Codex can load its hooks again.
+
+Codex CLI 0.165.0 also clamps `SessionEnd` hooks to three seconds. The 60-second declaration above is the Claude Code budget; longer optional LLM extraction is not qualified within Codex's shorter budget.
+
 ---
 
 ## See also

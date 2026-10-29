@@ -103,6 +103,7 @@ describe("run-hook.sh while the packages install", () => {
     mkdirSync(join(plugin, "scripts"));
     cpSync(join(REPO, "hooks", "bin", "run-hook.sh"), join(plugin, "hooks", "bin", "run-hook.sh"));
     cpSync(ENSURE_DEPS, join(plugin, "scripts", "ensure-deps.ts"));
+    cpSync(join(REPO, "scripts", "plugin-runtime.ts"), join(plugin, "scripts", "plugin-runtime.ts"));
     writeFileSync(join(plugin, "package.json"), "{}");
     mkdirSync(join(plugin, DEPS_LOCK)); // another launcher is mid-install
     const hook = join(root, "Probe.ts");
