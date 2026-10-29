@@ -2,7 +2,7 @@
 
 Memories are prose. Some knowledge has a fixed shape instead: the servers in a lab and their ports, the releases of a project and whether each was tagged, the endpoints of an API. For those, an agent can define a **collection** (a type with named, typed fields) and store **records** in it. A record can then be found by field (`tagged = false`, `port > 8000`) as well as by text.
 
-A collection is a row of data, not a table. One migration (031) added three fixed tables, `collections`, `records` and `records_fts`, and nothing the agent does ever changes the SQL schema or runs agent-written SQL.
+A collection is a row of data, not a table. One migration (033) added three fixed tables, `collections`, `records` and `records_fts`, and nothing the agent does ever changes the SQL schema or runs agent-written SQL.
 
 ---
 

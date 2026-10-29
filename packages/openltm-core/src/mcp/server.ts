@@ -33,6 +33,8 @@ import { recallRecords } from "../collections/embeddings.js";
 import { COLLECTION_ORIGINS, listCollections } from "../collections/store.js";
 import { COLLECTION_ACTIONS, RECORD_ACTIONS, COLLECTION_TOOL_DESCRIPTION, RECORD_TOOL_DESCRIPTION } from "../collections/toolSchema.js";
 import { runCollectionTool, runRecordTool, type ToolOutcome } from "../collections/tools.js";
+import { startEmbeddingWorker } from "../queue/worker.js";
+import { scopeName } from "../project.js";
 
 // ─── Options ─────────────────────────────────────────────────────────────────
 
@@ -140,13 +142,17 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
     void server.server.sendLoggingMessage({ level: "info", logger: "ltm", data }).catch(() => { /* client gone or not listening */ });
   };
 
+  /** An explicit `project` arg as a scope name (case-insensitive), or undefined. */
+  const projectArg = (p?: string): string | undefined => scopeName(p ?? "") || undefined;
+
   /** Explicit `project`, else the host's default project, else null. */
   async function resolveProjectArg(project: string | undefined): Promise<string | null> {
-    const explicit = project?.trim();
+    const explicit = projectArg(project);
     if (explicit) return explicit;
     if (!options.defaultProject) return null;
     try {
-      return (await options.defaultProject())?.trim() || null;
+      const fallback = await options.defaultProject();
+      return projectArg(fallback) ?? null;
     } catch (err) {
       process.stderr.write(`[ltm-mcp] defaultProject failed: ${err}\n`);
       return null;
@@ -185,7 +191,8 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    async ({ query, project, limit, category, verbose, since, until, sort_by, workspace_id, agent_id, includeProvenance, includePrivate, includeRecords, adaptive, as_of }) => {
+    async ({ query, project: rawProject, limit, category, verbose, since, until, sort_by, workspace_id, agent_id, includeProvenance, includePrivate, includeRecords, adaptive, as_of }) => {
+      const project = projectArg(rawProject);
       let results: Awaited<ReturnType<typeof recall>>;
       try {
         results = await recall({ query, project, limit, category, since, until, sort_by, workspace_id, agent_id, includeProvenance, includePrivate, adaptive, as_of });
@@ -253,7 +260,7 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
     async ({ content, title, category, importance, tags, files, project, workspace_id, agent_id, origin, occurred_at, supersedes }) => {
       // File anchors are repo-relative, so an anchored memory belongs to a project:
       // without one, a commit to the same path in any repo would flag it stale.
-      const scope = project?.trim() || (files && files.length > 0 ? (await resolveProjectArg(undefined)) ?? undefined : undefined);
+      const scope = projectArg(project) || (files && files.length > 0 ? (await resolveProjectArg(undefined)) ?? undefined : undefined);
       let resolvedCategory = category;
       let categoriseSource: string | undefined;
 
@@ -363,7 +370,7 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async ({ project, limit, includePrivate }) => {
-      const rows = listStaleMemories({ project: project?.trim() || undefined, limit, includePrivate });
+      const rows = listStaleMemories({ project: projectArg(project), limit, includePrivate });
       return jsonResult({ count: rows.length, memories: scrubMemoryPayload(rows) });
     },
   );
@@ -378,7 +385,7 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    async ({ project }) => jsonResult(memoryStats(project?.trim() || undefined)),
+    async ({ project }) => jsonResult(memoryStats(projectArg(project))),
   );
 
   server.registerTool(
@@ -665,7 +672,7 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
     projectTemplate,
     { description: "All active memories scoped to a specific project" },
     async (uri, { name }) => {
-      const projectName = (Array.isArray(name) ? name[0] : name) ?? "";
+      const projectName = scopeName((Array.isArray(name) ? name[0] : name) ?? "");
       const db = getDb();
       const rows = db.query<Memory, [string]>(
         `SELECT * FROM memories WHERE project_scope = ? AND status = 'active' AND ${notPrivateSql()} ORDER BY importance DESC, created_at DESC`,
@@ -807,4 +814,23 @@ export async function startMcpServer(options: McpServerOptions = {}): Promise<vo
   const transport = new StdioServerTransport();
   await server.connect(transport);
   process.stderr.write("[ltm-mcp] LTM MCP server running on stdio\n");
+
+  // The MCP server is the one long-lived process every host runs, so it drains
+  // the embedding queue (inert without Honker). Honker claims are atomic with a
+  // visibility timeout, so several servers plus graph-server can run workers at once.
+  const worker = startEmbeddingWorker();
+  // An inert worker does not hold the event loop, so there is nothing to shut down.
+  if (!worker.running) return;
+  process.stderr.write("[ltm-mcp] embedding worker running (honker queue)\n");
+  let stopping = false;
+  const shutdown = () => {
+    if (stopping) return;
+    stopping = true;
+    // The worker's Honker watcher keeps the event loop alive, so exit explicitly.
+    void worker.stop().finally(() => process.exit(0));
+    setTimeout(() => process.exit(0), 3000).unref();
+  };
+  process.stdin.once("end", shutdown);
+  process.stdin.once("close", shutdown);
+  for (const sig of ["SIGINT", "SIGTERM"] as const) process.once(sig, shutdown);
 }

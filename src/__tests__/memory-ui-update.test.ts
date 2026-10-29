@@ -8,9 +8,10 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import { applyMemoryUiUpdate, replaceMemoryTags } from "../memoryUiUpdate.js";
 import { _forceScrubThrowForTesting, SCRUB_FAILED_PLACEHOLDER } from "@rohirik/openltm-core";
+import { getSchemaPath } from "../../packages/openltm-core/src/paths.js";
 
 const AWS = "AKIAIOSFODNN7EXAMPLE";
-const SCHEMA = join(import.meta.dir, "..", "..", "packages", "openltm-core", "src", "schema.sql");
+const SCHEMA = getSchemaPath();
 
 function freshDb(): { db: Database; id: number } {
   const db = new Database(":memory:");

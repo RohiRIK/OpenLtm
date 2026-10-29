@@ -21,6 +21,11 @@ import { homedir } from "os";
 import { fileURLToPath } from "url";
 import { spawnSync } from "child_process";
 
+if (process.env.LTM_CODEX_RUNTIME) {
+  console.log("openltm: Codex runtime — Claude hook wiring skipped.");
+  process.exit(0);
+}
+
 // Resolve plugin root: explicit arg → env var → script location
 const __dir = dirname(fileURLToPath(import.meta.url));
 const root = process.argv[2] ?? process.env.CLAUDE_PLUGIN_ROOT ?? resolve(__dir, "..");

@@ -1,8 +1,7 @@
 {
   "name": "OpenLtm",
   "owner": {
-    "name": "RohiRIK",
-    "email": "rohi5054@gmail.com"
+    "name": "RohiRIK"
   },
   "metadata": {
     "description": "OpenLTM: local long-term memory for AI coding agents (Claude Code, OpenCode, Pi, OpenClaw, Hermes)",

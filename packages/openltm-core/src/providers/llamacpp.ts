@@ -1,7 +1,8 @@
 /**
  * providers/llamacpp.ts — local embeddings via llama-server's OpenAI-compatible
  * /v1/embeddings endpoint. No API key. A missing server is a miss, not an error:
- * available() probes once per process so a down server cannot stall a hook.
+ * available() probes once per process so a down server cannot stall a hook; a
+ * "down" answer is re-probed after a minute so a long-lived process recovers.
  */
 import type { EmbeddingProvider, EmbeddingProviderName, EmbeddingConfig } from "./embeddingProvider.js";
 
@@ -12,7 +13,10 @@ export const LLAMACPP_DEFAULT_DIM = 1024;
 
 const PROBE_TIMEOUT_MS = 400;
 
+const NEGATIVE_PROBE_TTL_MS = 60_000;
+
 let probeCache: boolean | null = null;
+let probedAt = 0;
 
 export function resetLlamaCppProbeForTesting(): void {
   probeCache = null;
@@ -30,9 +34,10 @@ export function llamaCppModel(config?: Partial<EmbeddingConfig>): string {
   return config?.model ?? process.env["LTM_EMBED_MODEL"] ?? LLAMACPP_DEFAULT_MODEL;
 }
 
-/** GET /health (llama-server) with a short timeout. Cached for the process. */
+/** GET /health (llama-server) with a short timeout. Cached (a miss only for a minute). */
 export async function probeLlamaCpp(baseUrl: string): Promise<boolean> {
-  if (probeCache !== null) return probeCache;
+  if (probeCache === true || (probeCache === false && Date.now() - probedAt < NEGATIVE_PROBE_TTL_MS)) return probeCache;
+  probedAt = Date.now();
   try {
     const res = await fetch(`${baseUrl}/health`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
     probeCache = res.ok;

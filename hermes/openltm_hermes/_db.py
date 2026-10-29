@@ -233,7 +233,7 @@ def init_schema(conn: sqlite3.Connection) -> None:
             "ALTER TABLE memories ADD COLUMN origin TEXT CHECK(origin IS NULL OR origin IN ("
             "'owner-statement','agent-observation','external-source','proposal','historical-approval'))"
         )
-    # Same definitions as OpenLtm core's migration 032 (event time, supersede kind).
+    # Same definitions as OpenLtm core's migration 034 (event time, supersede kind).
     if "occurred_at" not in cols:
         conn.execute("ALTER TABLE memories ADD COLUMN occurred_at TEXT")
     if "supersede_kind" not in cols:
@@ -251,13 +251,18 @@ def init_schema(conn: sqlite3.Connection) -> None:
             except sqlite3.OperationalError:
                 pass  # already exists
     conn.executescript(FTS_TRIGGERS_SQL)
-    # Agent-defined collections (core's migration 031): same DDL, IF NOT EXISTS.
+    # Agent-defined collections (core's migration 033): same DDL, IF NOT EXISTS.
     from ._collections import ensure_schema as _ensure_collections
     _ensure_collections(conn)
     conn.commit()
 
 
 # ─── Core Operations ─────────────────────────────────────────────────────────
+
+def _scope(project: str | None) -> str | None:
+    """Project scopes are case-insensitive (core migration 031 lowercased stored rows)."""
+    return (project.strip().lower() or None) if project else None
+
 
 def _dedup_key(content: str) -> str:
     """Generate a dedup key from content (normalized hash)."""
@@ -297,7 +302,7 @@ def learn(
     """Store or reinforce a memory. Returns {action, id, confirm_count}.
 
     ``occurred_at`` is when the fact became true (date or date-time; core's
-    migration 032). ``supersedes`` = {"id": n, "relation": "updates" |
+    migration 034). ``supersedes`` = {"id": n, "relation": "updates" |
     "extends" | "retracts"} changes an older memory, with core's rules: an
     owner statement is never retired by another origin (linked as
     contradicts instead). The outcome comes back under "supersede".
@@ -315,6 +320,7 @@ def learn(
     # propagates and nothing is stored.
     if origin not in MEMORY_ORIGINS:
         origin = DEFAULT_ORIGIN
+    project = _scope(project)
     content = scrub_or_refuse(content) or ""
     title = scrub_or_refuse(title)
     if tags:
@@ -490,6 +496,7 @@ def recall(
     count as a recall. Same rules as core's recall().
     """
     from ._recall_shape import RECENCY_BOOST, adaptive_cutoff, detect_query_intent, recency_ranks
+    project = _scope(project)
 
     params: list[Any] = []
     if as_of:
@@ -603,6 +610,7 @@ def _egress_reason(reason: str | None) -> str | None:
 
 def get_context(conn: sqlite3.Connection, project: str) -> dict:
     """Get project context: goals, decisions, progress, gotchas."""
+    project = _scope(project) or project
     items = conn.execute(
         """SELECT * FROM context_items
            WHERE project_name = ? AND status = 'active'
@@ -1062,6 +1070,8 @@ def vector_search(
     when ``model`` is given, from that model) are compared."""
     import math
     import struct
+
+    project = _scope(project)
 
     conditions = ["m.status = 'active'"]
     params: list[Any] = []

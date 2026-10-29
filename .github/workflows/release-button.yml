@@ -59,7 +59,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          for check in "Typecheck & Test" "Hermes plugin (pytest)"; do
+          for check in "Typecheck & Test" "Typecheck & Test (macOS)" "Hermes plugin (pytest)"; do
             conclusion="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/check-runs" \
               --jq "[.check_runs[] | select(.name == \"${check}\")] | sort_by(.completed_at) | last | .conclusion // \"missing\"")"
             if [ "$conclusion" != "success" ]; then

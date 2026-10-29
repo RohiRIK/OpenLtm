@@ -17,9 +17,9 @@ import {
   SETTING_DEFAULTS, SETTING_KEYS,
   anthropicLLM,
   traverseGraph, buildReasoningContext,
-  embedText, getSimilarMemories, findSimilarMemories,
+  embedText, getSimilarMemoriesByVec, findSimilarMemories,
   cohereEmbedding, geminiEmbedding, ollamaEmbedding, openaiEmbedding, openrouterEmbedding,
-  runPendingMigrations,
+  migrateDb,
   startEmbeddingWorker, startJanitorScheduler,
   startLtmListener,
   getCapabilities, acquireJanitorLock, scrubOrRefuse,
@@ -27,12 +27,12 @@ import {
 } from "@rohirik/openltm-core";
 import { applyMemoryUiUpdate, replaceMemoryTags } from "./memoryUiUpdate.js";
 import { detectCommunities, generateClusterLabel, assignClusterColors } from "./cluster.js";
-import { getDbPath, getSchemaPath } from "./paths.js";
+import { getDbPath } from "./paths.js";
 import {
   checkRequest, dropMaskedSecretsDeep, isMaskedValue, maskSecretsDeep, maskSettings,
   nonLoopbackWarning, resolveRevealTarget, resolveServerHost, sanitizeSettingsUpdate,
 } from "./serverGuard.js";
-import { getConfigPath } from "@rohirik/openltm-core";
+import { getConfigPath, CONNECTION_PRAGMAS } from "@rohirik/openltm-core";
 import type { Cluster } from "./graph-app/lib/types.js";
 
 const CLAUDE_DIR = join(homedir(), ".claude");
@@ -189,14 +189,10 @@ function deepMerge(base: Record<string, unknown>, patch: Record<string, unknown>
   }
   return out;
 }
-const SCHEMA_PATH = getSchemaPath();
 const PID_PATH = join(CLAUDE_DIR, "tmp", "ltm-server.pid");
 const PORT = 7331;
 // Loopback by default — the API has no auth. LTM_SERVER_HOST overrides (with a warning).
 const { hostname: HOST, loopback: HOST_IS_LOOPBACK } = resolveServerHost();
-
-// Cache schema at startup — it never changes at runtime
-const SCHEMA = readFileSync(SCHEMA_PATH, "utf-8");
 
 // Ensure tmp dir and write PID
 mkdirSync(join(CLAUDE_DIR, "tmp"), { recursive: true });
@@ -204,11 +200,10 @@ await Bun.write(PID_PATH, String(process.pid));
 
 // Persistent DB — opened once, PRAGMAs run once
 const db = new Database(DB_PATH);
-db.exec("PRAGMA journal_mode=WAL;");
-db.exec("PRAGMA foreign_keys=ON;");
-db.exec(SCHEMA);
-// Run all pending migrations (idempotent — adds Phase 7 columns to existing DBs)
-await runPendingMigrations(db);
+// busy_timeout before WAL: hooks and the MCP server write this DB concurrently.
+db.exec(CONNECTION_PRAGMAS);
+// schema.sql + pending migrations (idempotent), same path as the MCP server's initDb.
+await migrateDb(db);
 
 type Params = SQLQueryBindings[];
 
@@ -1122,7 +1117,7 @@ Bun.serve({
     // ============================================================
 
     // ============================================================
-    // Collections (agent-defined structured types, migration 031)
+    // Collections (agent-defined structured types, migration 033)
     // ============================================================
 
     if (p === "/api/collections" && req.method === "GET") {
@@ -1131,7 +1126,7 @@ Bun.serve({
           .map((c) => ({ ...c, indexes: managedIndexes(db, c.id) }));
         return Response.json(scrubDeep(list));
       } catch {
-        return Response.json([]); // pre-031 database
+        return Response.json([]); // pre-033 database
       }
     }
 
@@ -1570,7 +1565,7 @@ Bun.serve({
         const queryVec = await embedText(q);
         if (!queryVec) return Response.json({ insights: null, reason: "no embedding provider configured" });
         const db = getDb();
-        const similar = getSimilarMemories(db, queryVec, { limit: 1, minImportance: 1 });
+        const similar = getSimilarMemoriesByVec(db, queryVec, { limit: 1, minImportance: 1 });
         if (similar.length === 0) return Response.json({ insights: null, reason: "no relevant memories found" });
         const seedId = similar[0]!.id;
         const result = await traverseGraph(seedId, depth, false);

@@ -7,8 +7,9 @@
  * dead-letters once attempts exceed the queue's maxAttempts. Malformed payloads
  * are failed immediately (no retry).
  *
- * Lifecycle: start ONCE in the long-lived process (graph-server). Short-lived
- * hook processes only enqueue — they must never start a worker. Returns an inert
+ * Lifecycle: start once per long-lived process (the MCP server, graph-server);
+ * concurrent workers are safe — Honker claims are atomic with a visibility
+ * timeout. Short-lived hook processes only enqueue — they must never start a worker. Returns an inert
  * handle when Honker is unavailable.
  */
 import { getEmbeddingQueue, parseEmbeddingJob } from "./index.js";

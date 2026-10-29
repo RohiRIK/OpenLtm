@@ -191,7 +191,8 @@ describe("Claude hook names: continuity + isNew", () => {
 
   it("keeps the old full-path slug when only it has DB rows, and registers it", () => {
     const repo = makeRepo("OpenLtm");
-    const slug = repo.replace(/\//g, "-").replace(/\./g, "-");
+    // Scopes are lowercase (migration 031), so the slug is matched and kept lowercased.
+    const slug = repo.replace(/\//g, "-").replace(/\./g, "-").toLowerCase();
     seedDb({ contextItems: [slug] });
 
     const r = resolveProject(repo);
@@ -210,7 +211,7 @@ describe("Claude hook names: continuity + isNew", () => {
     const before = snapshot(legacyProjects);
 
     const r = resolveProject(repo);
-    expect(r).toMatchObject({ name: slug, isNew: false, source: "legacy" });
+    expect(r).toMatchObject({ name: slug.toLowerCase(), isNew: false, source: "legacy" });
     expect(readFileSync(join(r.projectDir, "context-progress.md"), "utf-8")).toBe("✓ old session\n");
     expect(existsSync(join(r.projectDir, "abc.jsonl"))).toBe(false);
     expect(snapshot(legacyProjects)).toEqual(before);

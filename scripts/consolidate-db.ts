@@ -18,6 +18,7 @@
  */
 
 import { Database } from "bun:sqlite";
+import { openQueryOnly } from "../packages/openltm-core/src/sql.js";
 import { existsSync, statSync, copyFileSync } from "fs";
 import { createInterface } from "readline";
 import { join } from "path";
@@ -78,7 +79,7 @@ function inspectDb(label: string, path: string): DbInfo {
 
   let rowCount = 0;
   try {
-    const db = new Database(path, { readonly: true });
+    const db = openQueryOnly(path);
     try {
       const row = db.query("SELECT COUNT(*) AS cnt FROM memories").get() as { cnt: number };
       rowCount = row?.cnt ?? 0;
@@ -165,7 +166,7 @@ function mergeDb(sourcePath: string, targetPath: string): { merged: number; skip
   const countAfter = afterRow?.cnt ?? 0;
   tgtDb.close();
 
-  const srcDb2 = new Database(sourcePath, { readonly: true });
+  const srcDb2 = openQueryOnly(sourcePath);
   const srcRow = srcDb2.query("SELECT COUNT(*) AS cnt FROM memories").get() as { cnt: number };
   const srcCount = srcRow?.cnt ?? 0;
   srcDb2.close();
@@ -255,7 +256,7 @@ async function main(): Promise<void> {
   }
 
   // 6. Final report
-  const finalDb = new Database(primary.path, { readonly: true });
+  const finalDb = openQueryOnly(primary.path);
   const finalRow = finalDb.query("SELECT COUNT(*) AS cnt FROM memories").get() as { cnt: number };
   const finalCount = finalRow?.cnt ?? 0;
   finalDb.close();

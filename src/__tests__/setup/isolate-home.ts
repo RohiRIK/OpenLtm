@@ -13,14 +13,19 @@
  * CLAUDE_CONFIG_DIR and the XDG base dirs are forced inside that HOME.
  */
 import { homedir, tmpdir } from "os";
-import { join, resolve, sep } from "path";
+import { basename, dirname, join, resolve, sep } from "path";
 import { realpathSync } from "fs";
 
-function real(p: string): string {
-  try { return realpathSync(p); } catch { return resolve(p); }
+// Resolve the nearest existing ancestor: a not-yet-created dir under /var must
+// still compare equal to its /private/var parent on macOS.
+export function real(p: string): string {
+  try { return realpathSync(p); } catch {}
+  const abs = resolve(p);
+  const parent = dirname(abs);
+  return parent === abs ? abs : join(real(parent), basename(abs));
 }
 
-function isUnder(child: string, parent: string): boolean {
+export function isUnder(child: string, parent: string): boolean {
   const c = real(child);
   const p = real(parent);
   return c === p || c.startsWith(p.endsWith(sep) ? p : p + sep);

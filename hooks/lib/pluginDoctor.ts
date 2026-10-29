@@ -11,6 +11,7 @@ import { join, basename } from "path";
 import { homedir } from "os";
 import { spawnSync } from "child_process";
 import { Database } from "bun:sqlite";
+import { openQueryOnly } from "../../packages/openltm-core/src/sql.js";
 import { getDbPath, CLAUDE_DIR } from "./resolveProject.js";
 import { getMigrationFiles, findChecksumMismatches, loadConfig, loadProvider, llamaCppBaseUrl, checkIntegrity } from "@rohirik/openltm-core";
 
@@ -164,7 +165,7 @@ async function checkDatabase(): Promise<void> {
 
   let db: InstanceType<typeof Database> | undefined;
   try {
-    db = new Database(dbPath, { readonly: true });
+    db = openQueryOnly(dbPath);
   } catch (e) {
     fail("openltm.db is valid SQLite", `Database may be corrupted: ${e}`);
     return;
@@ -290,7 +291,7 @@ async function checkEmbeddings(): Promise<void> {
   if (!existsSync(dbPath)) return;
   let db: InstanceType<typeof Database> | undefined;
   try {
-    db = new Database(dbPath, { readonly: true });
+    db = openQueryOnly(dbPath);
     const { total, embedded } = db.query(
       `SELECT COUNT(*) AS total,
               SUM(CASE WHEN id IN (SELECT memory_id FROM memory_embeddings WHERE model = ?) THEN 1 ELSE 0 END) AS embedded

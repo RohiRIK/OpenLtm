@@ -11,6 +11,8 @@ import { filterPrivateMemories, hasPrivateTag, notPrivateSql } from "./privacy.j
 import { normalizeAnchorPaths } from "./anchors.js";
 import { DEFAULT_ORIGIN, type MemoryOrigin } from "./origin.js";
 import { getDb, DB_PATH, configure as configureDb } from "./shared-db.js";
+import { scopeName } from "./project.js";
+import { RECORD_USAGE_SQL } from "./sql.js";
 import { enqueueEmbedding } from "./queue/index.js";
 import { notifyLtm, notifyMemoryAdded } from "./events/index.js";
 import { scrubOrRefuse, scrubForEgress } from "./secretsScrubber.js";
@@ -394,9 +396,6 @@ const HALF_LIVES: Record<number, number> = {
   1: 14,
 };
 
-/** Memories below this score are soft-deprecated (not deleted). */
-const DEPRECATION_THRESHOLD = 0.25;
-
 /**
  * Compute effective relevance score.
  * score = importance × confidence × decay
@@ -426,44 +425,6 @@ export function updateLastUsed(ids: number[]): void {
   );
 }
 
-export interface DecayResult {
-  deprecated: number;
-  scored: number;
-}
-
-/**
- * Compute decay scores for all active memories. Deprecate those below threshold.
- * Protection: importance=5 OR confirm_count>=5 are never deprecated.
- */
-export function decayMemories(): DecayResult {
-  const db = getDb();
-
-  const rows = db.query<Memory, []>(
-    `SELECT * FROM memories WHERE status = 'active'`
-  ).all();
-
-  const toDeprecate = rows
-    .filter(mem => mem.importance !== 5)
-    .filter(mem =>
-      // Code-invalidated memories are decay-eligible regardless of recall
-      // frequency — this is the "high-traffic but stale" case decay can't
-      // otherwise see. Otherwise fall back to the recency/confirm guard.
-      mem.stale_flagged_at != null ||
-      (mem.confirm_count < 5 && computeDecayScore(mem) < DEPRECATION_THRESHOLD)
-    )
-    .map(mem => mem.id);
-
-  if (toDeprecate.length > 0) {
-    const placeholders = toDeprecate.map(() => "?").join(",");
-    db.run(
-      `UPDATE memories SET status = 'deprecated' WHERE id IN (${placeholders})`,
-      toDeprecate
-    );
-  }
-
-  return { deprecated: toDeprecate.length, scored: rows.length };
-}
-
 export interface FlagStaleResult {
   flagged: number;
   ids: number[];
@@ -472,7 +433,8 @@ export interface FlagStaleResult {
 /**
  * Flag active memories anchored to any of `paths` as stale — the code they
  * reference changed. Never deletes (audit trail preserved) and never touches
- * importance=5 (permanent). Matches anchors in the same project scope or global
+ * importance=5 (permanent), preferences or owner statements (a code change does
+ * not invalidate what the owner wants). Matches anchors in the same project scope or global
  * (NULL-scoped) anchors. A memory is flagged once until revalidated: later
  * commits to the same files (an amend, the next edit) keep the first
  * invalidating commit as the reason and add no audit rows.
@@ -494,6 +456,8 @@ export function flagStaleByPaths(
          JOIN memory_files mf ON mf.memory_id = m.id
         WHERE m.status = 'active'
           AND m.importance <> 5
+          AND m.category <> 'preference'
+          AND m.origin IS NOT 'owner-statement'
           AND m.stale_flagged_at IS NULL
           AND mf.path IN (${placeholders})
           AND (mf.project_scope IS ? OR mf.project_scope IS NULL)`,
@@ -771,6 +735,8 @@ export function isOperationalNoise(content: string): boolean {
 
 export function learn(input: LearnInput): LearnResult {
   const db = getDb();
+  // Backstop for every host: scopes are case-insensitive ("SummonOS" = "summonos").
+  if (input.project_scope) input = { ...input, project_scope: scopeName(input.project_scope) || undefined };
 
   // Scrub secrets before any DB write or dedup check
   const { scrubbed, redactions } = scrubOrRefuse(input.content);
@@ -1296,13 +1262,7 @@ export async function recall(input: RecallInput = {}): Promise<MemoryWithRelatio
   // A point-in-time look is history, not use: it does not bump recall stats.
   if (kept.length > 0 && !asOf) {
     const placeholders = kept.map(() => "?").join(",");
-    db.run(
-      `UPDATE memories SET last_used_at = datetime('now'), last_recalled_at = datetime('now'),
-              recall_count = recall_count + 1,
-              first_recalled_at = COALESCE(first_recalled_at, datetime('now'))
-       WHERE id IN (${placeholders})`,
-      kept.map(m => m.id),
-    );
+    db.run(`${RECORD_USAGE_SQL}(${placeholders})`, kept.map(m => m.id));
   }
   let enriched = kept.map(m => enrichMemory(db, m));
   enriched = filterPrivateMemories(enriched, input.includePrivate === true);
@@ -1379,7 +1339,7 @@ export function forget(input: { id: number; reason?: string; skipExport?: boolea
   if (!input.skipExport) exportMarkdown();
 }
 
-export function getSimilarMemories(
+export function getSimilarMemoriesByVec(
   db: Database,
   queryVec: Float32Array,
   opts: { projectScope?: string; limit?: number; minImportance?: number }
@@ -1432,17 +1392,17 @@ export function getContextMerge(project: string): { globals: Memory[]; scoped: M
   ).all());
 
   const scoped = sortByDecay(db.query<Memory, [string]>(
-    `SELECT ${SLIM} FROM memories WHERE project_scope=? AND importance >= 3 AND status = 'active' LIMIT 15`
+    // Ordered before LIMIT so the 15 are the strongest, not whichever rows come first.
+    `SELECT ${SLIM} FROM memories WHERE project_scope=? AND importance >= 3 AND status = 'active'
+      ORDER BY decay_score DESC, importance DESC, id DESC LIMIT 15`
   ).all(project));
 
-  const gEnriched = globals.map(m => enrichMemory(db, m));
-  const sEnriched = scoped.map(m => enrichMemory(db, m));
-  const gVis = filterPrivateMemories(gEnriched, false);
-  const sVis = filterPrivateMemories(sEnriched, false);
-  const allIds = [...gVis, ...sVis].map(m => m.id);
-  updateLastUsed(allIds);
-
-  return { globals: gVis, scoped: sVis };
+  // No last_used_at bump here: callers bump only what they actually show
+  // (SessionStart after injectTopN, prefill, the explicit `context` fetch).
+  return {
+    globals: filterPrivateMemories(globals.map(m => enrichMemory(db, m)), false),
+    scoped: filterPrivateMemories(scoped.map(m => enrichMemory(db, m)), false),
+  };
 }
 
 /**

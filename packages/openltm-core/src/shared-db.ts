@@ -7,10 +7,12 @@ import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, readFileSync } from "fs";
 import { dirname } from "path";
 import { getDbPath, getSchemaPath } from "./paths.js";
-import { runPendingMigrations } from "./migrations.js";
+import { getMigrationFiles, runPendingMigrations, verifyRecordedChecksums } from "./migrations.js";
+import { CONNECTION_PRAGMAS } from "./sql.js";
 import { writeQueue } from "./lib/writeQueue.js";
 import { ensureCustomSqlite, loadExtensions, getCapabilities } from "./extensions.js";
 import { syncVecIndex } from "./vec/index.js";
+import { acquireJanitorLock } from "./janitor/lock.js";
 import type { LtmCoreConfig } from "./adapterTypes.js";
 
 export let DB_PATH = getDbPath();
@@ -18,6 +20,12 @@ let SCHEMA_PATH = getSchemaPath();
 
 /** Configure openltm-core with host-specific paths. Call before first getDb(). */
 export function configure(config: LtmCoreConfig): void {
+  if (config.dbPath !== DB_PATH) {
+    // A handle opened on the old path would keep serving the old database.
+    try { _db?.close(); } catch {}
+    _db = null;
+    _initPromise = null;
+  }
   DB_PATH = config.dbPath;
   if (config.schemaPath) SCHEMA_PATH = config.schemaPath;
 }
@@ -34,17 +42,67 @@ export async function initDb(opts?: { dbPath?: string; schemaPath?: string }): P
   // system SQLite. No-op (degrades to FTS-only) when none is available.
   ensureCustomSqlite();
   const db = new Database(DB_PATH, { create: true });
-  db.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;");
+  db.exec(CONNECTION_PRAGMAS);
   loadExtensions(db);
-  // Apply schema.sql first (CREATE IF NOT EXISTS — safe for fresh + existing DBs)
-  db.exec(readFileSync(SCHEMA_PATH, "utf-8"));
-  // Then run versioned migrations (idempotent — skips already-applied versions)
-  await runPendingMigrations(db);
+  await migrateDb(db);
   // Index embeddings the vec0 index is missing: a DB that predates vec wiring,
   // or vectors the Hermes plugin wrote to a shared DB. No-op when vec is
   // unavailable or nothing is missing.
   if (getCapabilities().vec) syncVecIndex(db);
   return db;
+}
+
+/**
+ * Bring `db` to the current schema: schema.sql (CREATE IF NOT EXISTS), then the
+ * pending versioned migrations. A file database is migrated under a
+ * cross-process lock (`<db>.migrate.lock`), so processes opening a brand-new
+ * database at once do not both run the same migrations.
+ */
+export async function migrateDb(db: Database, schemaPath: string = SCHEMA_PATH): Promise<void> {
+  const schema = readFileSync(schemaPath, "utf-8");
+  const hasMemories = tableExists(db, "memories");
+  // Fast path: already current. schema.sql is CREATE IF NOT EXISTS, safe without the lock.
+  if (hasMemories && await migrationsCurrent(db)) {
+    db.exec(schema);
+    return;
+  }
+  const file = db.filename;
+  let release = (): void => {};
+  if (file && file !== ":memory:") {
+    // Waits for the holder; a lock left by a dead process is reclaimed.
+    for (;;) {
+      // Generic file lock; the janitor name is historical.
+      const lock = acquireJanitorLock(file, { lockPath: `${file}.migrate.lock`, maxAgeMs: 10 * 60_000 });
+      if (lock.acquired) { release = lock.release; break; }
+      await Bun.sleep(25);
+    }
+  }
+  try {
+    // An existing DB migrates first: schema.sql indexes columns that only a
+    // later migration adds (e.g. stale_flagged_at).
+    if (hasMemories) await runPendingMigrations(db);
+    db.exec(schema);
+    if (!hasMemories) await runPendingMigrations(db);
+  } finally {
+    release();
+  }
+}
+
+function tableExists(db: Database, name: string): boolean {
+  return db.query("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name) != null;
+}
+
+/** True when the newest migration file is recorded as applied (and every applied checksum still matches). */
+async function migrationsCurrent(db: Database): Promise<boolean> {
+  if (!tableExists(db, "_schema_version")) return false;
+  const files = await getMigrationFiles();
+  const latest = files.at(-1)?.version ?? 0;
+  const row = db.query<{ v: number | null }, []>("SELECT MAX(version) AS v FROM _schema_version").get();
+  if (row?.v !== latest) return false;
+  // Keep the fail-closed checksum check on every open, as runPendingMigrations did.
+  const applied = new Set(db.query<{ version: number }, []>("SELECT version FROM _schema_version").all().map((r) => r.version));
+  verifyRecordedChecksums(db, files, applied);
+  return true;
 }
 
 /** Path of the database this process opens (after configure()/initDb overrides). */
@@ -57,14 +115,17 @@ export function getDb(): Database {
   // Synchronous callers: run initDb eagerly and block via Bun's top-level await support.
   // _initPromise guards against concurrent initialisation during async startup paths.
   if (!_initPromise) {
-    _initPromise = initDb().then((db) => {
+    const init: Promise<Database> = initDb().then((db) => {
+      // configure() switched paths while this ran: this handle is for the old DB.
+      if (_initPromise !== init) { db.close(); return db; }
       _db = db;
       return db;
     }).catch((err) => {
       // Reset so the next call retries; swallow here — sync fallback below handles the cold path.
-      _initPromise = null;
+      if (_initPromise === init) _initPromise = null;
       throw err;
     });
+    _initPromise = init;
     _initPromise.catch(() => {/* prevent unhandled rejection — sync fallback is active */});
   }
   // For synchronous callers on cold start: open a schema-only DB immediately.
@@ -76,9 +137,11 @@ export function getDb(): Database {
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     ensureCustomSqlite();
     _db = new Database(DB_PATH, { create: true });
-    _db.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;");
+    _db.exec(CONNECTION_PRAGMAS);
     loadExtensions(_db);
-    _db.exec(readFileSync(SCHEMA_PATH, "utf-8"));
+    // schema.sql indexes columns only later migrations add, so it throws on an
+    // unmigrated DB; initDb (above) migrates it and swaps _db.
+    try { _db.exec(readFileSync(SCHEMA_PATH, "utf-8")); } catch { /* unmigrated DB */ }
   }
   return _db;
 }

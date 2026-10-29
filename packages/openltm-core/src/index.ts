@@ -2,20 +2,21 @@
 export type { LtmCoreConfig, LtmAdapterContext, LtmAdapterOptions } from "./adapterTypes.js";
 
 // DB singleton + configuration
-export { getDb, initDb, configure, waitForInit, _setDbForTesting, withRetry, DB_PATH,
+export { getDb, initDb, migrateDb, configure, waitForInit, _setDbForTesting, withRetry, DB_PATH,
          getSetting, setSetting, getAllSettings, getConfiguredDbPath } from "./shared-db.js";
 export { configureCore, configureDocs } from "./db.js";
+export { CONNECTION_PRAGMAS } from "./sql.js";
 
 // Core memory operations
 export {
-  learn, recall, getMemoryById, forget, relate, getSimilarMemories,
-  getContextMerge, getContextMergeWithGraph, computeDecayScore,
+  learn, recall, getMemoryById, forget, relate, getSimilarMemoriesByVec,
+  getContextMerge, getContextMergeWithGraph, computeDecayScore, updateLastUsed,
   exportMarkdown, exportGraphJson, flagStaleByPaths, revalidate,
   SUPERSEDE_RELATIONS, normalizeEventTime,
 } from "./db.js";
 export type {
   Memory, MemoryWithRelations, MemoryCategory, RelationshipType, MemoryRelation,
-  LearnInput, LearnResult, RecallInput, DecayResult, FlagStaleResult,
+  LearnInput, LearnResult, RecallInput, FlagStaleResult,
   SupersedeRelation, SupersedeKind, SupersedeOutcome,
 } from "./db.js";
 export { detectQueryIntent, recencyRanks, type QueryIntent } from "./recall/intent.js";
@@ -51,7 +52,7 @@ export { listByProject, upsertGoal, appendProgress, addDecision, addGotcha, addC
 export { MEMORY_ORIGINS, DEFAULT_ORIGIN, isMemoryOrigin, ORIGIN_PARAM_DESCRIPTION } from "./origin.js";
 export type { MemoryOrigin } from "./origin.js";
 
-// Collections: structured types the agent defines (migration 031)
+// Collections: structured types the agent defines (migration 033)
 export {
   FIELD_TYPES, FILTER_OPS, LIMITS as COLLECTION_LIMITS, COLLECTION_ORIGINS, AUTHORITY_NOTE, CollectionError,
   defineCollection, evolveCollection, listCollections, resolveCollection, setCollectionStatus, collectionIndexLines,
@@ -84,7 +85,7 @@ export type { MemoryTemperature, RecallExplainer, ExplainerInput } from "./recal
 
 // Project identity — the one cwd → project_scope resolver every host uses
 export {
-  normalizeProjectName, findRepoRoot, repoIdentityRoot, fallbackProjectName,
+  normalizeProjectName, scopeName, findRepoRoot, repoIdentityRoot, fallbackProjectName,
   resolveProjectName, resolveProjectNameDetailed,
   legacyClaudeSlug, legacyLastSegment,
   readRegistryFile, loadProjectRegistry, migrateLegacyRegistry,
@@ -132,7 +133,7 @@ export type { PendingProposal } from "./proposals.js";
 export {
   runJanitor, runJanitorExclusive, getJanitorStatus, startAutoRun, stopAutoRun,
   runArchive, touchMemory,
-  approveMemory, getPendingMemories, rejectMemory,
+  approveMemory, getPendingMemories, rejectMemory, listRecentlyAutoAccepted,
   mergeMemories, parseDedupSource,
   supersede, stageContradictions, listStagedConflicts, detectContradictions, sanitizeStagingTerm,
   acceptStagedConflict, rejectStagedConflict, coexistStagedConflict,

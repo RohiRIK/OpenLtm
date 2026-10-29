@@ -37,15 +37,22 @@ const SQL_DEPRECATE = `
     AND decay_score < 0.25
 `;
 
+// Code changed under these 30+ days ago and nobody revalidated them (revalidate clears
+// stale_flagged_at). Recall count is no protection: this is the high-traffic-but-stale case.
+const SQL_DEPRECATE_STALE = `
+  UPDATE memories
+  SET status = 'deprecated'
+  WHERE status = 'active'
+    AND importance < 5
+    AND stale_flagged_at < datetime('now', '-30 days')
+`;
+
 export function runDecay(): DecayResult {
   const db = getDb();
 
   const run = db.transaction(() => {
-    db.run(SQL_REFRESH);
-    const refreshed = db.query<{ n: number }, []>("SELECT changes() AS n").get()!.n;
-
-    db.run(SQL_DEPRECATE);
-    const deprecated = db.query<{ n: number }, []>("SELECT changes() AS n").get()!.n;
+    const refreshed = db.run(SQL_REFRESH).changes;
+    const deprecated = db.run(SQL_DEPRECATE).changes + db.run(SQL_DEPRECATE_STALE).changes;
 
     return { refreshed, deprecated };
   });

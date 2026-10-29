@@ -6,10 +6,13 @@
  * second one under the name OpenLTM ≤ 2.16 assumed (OpenLtm-openltm).
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { findMcpServer } from "../index.js";
+
+// On a case-insensitive FS (APFS default) OpenLtm-openltm and openltm-OpenLtm are one dir.
+const caseInsensitiveFs = existsSync(tmpdir().toUpperCase());
 
 let home: string;
 const saved: Record<string, string | undefined> = {};
@@ -47,7 +50,7 @@ describe("Pi finds the Claude Code plugin's MCP server and database", () => {
     expect(found?.dbPath).toBe(real);
   });
 
-  it("keeps using a database under the older OpenLtm-openltm name when that is the one that exists", () => {
+  it.skipIf(caseInsensitiveFs)("keeps using a database under the older OpenLtm-openltm name when that is the one that exists", () => {
     plugin("2.17.0");
     const legacy = db("OpenLtm-openltm");
     expect(findMcpServer()?.dbPath).toBe(legacy);
@@ -65,5 +68,14 @@ describe("Pi finds the Claude Code plugin's MCP server and database", () => {
     db("openltm-OpenLtm");
     process.env["LTM_DB_PATH"] = join(home, "explicit.db");
     expect(findMcpServer()?.dbPath).toBe(join(home, "explicit.db"));
+  });
+});
+
+// find-core.ts locates core, so it cannot be imported from core: each adapter
+// keeps a copy, and the copies must not drift.
+describe("find-core.ts", () => {
+  it("is byte-identical in adapter-pi and adapter-openclaw", () => {
+    const read = (pkg: string) => readFileSync(join(import.meta.dir, "..", "..", "..", pkg, "src", "find-core.ts"), "utf-8");
+    expect(read("adapter-openclaw")).toBe(read("adapter-pi"));
   });
 });

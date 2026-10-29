@@ -12,7 +12,7 @@ extraction logic, and tests — lives under [`hermes/`](../hermes/README.md).
 | Plugin location | untracked `~/.hermes/plugins/openltm_hermes` + separate `hermes-brain` repo | `hermes/openltm_hermes/` in this repo (source of truth) |
 | Schema | drift-prone inline SQL (25 objects) | `hermes/schema.sql` (canonical, column-terminal, folds migrations 007/011/013) |
 | Auto-capture | keyword lists duplicated in `sync_turn` and `on_session_end`, with one-off regexes patched on per incident | one ordered rule table + named guards + shared distiller in `hermes/openltm_hermes/auto_capture.py` |
-| Migration history | split across two repos | single canonical `migrations/` 001–025 in OpenLtm core |
+| Migration history | split across two repos | single canonical `packages/openltm-core/migrations/` 001–025 in OpenLtm core |
 | CI | Security Scan 5 HIGH CVEs; bundle auto-push to protected main | Trivy 0/0; drift-gate workflow (no push) |
 | Publish | n/a | tokenless OIDC provenance on npm |
 
@@ -189,11 +189,11 @@ What happens on the first open:
 Each Hermes profile keeps its own DB; share only the one you point
 `LTM_DB_PATH` at.
 
-## Collections (2.22.0)
+## Collections (2.23.0)
 
-The plugin exposes `openltm_collection` and `openltm_record`, the same contract as core's `collection` / `record` tools (see [Collections](16-collections.md)). `openltm_recall` appends matching records after the memories (`include_records: false` turns it off), `openltm_context` lists the collections, and the system prompt names them inside the recalled-memory frame. Tables are created with core's migration 031 DDL, so a database shared through `LTM_DB_PATH` works from both sides. With an embedder configured, records get vectors on `put` and recall fuses them with full-text hits.
+The plugin exposes `openltm_collection` and `openltm_record`, the same contract as core's `collection` / `record` tools (see [Collections](16-collections.md)). `openltm_recall` appends matching records after the memories (`include_records: false` turns it off), `openltm_context` lists the collections, and the system prompt names them inside the recalled-memory frame. Tables are created with core's migration 033 DDL, so a database shared through `LTM_DB_PATH` works from both sides. With an embedder configured, records get vectors on `put` and recall fuses them with full-text hits.
 
 ## Time, supersede and PII masking (2.23.0)
 
-`openltm_learn` takes `occurred_at` and `supersedes: {id, relation}` (`updates`, `extends`, `retracts`), with the same owner-statement protection as core. `openltm_recall` takes `as_of` (full-text only for that call) and `adaptive`, and applies the same recency / aggregate intent detection. Text sent to the embedding provider is masked for personal data per `LTM_MASK_PII` (see [Configuration](04-configuration.md#personal-data-masking-2230)). The plugin adds the `occurred_at` and `supersede_kind` columns to its own databases, matching core's migration 032.
+`openltm_learn` takes `occurred_at` and `supersedes: {id, relation}` (`updates`, `extends`, `retracts`), with the same owner-statement protection as core. `openltm_recall` takes `as_of` (full-text only for that call) and `adaptive`, and applies the same recency / aggregate intent detection. Text sent to the embedding provider is masked for personal data per `LTM_MASK_PII` (see [Configuration](04-configuration.md#personal-data-masking-2230)). The plugin adds the `occurred_at` and `supersede_kind` columns to its own databases, matching core's migration 034.
 

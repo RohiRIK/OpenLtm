@@ -88,8 +88,13 @@ const MEMORIES = [
 ];
 
 try {
-  await core(`return ${JSON.stringify(MEMORIES)}.map((m) => c.learn({ ...m, skipExport: true }).id);`);
-  const stored = await core(`return c.getDb().query("SELECT COUNT(*) n FROM memory_embeddings").get().n;`);
+  // learn() only enqueues when Honker is present; a long-lived process (the MCP
+  // server) drains the queue — so this one-shot process runs the worker until done.
+  const stored = await core(`const w = c.startEmbeddingWorker();
+    ${JSON.stringify(MEMORIES)}.forEach((m) => c.learn({ ...m, skipExport: true }));
+    const count = () => c.getDb().query("SELECT COUNT(*) n FROM memory_embeddings").get().n;
+    for (const t0 = Date.now(); count() < ${MEMORIES.length} && Date.now() - t0 < 10000;) await new Promise((r) => setTimeout(r, 100));
+    await w.stop(); return count();`);
   check(`learn embedded every memory while the provider was up (${stored}/${MEMORIES.length})`, stored === MEMORIES.length, stored);
 
   // The stub's vectors are bag-of-words, so the query shares stems with its target.
@@ -108,6 +113,7 @@ try {
 
   const ssDown = await hook("SessionStart.ts", { cwd: repo, session_id: "s2", source: "resume" }, DOWN);
   check("SessionStart (provider down) still injects the LTM index", ssDown.includes("LTM index") && /- \[\d+\]/.test(ssDown), ssDown);
+  check("SessionStart (provider down) says semantic recall is off", ssDown.includes("semantic recall off") && !ss.includes("semantic recall off"), ssDown);
 
   const down = await core(`return (await c.recall({ query: "how do we retry payment calls safely" })).map((m) => m.content.slice(0, 40));`, DOWN);
   check("recall with provider down falls back to full-text", String(down[0]).startsWith("Payments client"), down);

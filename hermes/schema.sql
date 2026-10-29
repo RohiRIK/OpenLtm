@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS memories (
   decay_score          REAL    NOT NULL DEFAULT 1.0,
   -- Origin actor (migration 013). NULL until backfilled.
   created_by           TEXT,
-  -- Event time and supersede kind (migration 032). NULL occurred_at = unknown (use created_at).
+  -- Event time and supersede kind (migration 034). NULL occurred_at = unknown (use created_at).
   occurred_at          TEXT,
   supersede_kind       TEXT CHECK(supersede_kind IS NULL OR supersede_kind IN ('updates','retracts'))
 );

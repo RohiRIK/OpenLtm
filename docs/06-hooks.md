@@ -16,7 +16,7 @@ If a hook fails, run `/openltm:health` to diagnose.
 | `UserPromptSubmit` | Every prompt (5s) | Adds up to 5 memories relevant to the prompt. Full-text only, ~50ms, never repeats a memory within a session. |
 | `PostToolUse` | After a Bash call (10s) | When Claude runs a successful `git commit`, flags memories anchored to the committed files as stale. |
 | `UpdateContext` | `Stop` — after every assistant turn (10s) | Upserts **one** progress line per session in `context_items` (files written or edited so far). |
-| `EvaluateSession` | `SessionEnd` — once (60s) | Writes a session summary and queues memory proposals for review. |
+| `EvaluateSession` | `SessionEnd` — once (60s) | Writes a session summary; queues LLM memory proposals when `ltm.evaluateSessionLlm` is on. |
 | `SessionEnd` | `SessionEnd` — once | Spawns a detached `ltm janitor run --if-due`, at most once per 6h. No graph-server needed. Opt out with `LTM_JANITOR_ON_SESSION_END=0`. See [Janitor](13-janitor.md). |
 | `PreCompact` | Before compaction (30s) | Snapshots context to `context-summary.md` so it survives compaction. |
 
@@ -41,13 +41,13 @@ Adds project context and LTM memories to each new context window. Behaviour depe
 | `resume` | Injects context with no prompts. |
 | `compact` | Leads with the PreCompact snapshot and does not rebuild it from the DB. |
 
-The LTM section is a **compact index** — `- [id] title` — capped at `ltm.injectTopN` (default 15) entries, of which globals (importance ≥ 4) take at most a third so they never crowd out project memories. Use the MCP `get` tool on an id for the full memory. New projects still get the globals. Pending staged memory conflicts and recently applied supersedes are listed, and one line appears when memory proposals are waiting: `💡 N memory proposal(s) pending — review with /openltm:memory propose review`. Everything injected is secret-scrubbed, and private-tagged memories are left out.
+The LTM section is a **compact index** — `- [id] title` — capped at `ltm.injectTopN` (default 15) entries, of which globals (importance ≥ 4) take at most a third so they never crowd out project memories. Use the MCP `get` tool on an id for the full memory. New projects still get the globals. Pending staged memory conflicts and recently applied supersedes are listed, and one line appears when memory proposals are waiting: `💡 N memory proposal(s) pending — review with /openltm:memory propose review`. Everything injected is secret-scrubbed, and private-tagged memories are left out. Project memories are picked strongest-first (`decay_score`), and only the entries actually injected get their `last_used_at` refreshed. When an embedding provider is configured (not `disabled`) but does not answer, one line says so: `ℹ semantic recall off: no embedding provider reachable (<provider>) — full-text only`.
 
 SessionStart never runs `git` and never edits Claude Code's own config.
 
 ### UserPromptSubmit
 
-Recalls memories relevant to each prompt with full-text search only — no embeddings, no DB writes, about 50ms. It searches active memories that are global or belong to the current project and are not flagged stale. Words are matched by a light stem ("errors" finds "error"). A memory needs two matching words, or one distinctive word (4+ characters, in no other memory the prompt can see). Generic task words such as "add", "test", "fix" or "function" count half. Weak partial matches are dropped when another memory matches much better. It prints `LTM (relevant to this prompt):` followed by up to `ltm.promptRecallLimit` (default 5) lines of `- [id] (category) content`, each cut to 200 characters. A memory is never injected twice in a session. Memories SessionStart only listed in its index (id + title) can still be injected with their content. It prints nothing when there is no match, for slash commands, for prompts under 15 characters, or when `ltm.autoRecall` or `ltm.promptRecall` is `false`.
+Recalls memories relevant to each prompt with full-text search only — no embeddings, a read-only search, about 50ms. The memories it injects are then counted as recalled (`recall_count`, `last_recalled_at`, `last_used_at`, as an MCP `recall` does) on a separate short-timeout connection; if the DB is busy the count is skipped, never the injection. It searches active memories that are global or belong to the current project and are not flagged stale. Words are matched by a light stem ("errors" finds "error"). A memory needs two matching words, or one distinctive word (4+ characters, in no other memory the prompt can see). Generic task words such as "add", "test", "fix" or "function" count half. Weak partial matches are dropped when another memory matches much better. It prints `LTM (relevant to this prompt):` followed by up to `ltm.promptRecallLimit` (default 5) lines of `- [id] (category) content`, each cut to 200 characters. A memory is never injected twice in a session. Memories SessionStart only listed in its index (id + title) can still be injected with their content. It prints nothing when there is no match, for slash commands, for prompts under 15 characters, or when `ltm.autoRecall` or `ltm.promptRecall` is `false`.
 
 ### PostToolUse
 
@@ -58,7 +58,7 @@ Runs after Claude makes a successful `git commit` (matcher `Bash`). It marks mem
 Claude Code fires `Stop` after **every** assistant turn, not when the session ends, so OpenLTM splits the work:
 
 - **`UpdateContext`** reads the transcript at `transcript_path` and upserts a single progress line for the current session, keyed on `session_id`. Later turns rewrite the same row, so the 20-entry progress history counts sessions, not turns. It prints nothing.
-- **`EvaluateSession`** runs once at `SessionEnd`. It writes a per-session summary to `${CLAUDE_PLUGIN_DATA}/learned/patterns/<date>-<session8>.md` and a rolling index to `${CLAUDE_PLUGIN_DATA}/learned/summary.md` — never into the plugin install directory. It queues proposals at `${CLAUDE_PLUGIN_DATA}/proposals/<session-id>.json` for `/openltm:memory propose` (or the MCP `proposals` tool). Proposals come from real tool errors only — harness errors, permission denials, user interrupts and rejections, routine git outcomes ("nothing to commit"), failures of read-only probes (`ls`, `cat`, `lsof`, `curl`, …) and one-off scripts (`bun --eval`, `node -e`, `python -c`, `sqlite3`), very short messages and duplicates are dropped, and the `Exit code N` prefix is removed — plus, when `ltm.evaluateSessionLlm` is on, an LLM pass over the assistant's text (capped at 45s). It also removes UserPromptSubmit's per-session dedupe state.
+- **`EvaluateSession`** runs once at `SessionEnd`. It writes a per-session summary to `${CLAUDE_PLUGIN_DATA}/learned/patterns/<date>-<session8>.md` and a rolling index to `${CLAUDE_PLUGIN_DATA}/learned/summary.md` — never into the plugin install directory. The summary's error list keeps real tool errors only — harness errors, permission denials, user interrupts and rejections, routine git outcomes ("nothing to commit"), failures of read-only probes (`ls`, `cat`, `lsof`, `curl`, …) and one-off scripts (`bun --eval`, `node -e`, `python -c`, `sqlite3`), very short messages and duplicates are dropped, and the `Exit code N` prefix is removed. Raw errors are never proposed as memories: proposals at `${CLAUDE_PLUGIN_DATA}/proposals/<session-id>.json` (for `/openltm:memory propose` or the MCP `proposals` tool) come only from an LLM pass over the assistant's text when `ltm.evaluateSessionLlm` is on (capped at 45s); with it off, nothing is queued. It also removes UserPromptSubmit's per-session dedupe state.
 
 ### Config keys
 
@@ -105,6 +105,12 @@ git commit (any repo)   ─▶ GitCommit (extract from diffs, if enabled)
 ```
 
 **Other hook hosts** can use the portable dispatcher, which needs no plugin checkout: `ltm hook --name SessionStart` (prefill) and `ltm hook --name SessionEnd` (janitor if due; set `LTM_DB_PATH`).
+
+### Codex plugin cache
+
+Codex fingerprints plugin files before running hooks and rejects symbolic links. Its launchers execute a source copy in `${PLUGIN_DATA}/runtime/<source-and-dependency-hash>` and install Bun dependencies there, outside the cached plugin package. Hooks and the MCP server share that runtime; dependency installation does not wire Claude's global hooks. Memory data stays at the plugin data location. An already affected installation needs its cached `node_modules` directories moved outside the plugin cache before Codex can load its hooks again.
+
+Codex CLI 0.165.0 also clamps `SessionEnd` hooks to three seconds. The 60-second declaration above is the Claude Code budget; longer optional LLM extraction is not qualified within Codex's shorter budget.
 
 ---
 

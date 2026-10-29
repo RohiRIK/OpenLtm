@@ -6,8 +6,8 @@
  * `registerMemoryPromptPreparation`: before the model sees a prompt, look up
  * memories relevant to it and add them to context (stdout on exit 0 is injected).
  *
- * FTS-only and read-only (see lib/promptRecall.ts) so it stays well inside the
- * hook's 5s timeout. Prints nothing when there is nothing relevant.
+ * FTS-only, searching read-only (see lib/promptRecall.ts) so it stays well inside
+ * the hook's 5s timeout; injected ids then get a best-effort usage bump. Prints nothing when there is nothing relevant.
  *
  * Skips: ltm.autoRecall === false, ltm.promptRecall === false, slash commands,
  * prompts shorter than ~15 chars, missing DB. Never re-injects a memory within
@@ -21,7 +21,7 @@ import { EVENTS } from "../lib/eventNames.js";
 import { readConfigSync } from "../../src/config.js";
 import {
   promptSkipReason, promptRecallLimit, searchPromptMemories, formatPromptRecall,
-  readInjectedIds, recordInjectedIds,
+  readInjectedIds, recordInjectedIds, recordPromptUsage,
 } from "../lib/promptRecall.js";
 
 async function main(): Promise<void> {
@@ -50,6 +50,7 @@ async function main(): Promise<void> {
 
   recordInjectedIds(sessionId, hits.map(h => h.id));
   process.stdout.write(formatPromptRecall(hits));
+  recordPromptUsage(dbPath, hits.map(h => h.id));
   logEvent("UserPromptSubmit", EVENTS.PROMPT_RECALL, { project: project ?? undefined, count: hits.length });
   // The structured log /openltm:health reads; imported here so it never delays the injection.
   const { emitEvent } = await import("../../packages/openltm-core/src/lib/jsonlLogger.js");

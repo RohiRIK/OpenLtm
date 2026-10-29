@@ -1,6 +1,6 @@
 /**
  * Event time (occurred_at), point-in-time recall (as_of) and supersede kinds
- * on learn (migration 032, 2.23.0).
+ * on learn (migration 034, 2.23.0).
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { Database } from "bun:sqlite";
@@ -114,24 +114,24 @@ describe("recall({ as_of })", () => {
   });
 });
 
-describe("migration 032", () => {
-  it("adds occurred_at and supersede_kind to a v31 database", async () => {
-    const v31 = new Database(":memory:");
-    v31.exec("PRAGMA foreign_keys=ON;");
+describe("migration 034", () => {
+  it("adds occurred_at and supersede_kind to a v33 database", async () => {
+    const v33 = new Database(":memory:");
+    v33.exec("PRAGMA foreign_keys=ON;");
     const schema = readFileSync(SCHEMA_PATH, "utf-8")
       .replace(/,\n\s*-- Event time and supersede kind[\s\S]*?\n\);/, "\n);");
     expect(schema).not.toContain("occurred_at");
-    v31.exec(schema);
-    ensureMigrationsTable(v31);
+    v33.exec(schema);
+    ensureMigrationsTable(v33);
     for (const f of await getMigrationFiles()) {
-      if (f.version > 31) continue;
-      v31.run("INSERT OR IGNORE INTO _schema_version (version, name, checksum) VALUES (?, ?, ?)", [f.version, f.name, computeChecksum(f.content)]);
+      if (f.version > 33) continue;
+      v33.run("INSERT OR IGNORE INTO _schema_version (version, name, checksum) VALUES (?, ?, ?)", [f.version, f.name, computeChecksum(f.content)]);
     }
-    const results = await runPendingMigrations(v31);
-    expect(results.map((r) => r.version)).toContain(32);
-    const cols = v31.query<{ name: string }, []>("PRAGMA table_info(memories)").all().map((c) => c.name);
+    const results = await runPendingMigrations(v33);
+    expect(results.map((r) => r.version)).toContain(34);
+    const cols = v33.query<{ name: string }, []>("PRAGMA table_info(memories)").all().map((c) => c.name);
     expect(cols).toContain("occurred_at");
     expect(cols).toContain("supersede_kind");
-    expect(() => v31.run("INSERT INTO memories (content, category, supersede_kind) VALUES ('x', 'pattern', 'bogus')")).toThrow();
+    expect(() => v33.run("INSERT INTO memories (content, category, supersede_kind) VALUES ('x', 'pattern', 'bogus')")).toThrow();
   });
 });

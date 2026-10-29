@@ -5,13 +5,15 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { Database } from "bun:sqlite";
+import { openQueryOnly } from "../../../packages/openltm-core/src/sql.js";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
+import { getSchemaPath } from "../../../packages/openltm-core/src/paths.js";
 
 const PROJECT_ROOT = join(import.meta.dir, "..", "..", "..");
 const HOOK_SCRIPT = join(PROJECT_ROOT, "hooks", "src", "UpdateContext.ts");
-const SCHEMA_PATH = join(PROJECT_ROOT, "src", "schema.sql");
+const SCHEMA_PATH = getSchemaPath();
 
 let tmp: string;
 let home: string;
@@ -46,7 +48,7 @@ async function runHook(payload: Record<string, unknown>, env: Record<string, str
 }
 
 function progressRows(): Array<{ project_name: string; content: string; session_id: string | null }> {
-  const db = new Database(dbPath, { readonly: true });
+  const db = openQueryOnly(dbPath);
   try {
     return db.query<{ project_name: string; content: string; session_id: string | null }, []>(
       `SELECT project_name, content, session_id FROM context_items WHERE type='progress' ORDER BY id`

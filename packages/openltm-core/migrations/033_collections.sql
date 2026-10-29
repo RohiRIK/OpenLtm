@@ -1,4 +1,4 @@
--- Migration 031: collections + records — structured types the agent defines
+-- Migration 033: collections + records — structured types the agent defines
 -- Runner wraps this in a transaction — no BEGIN/COMMIT here.
 -- A new type is a row in `collections`, never a new table or migration: the
 -- agent sends JSON field definitions, the server validates records against

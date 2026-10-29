@@ -11,6 +11,7 @@ import { describe, it, expect } from "bun:test";
 import { Database } from "bun:sqlite";
 import { readFileSync } from "fs";
 import { join } from "path";
+import { migrateDb } from "../../shared-db.js";
 import {
   getMigrationFiles,
   isDestructiveStatement,
@@ -67,8 +68,22 @@ function seedHermesRows(db: Database): void {
 
 /** What core's initDb() does to an existing DB: schema.sql, then the runner. */
 async function openWithCore(db: Database): Promise<void> {
-  db.exec(readFileSync(CORE_SCHEMA, "utf-8"));
-  await runPendingMigrations(db);
+  await migrateDb(db, CORE_SCHEMA);
+}
+
+/** Columns (name:type:notnull:default:pk) and index definitions (whitespace-free) of `table`, order-free. */
+function tableShape(db: Database, table: string): { columns: string[]; indexes: string[] } {
+  const columns = db
+    .query<{ name: string; type: string; notnull: number; dflt_value: string | null; pk: number }, []>(`PRAGMA table_info(${table})`)
+    .all()
+    .map((c) => `${c.name}:${c.type}:${c.notnull}:${c.dflt_value}:${c.pk}`)
+    .sort();
+  const indexes = db
+    .query<{ name: string; sql: string | null }, [string]>("SELECT name, sql FROM sqlite_master WHERE type = 'index' AND tbl_name = ?")
+    .all(table)
+    .map((i) => `${i.name}: ${(i.sql ?? "(auto)").replace(/\s+/g, "")}`)
+    .sort();
+  return { columns, indexes };
 }
 
 function names(db: Database, type: string): string[] {
@@ -115,6 +130,19 @@ for (const [label, canonical] of [
         expect.arrayContaining(["memory_archive", "memory_provenance", "memory_audit", "memory_embeddings"]),
       );
       expect(await runPendingMigrations(db)).toEqual([]);
+    });
+
+    // Drift guard: a Hermes-created DB, once core migrates it, must have the same
+    // memories / memory_embeddings shape as a fresh core DB.
+    it("ends with the same memories and memory_embeddings shape as a fresh core DB", async () => {
+      const db = newHermesDb(canonical);
+      await openWithCore(db);
+      const fresh = new Database(":memory:");
+      await openWithCore(fresh);
+      for (const table of ["memories", "memory_embeddings"]) {
+        expect({ table, ...tableShape(db, table) }).toEqual({ table, ...tableShape(fresh, table) });
+      }
+      fresh.close();
     });
 
     it("keeps the Hermes rows, their vector, tags, relations and context", async () => {

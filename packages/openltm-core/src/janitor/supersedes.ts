@@ -143,6 +143,14 @@ const CONTRADICTION_PAIRS = [
   ["oop", "functional"],
 ];
 
+/**
+ * Whole-word, case-insensitive. Substrings matched "js" in ".mjs"/"json" and "ts"
+ * in "its"/"tests"; a leading "." or "/" marks a file extension or path, not a stance.
+ */
+function mentions(content: string, term: string): boolean {
+  return new RegExp(`(?<![\\w./-])${term}(?![\\w-])`, "i").test(content);
+}
+
 export function detectContradictions(
   projectScope: string | null,
 ): Contradiction[] {
@@ -161,13 +169,12 @@ export function detectContradictions(
   }
 
   for (const mem of memories) {
-    const content = mem.content.toLowerCase();
-
     for (const [term1, term2] of CONTRADICTION_PAIRS) {
-      if (content.includes(term1)) {
+      // Each memory must take one side only: mentioning both is a comparison, not a stance.
+      if (mentions(mem.content, term1) && !mentions(mem.content, term2)) {
         const opposite = memories.filter(
           m => m.id !== mem.id &&
-            m.content.toLowerCase().includes(term2) &&
+            mentions(m.content, term2) && !mentions(m.content, term1) &&
             m.category === mem.category,
         );
 

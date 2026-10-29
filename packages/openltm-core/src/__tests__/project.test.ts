@@ -6,6 +6,7 @@
  */
 import { afterAll, describe, expect, it } from "bun:test";
 import { Database } from "bun:sqlite";
+import { openQueryOnly } from "../sql.js";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -13,7 +14,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   normalizeProjectName, findRepoRoot, repoIdentityRoot, resolveProjectName, resolveProjectNameDetailed,
-  legacyClaudeSlug, legacyLastSegment, projectHasData, readRegistryFile, loadProjectRegistry,
+  legacyClaudeSlug, legacyLastSegment, projectHasData, readRegistryFile, loadProjectRegistry, scopeName,
   type ProjectDataProbe,
 } from "../project.js";
 import { createProjectDataProbe } from "../projectProbe.js";
@@ -163,6 +164,25 @@ describe("resolveProjectName precedence", () => {
     expect(resolveProjectName("OpenLtm")).toBe("openltm");
   });
 
+  it("a registry prefix match loses to a git repo strictly inside the registered path", () => {
+    // Live case: ~/Documents registered as "documents" swallowed every repo under it.
+    expect(resolveProjectNameDetailed(sub, { registry: { [base]: "documents" } })).toMatchObject({ name: "acme-repo", source: "repo-root" });
+    // A registered path at or inside the repo root still wins by prefix...
+    expect(resolveProjectNameDetailed(join(sub, "src"), { registry: { [repo]: "acme" } })).toMatchObject({ name: "acme", source: "registry-prefix" });
+    // ...and an exact registration always wins.
+    expect(resolveProjectNameDetailed(sub, { registry: { [base]: "documents", [sub]: "api-svc" } })).toMatchObject({ name: "api-svc", source: "registry" });
+    // Outside any repo the parent registration still applies.
+    const loose = join(base, "notes");
+    mkdirSync(loose, { recursive: true });
+    expect(resolveProjectName(loose, { registry: { [base]: "documents" } })).toBe("documents");
+  });
+
+  it("registry names are case-insensitive: returned lowercased and trimmed", () => {
+    expect(resolveProjectName(sub, { registry: { [sub]: " SummonOS " } })).toBe("summonos");
+    expect(resolveProjectName(join(sub, "x"), { registry: { [sub]: "My_Proj" } })).toBe("my_proj");
+    expect(scopeName("  MiXed-Case ")).toBe("mixed-case");
+  });
+
   it("falls back to the legacy name when nothing is derivable", () => {
     expect(resolveProjectNameDetailed("/", { legacyName: "-" })).toMatchObject({ name: "-", source: "legacy" });
   });
@@ -172,7 +192,8 @@ describe("continuity rule", () => {
   const base = tmp();
   const repo = join(base, "OpenLtm");
   mkdirSync(join(repo, ".git"), { recursive: true });
-  const slug = legacyClaudeSlug(repo);
+  // Legacy names are matched lowercased, like every stored scope since migration 031.
+  const slug = legacyClaudeSlug(repo).toLowerCase();
 
   it("keeps the legacy name when only it has rows", () => {
     const r = resolveProjectNameDetailed(repo, { legacyName: slug, hasProjectData: probeOf([slug]) });
@@ -188,24 +209,24 @@ describe("continuity rule", () => {
   });
 
   it("keeps legacy (unverified) when the probe cannot tell", () => {
-    const r = resolveProjectNameDetailed(repo, { legacyName: "OpenLtm", hasProjectData: () => null });
-    expect(r).toMatchObject({ name: "OpenLtm", source: "legacy", legacyVerified: false });
+    const r = resolveProjectNameDetailed(repo, { legacyName: "Old_Ltm", hasProjectData: () => null });
+    expect(r).toMatchObject({ name: "old_ltm", source: "legacy", legacyVerified: false });
   });
 
   it("legacyScope 'fallback' never shadows a registry name; 'all' does", () => {
     const registry = { [repo]: "acme" };
-    const probe = probeOf(["OpenLtm"]);
-    expect(resolveProjectName(repo, { registry, legacyName: "OpenLtm", hasProjectData: probe })).toBe("acme");
-    expect(resolveProjectName(repo, { registry, legacyName: "OpenLtm", legacyScope: "all", hasProjectData: probe })).toBe("OpenLtm");
+    const probe = probeOf(["old_ltm"]);
+    expect(resolveProjectName(repo, { registry, legacyName: "Old_Ltm", hasProjectData: probe })).toBe("acme");
+    expect(resolveProjectName(repo, { registry, legacyName: "Old_Ltm", legacyScope: "all", hasProjectData: probe })).toBe("old_ltm");
     // ...but only while the registry name is unused.
-    expect(resolveProjectName(repo, { registry, legacyName: "OpenLtm", legacyScope: "all", hasProjectData: probeOf(["OpenLtm", "acme"]) })).toBe("acme");
+    expect(resolveProjectName(repo, { registry, legacyName: "Old_Ltm", legacyScope: "all", hasProjectData: probeOf(["old_ltm", "acme"]) })).toBe("acme");
   });
 
   it("works against a real database via createProjectDataProbe", () => {
     const dbPath = join(tmp(), "openltm.db");
-    seedDb(dbPath, { memories: ["OpenLtm"], contextItems: [slug] });
+    seedDb(dbPath, { memories: ["old_ltm"], contextItems: [slug] });
     const probe = createProjectDataProbe(dbPath);
-    expect(resolveProjectName(repo, { legacyName: "OpenLtm", hasProjectData: probe })).toBe("OpenLtm"); // memories row
+    expect(resolveProjectName(repo, { legacyName: "Old_Ltm", hasProjectData: probe })).toBe("old_ltm"); // memories row
     expect(resolveProjectName(repo, { legacyName: slug, hasProjectData: probe })).toBe(slug); // context_items row
     expect(resolveProjectName(repo, { legacyName: "never-used", hasProjectData: probe })).toBe("openltm");
   });
@@ -218,7 +239,7 @@ describe("continuity rule", () => {
 });
 
 describe("projectHasData", () => {
-  const open = (p: string) => new Database(p, { readonly: true }) as never;
+  const open = (p: string) => openQueryOnly(p) as never;
 
   it("true/false per table, false for a missing DB or missing tables", () => {
     const dbPath = join(tmp(), "probe.db");
@@ -275,18 +296,18 @@ describe("deriveProjectFromCwd (Pi / OpenCode / bunx hook)", () => {
   it("normalizes, honours the registry, and keeps a raw-segment name that holds rows", () => {
     const data = tmp();
     const dbPath = join(data, "openltm.db");
-    const cwd = join(tmp(), "MyService");
+    const cwd = join(tmp(), "My_Service");
     mkdirSync(cwd, { recursive: true });
     const env = { LTM_DB_PATH: dbPath, LTM_DATA_DIR: data, CLAUDE_PLUGIN_DATA: data };
 
-    expect(derive(cwd, env)).toBe("myservice"); // no DB yet
+    expect(derive(cwd, env)).toBe("my-service"); // no DB yet
 
-    seedDb(dbPath, { memories: ["MyService"] });
-    expect(derive(cwd, env)).toBe("MyService"); // continuity: old Pi/OpenCode rows
+    seedDb(dbPath, { memories: ["my_service"] });
+    expect(derive(cwd, env)).toBe("my_service"); // continuity: old Pi/OpenCode rows (lowercased by 031)
 
     mkdirSync(join(data, "projects"), { recursive: true });
     writeFileSync(join(data, "projects", "registry.json"), JSON.stringify({ [cwd]: "svc" }));
-    expect(derive(cwd, env)).toBe("MyService"); // registry name unused yet → still legacy
+    expect(derive(cwd, env)).toBe("my_service"); // registry name unused yet → still legacy
 
     const db = new Database(dbPath);
     db.run("INSERT INTO memories (project_scope) VALUES ('svc')");
@@ -306,17 +327,17 @@ const nodeHasSqlite = hasNode && spawnSync("node", ["-e", "require('node:sqlite'
     expect(build.status).toBe(0);
 
     const dbPath = join(dir, "openltm.db");
-    seedDb(dbPath, { memories: ["MyTool"] });
-    const cwd = join(dir, "MyTool");
+    seedDb(dbPath, { memories: ["my_tool"] });
+    const cwd = join(dir, "My_Tool");
     mkdirSync(cwd, { recursive: true });
     const script = `
       const m = await import(${JSON.stringify(pathToFileURL(outfile).href)});
-      const opts = { legacyName: "MyTool", legacyScope: "all", dbPath: ${JSON.stringify(dbPath)} };
+      const opts = { legacyName: "My_Tool", legacyScope: "all", dbPath: ${JSON.stringify(dbPath)} };
       console.log(JSON.stringify([m.resolveProjectName(${JSON.stringify(cwd)}, opts), m.resolveProjectName(${JSON.stringify(cwd)}, { ...opts, legacyName: "Other" })]));
     `;
     const run = spawnSync("node", ["--input-type=module", "-e", script], { encoding: "utf-8" });
     expect(run.status).toBe(0);
-    expect(JSON.parse(run.stdout.trim())).toEqual(["MyTool", "mytool"]);
+    expect(JSON.parse(run.stdout.trim())).toEqual(["my_tool", "my-tool"]);
     expect(run.stderr).not.toContain("ExperimentalWarning");
   });
 });

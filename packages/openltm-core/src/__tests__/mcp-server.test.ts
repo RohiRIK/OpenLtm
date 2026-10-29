@@ -612,3 +612,34 @@ describe("mcp/server — collection + record tools", () => {
     expect(got.content[0]!.text).toContain("[REDACTED:aws-access-key]");
   });
 });
+
+describe("mcp/server — startMcpServer lifecycle", () => {
+  // The embedding worker (when Honker is present) keeps the event loop alive, so
+  // the server must exit by itself once the host closes stdin.
+  it("exits when the host closes stdin", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "ltm-mcp-life-"));
+    try {
+      const proc = Bun.spawn(
+        [process.execPath, "-e", `const m = await import(${JSON.stringify(join(import.meta.dir, "..", "mcp", "server.ts"))}); await m.startMcpServer();`],
+        {
+          stdin: "pipe", stdout: "pipe", stderr: "pipe",
+          env: { ...process.env, HOME: dir, LTM_DB_PATH: join(dir, "openltm.db"), LTM_DATA_DIR: dir, LTM_EMBED_PROVIDER: "disabled" },
+        },
+      );
+      const stderr = proc.stderr.getReader();
+      let log = "";
+      while (!log.includes("running on stdio")) {
+        const { value, done } = await stderr.read();
+        if (done) break;
+        log += new TextDecoder().decode(value);
+      }
+      expect(log).toContain("running on stdio");
+      proc.stdin.end();
+      const code = await Promise.race([proc.exited, Bun.sleep(8_000).then(() => "timeout")]);
+      if (code === "timeout") proc.kill();
+      expect(code).toBe(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 20_000);
+});

@@ -19,10 +19,11 @@ import { trimSummary } from "../lib/summaryTrim.js";
 import { recordInjectedIds } from "../lib/promptRecall.js";
 import { applyInjectTopN } from "../lib/injectTopN.js";
 import { findLtmHooksInUserSettings, userSettingsPath } from "../lib/settingsHooks.js";
-import { getContextMerge, getSimilarMemories, getContextMergeWithGraph,
+import { getContextMerge, getSimilarMemoriesByVec, getContextMergeWithGraph,
          embedText, getDb, listMemoryIdsMissingEmbedding, exportContextMarkdown,
          waitForInit, getRecentConflicts, listStagedConflicts, emitEvent, listPendingProposals,
-         scrubForEgress, frameRecalledMemory, collectionIndexLines } from "@rohirik/openltm-core";
+         scrubForEgress, frameRecalledMemory, listRecentlyAutoAccepted, updateLastUsed,
+         explicitEmbedProvider, collectionIndexLines } from "@rohirik/openltm-core";
 import { readConfigSync } from "../../src/config.js";
 import type { Config } from "../../src/config.js";
 
@@ -74,11 +75,13 @@ async function buildLtmSection(
   sessionContext: string | undefined,
   topN: number,
   graphReasoning = false,
-): Promise<{ text: string; ids: number[] }> {
-  const none = { text: "", ids: [] };
+): Promise<{ text: string; ids: number[]; embedFailed: boolean }> {
+  const none = { text: "", ids: [], embedFailed: false };
   if (!existsSync(DB_PATH)) return none;
   try {
     const queryVec = sessionContext ? await embedText(scrubForEgress(sessionContext)) : null;
+    // Null from an attempted embed: provider disabled or unreachable (caller tells them apart).
+    const embedFailed = !!sessionContext && !queryVec;
     const merged = graphReasoning ? await getContextMergeWithGraph(project) : getContextMerge(project);
 
     let globals: IndexMemory[] = merged.globals;
@@ -87,8 +90,8 @@ async function buildLtmSection(
       // Semantic matches lead; the decay-ranked merge fills the rest, so memories
       // without an embedding (learned while the provider was down) still appear.
       const db = getDb();
-      const semGlobals = getSimilarMemories(db, queryVec, { minImportance: 4, limit: Math.ceil(topN / 3) });
-      const semScoped  = getSimilarMemories(db, queryVec, { projectScope: project, minImportance: 2, limit: topN });
+      const semGlobals = getSimilarMemoriesByVec(db, queryVec, { minImportance: 4, limit: Math.ceil(topN / 3) });
+      const semScoped  = getSimilarMemoriesByVec(db, queryVec, { projectScope: project, minImportance: 2, limit: topN });
       process.stderr.write(`[SessionStart] Semantic LTM: ${semGlobals.length} globals, ${semScoped.length} scoped\n`);
       globals = uniqueById([...semGlobals, ...globals]);
       scoped  = uniqueById([...semScoped, ...scoped]);
@@ -98,14 +101,16 @@ async function buildLtmSection(
     const graphInsights = (merged as { graphInsights?: string }).graphInsights;
 
     const collections = collectionIndexLines(project).map((l) => scrubForEgress(l));
-    if (globals.length === 0 && scoped.length === 0 && collections.length === 0) return none;
+    if (globals.length === 0 && scoped.length === 0 && collections.length === 0) return { ...none, embedFailed };
+    const ids = [...globals, ...scoped].map(m => m.id);
+    if (ids.length > 0) updateLastUsed(ids); // only what is injected counts as used
 
     const lines: string[] = ["LTM index (use MCP get <id> for full memory):", ""];
     if (globals.length > 0) lines.push("globals:", ...globals.map(indexLine), "");
     if (scoped.length > 0)  lines.push("project:", ...scoped.map(indexLine), "");
     if (collections.length > 0) lines.push(...collections, "");
     if (graphInsights) lines.push(...scrubForEgress(graphInsights).split("\n").slice(0, MAX_GRAPH_LINES), "");
-    return { text: frameRecalledMemory(lines.join("\n")), ids: [...globals, ...scoped].map(m => m.id) };
+    return { text: frameRecalledMemory(lines.join("\n")), ids, embedFailed };
   } catch (err) {
     process.stderr.write(`[SessionStart:buildLtmSection] ${err}\n`);
     return none;
@@ -139,6 +144,13 @@ function buildConflictSection(project: string): string {
     process.stderr.write(`[SessionStart:buildConflictSection] ${err}\n`);
     return "";
   }
+}
+
+/** Provider configured (not disabled) but the session embed came back null: say recall is full-text only. */
+function buildSemanticOffNotice(cfg: Cfg, embedFailed: boolean): string {
+  const provider = explicitEmbedProvider() ?? cfg.embeddings?.provider ?? "llamacpp";
+  if (!embedFailed || provider === "disabled") return "";
+  return `ℹ semantic recall off: no embedding provider reachable (${provider}) — full-text only\n`;
 }
 
 const BACKFILL_HINT_FILE = join(TMP_DIR, "ltm-backfill-hint.flag");
@@ -186,6 +198,19 @@ function buildProposalsNotice(): string {
   try {
     const n = listPendingProposals().length;
     return n > 0 ? `💡 ${n} memory proposal(s) pending — review with /openltm:memory propose review\n` : "";
+  } catch {
+    return "";
+  }
+}
+
+/** The janitor accepts week-old unreviewed auto-promoted memories; tell the owner how to undo one. */
+function buildAutoAcceptNotice(project: string): string {
+  if (!existsSync(DB_PATH)) return "";
+  try {
+    const ids = listRecentlyAutoAccepted(project);
+    if (ids.length === 0) return "";
+    const shown = ids.slice(0, 5).map(id => `#${id}`).join(", ") + (ids.length > 5 ? ", …" : "");
+    return `✅ ${ids.length} memor${ids.length === 1 ? "y" : "ies"} auto-accepted this week (${shown}) — forget <id> to undo\n`;
   } catch {
     return "";
   }
@@ -300,8 +325,10 @@ async function main(): Promise<void> {
     output += `\n${directive}${LTM_REMINDER}`;
   }
   output += buildProposalsNotice();
+  output += buildAutoAcceptNotice(name);
   output += buildDuplicateHooksNotice();
   output += buildBackfillHint(cfg);
+  output += buildSemanticOffNotice(cfg, ltm.embedFailed);
 
   process.stdout.write(output);
   // A new context window (anything but resume) starts UserPromptSubmit's dedupe

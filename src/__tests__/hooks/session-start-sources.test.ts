@@ -5,6 +5,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
+import { Database } from "bun:sqlite";
+import { openQueryOnly } from "../../../packages/openltm-core/src/sql.js";
 import {
   HOOKS_SRC, initSandboxDb, makeSandbox, markOnboarded, registerProject, runHook, seedMemory, writeConfig,
   type Sandbox,
@@ -142,18 +144,76 @@ describe("SessionStart — injection", () => {
     expect(stdout).toContain("💡 2 memory proposal(s) pending — review with /openltm:memory propose review");
   }, 60_000);
 
+  it("announces memories the janitor auto-accepted this week, with ids to forget", async () => {
+    markOnboarded(sb);
+    initSandboxDb(sb);
+    registerProject(sb, cwd, "demo-app");
+    const id = seedMemory(sb, { content: "Auto-promoted gotcha nobody reviewed", project: "demo-app" });
+    const other = seedMemory(sb, { content: "Another project's auto-accept", project: "elsewhere" });
+    const db = new Database(sb.dbPath);
+    for (const m of [id, other]) db.run("INSERT INTO memory_audit (memory_id, op, actor) VALUES (?, 'update', 'janitor:auto-accept')", [m]);
+    db.close();
+    const { stdout } = await runHook("SessionStart.ts", { cwd, source: "startup" }, sb);
+    expect(stdout).toContain(`✅ 1 memory auto-accepted this week (#${id}) — forget <id> to undo`);
+  }, 30_000);
+
   it("ltm.injectTopN caps project-scoped memories", async () => {
     markOnboarded(sb);
     initSandboxDb(sb);
     registerProject(sb, cwd, "capped");
     for (let i = 0; i < 6; i++) seedMemory(sb, { content: `capped project fact number ${i}`, project: "capped", importance: 3 });
     writeConfig(sb, { ltm: { injectTopN: 2 } });
+    const OLD = "2020-01-01 00:00:00";
+    let db = new Database(sb.dbPath);
+    db.run("UPDATE memories SET last_used_at = ?", [OLD]);
+    db.close();
 
     const { stdout } = await runHook("SessionStart.ts", { cwd, source: "startup" }, sb);
     const projectBlock = stdout.split("project:\n")[1] ?? "";
     const bullets = projectBlock.split("\n\n")[0]!.split("\n").filter(l => l.startsWith("- ["));
     expect(bullets.length).toBe(2);
+    // Only the two injected memories count as used.
+    db = openQueryOnly(sb.dbPath);
+    const used = db.query<{ id: number }, [string]>("SELECT id FROM memories WHERE last_used_at <> ?").all(OLD).map(r => r.id);
+    db.close();
+    expect(used.sort()).toEqual(bullets.map(l => Number(l.match(/^- \[(\d+)\]/)![1])).sort());
   }, 30_000);
+
+  it("project memories are picked by decay_score before the cap, not by row order", async () => {
+    markOnboarded(sb);
+    initSandboxDb(sb);
+    registerProject(sb, cwd, "ranked");
+    const ids: number[] = [];
+    for (let i = 0; i < 20; i++) ids.push(seedMemory(sb, { content: `ranked project fact number ${i}`, project: "ranked", importance: 3 }));
+    const db = new Database(sb.dbPath);
+    db.run("UPDATE memories SET decay_score = 0.1");
+    db.run("UPDATE memories SET decay_score = 0.9 WHERE id = ?", [ids.at(-1)!]); // last-inserted, past any unordered LIMIT 15
+    db.close();
+    const { stdout } = await runHook("SessionStart.ts", { cwd, source: "startup" }, sb);
+    expect(stdout).toContain(`[${ids.at(-1)}]`);
+  }, 30_000);
+
+  describe("semantic-off notice", () => {
+    const withSummary = () => {
+      markOnboarded(sb);
+      initSandboxDb(sb);
+      const projectDir = registerProject(sb, cwd, "sem");
+      writeFileSync(join(projectDir, "context-summary.md"), "# Context Summary\n\n## Current Goal\n\nship semantic recall\n");
+    };
+
+    it("says recall is full-text only when the configured provider is unreachable", async () => {
+      withSummary();
+      const { stdout } = await runHook("SessionStart.ts", { cwd, source: "compact" }, sb,
+        { LTM_EMBED_PROVIDER: "llamacpp", LTM_LLAMA_CPP_URL: "http://127.0.0.1:1" });
+      expect(stdout).toContain("ℹ semantic recall off: no embedding provider reachable (llamacpp) — full-text only");
+    }, 30_000);
+
+    it("stays silent when the provider is explicitly disabled", async () => {
+      withSummary();
+      const { stdout } = await runHook("SessionStart.ts", { cwd, source: "compact" }, sb);
+      expect(stdout).not.toContain("semantic recall off");
+    }, 30_000);
+  });
 
   it("resets prompt-recall dedupe on a new context window but does not mark index ids as injected", async () => {
     markOnboarded(sb);

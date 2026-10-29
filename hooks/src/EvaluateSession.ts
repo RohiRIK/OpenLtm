@@ -34,7 +34,6 @@ const SUMMARY_HEADER_LINES = 10;
 const MIN_SESSION_MESSAGES = 5;
 const MAX_ERROR_CHARS = 200;
 const MIN_ERROR_CHARS = 40;
-const MAX_ERROR_PROPOSALS = 3;
 /** Stay inside the 60s SessionEnd timeout in hooks.json; callLlm has no timeout of its own. */
 const LLM_TIMEOUT_MS = 45_000;
 
@@ -259,10 +258,8 @@ async function main(): Promise<void> {
   updateSummary(today, shortId, messageCount, errors.length);
 
   const projectName = resolveProject(cwd).name;
-  const errorProposals: MemoryProposal[] = errors.slice(0, MAX_ERROR_PROPOSALS).map(content => ({
-    content, category: "gotcha", importance: 3, source: "evaluate-session",
-  }));
-  queueProposals(sessionId, [...errorProposals, ...await llmProposals(entries, projectName, sessionId)], projectName);
+  // Raw tool errors stay in learned/patterns; only the LLM path proposes memories (raw ones were all noise).
+  queueProposals(sessionId, await llmProposals(entries, projectName, sessionId), projectName);
 
   logEvent("EvaluateSession", EVENTS.SESSION_EVALUATED, { project: projectName, count: messageCount });
   emitEvent({ hook: "EvaluateSession", event: EVENTS.SESSION_EVALUATED, project: projectName, count: messageCount, ts: new Date().toISOString() });

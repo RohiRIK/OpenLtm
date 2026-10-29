@@ -73,7 +73,7 @@ export async function backfillRecordEmbeddings(db: Database = getDb(), max = 100
       "SELECT id FROM records WHERE status='active' AND (embedding IS NULL OR embedding_model IS NOT ?) ORDER BY id LIMIT ?",
     ).all(provider.model, max).map((r) => r.id);
   } catch {
-    return 0; // pre-031 database
+    return 0; // pre-033 database
   }
   let done = 0;
   for (const id of ids) if (await embedRecord(id, db)) done++;

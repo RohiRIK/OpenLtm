@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS memories (
   -- Where the claim came from (migration 030). NULL = unknown (pre-030 row).
   origin               TEXT CHECK(origin IS NULL OR origin IN (
                          'owner-statement','agent-observation','external-source','proposal','historical-approval')),
-  -- Event time and supersede kind (migration 032). NULL occurred_at = unknown (use created_at).
+  -- Event time and supersede kind (migration 034). NULL occurred_at = unknown (use created_at).
   occurred_at          TEXT,
   supersede_kind       TEXT CHECK(supersede_kind IS NULL OR supersede_kind IN ('updates','retracts'))
 );
@@ -230,7 +230,7 @@ CREATE INDEX IF NOT EXISTS idx_conflict_staging_status
   ON memory_conflict_staging(status, created_at DESC);
 
 -- ============================================================
--- collections + records: structured types the agent defines (migration 031)
+-- collections + records: structured types the agent defines (migration 033)
 -- A new type is a row in collections, never a new table. No agent DDL.
 -- ============================================================
 CREATE TABLE IF NOT EXISTS collections (

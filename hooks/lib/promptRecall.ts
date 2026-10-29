@@ -3,7 +3,8 @@
  *
  * Runs on every prompt, so it stays off the heavy paths on purpose:
  *   - never imports @rohirik/openltm-core (module graph + sqlite-vec/Honker probing)
- *   - opens the DB read-only and never writes (no recall_count bumps, no migrations)
+ *   - searches over a query-only connection (no migrations); only recordPromptUsage
+ *     writes, on its own connection, to count the injected ids as used
  *   - never calls an embedding provider (no network in the prompt hot path)
  *
  * Filters mirror core recall(): status = 'active', project_scope NULL-or-current,
@@ -29,6 +30,7 @@ import type { Config } from "../../src/config.js";
 // Dependency-free module — importing it directly does not load core.
 import { scrubForEgress } from "../../packages/openltm-core/src/secretsScrubber.js";
 import { frameRecalledMemory } from "../../packages/openltm-core/src/memoryFrame.js";
+import { RECORD_USAGE_SQL, openQueryOnly } from "../../packages/openltm-core/src/sql.js";
 
 export const MIN_PROMPT_CHARS = 15;
 export const MAX_CONTENT_CHARS = 200;
@@ -153,7 +155,7 @@ export function searchPromptMemories(
 
   let db: Database | null = null;
   try {
-    db = new Database(dbPath, { readonly: true });
+    db = openQueryOnly(dbPath);
     // Stems are alnum-only, so quoting is enough to neutralise FTS5 syntax
     // (AND/OR/NEAR, column filters). A prefix query per stem fetches every
     // inflection; OR keeps partial matches, scored precisely below.
@@ -205,6 +207,25 @@ export function searchPromptMemories(
     // Old schema / locked / corrupt DB: prompt recall is best-effort, stay silent.
     process.stderr.write(`[promptRecall] ${err}\n`);
     return [];
+  } finally {
+    try { db?.close(); } catch { /* already closed */ }
+  }
+}
+
+/**
+ * Count injected memories as used — the same columns core recall() bumps — so
+ * decay and health see prompt-time retrieval. Best-effort: a locked or old DB
+ * loses the bump, never the injection.
+ */
+export function recordPromptUsage(dbPath: string, ids: number[]): void {
+  if (ids.length === 0) return;
+  let db: Database | null = null;
+  try {
+    db = new Database(dbPath, { readwrite: true, create: false });
+    db.run("PRAGMA busy_timeout = 500"); // short: the hook has a 5s budget
+    db.run(`${RECORD_USAGE_SQL}(${ids.map(() => "?").join(",")})`, ids);
+  } catch (err) {
+    process.stderr.write(`[promptRecall] usage not recorded: ${err}\n`);
   } finally {
     try { db?.close(); } catch { /* already closed */ }
   }

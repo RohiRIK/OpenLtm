@@ -202,7 +202,7 @@ export function searchRecords(query: string, opts: { project?: string | null; li
         LIMIT ?`,
     ).all(match, opts.project ?? "", lim);
   } catch {
-    return []; // no collections table yet (pre-031 DB) or a bad MATCH: records are optional in recall
+    return []; // no collections table yet (pre-033 DB) or a bad MATCH: records are optional in recall
   }
   const byId = collectionsById(db);
   return rows.flatMap((r) => {

@@ -19,6 +19,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+from ._db import _scope
+
 CATEGORIES = frozenset({"preference", "architecture", "gotcha", "pattern", "workflow", "constraint"})
 STATES = frozenset({"proposed", "approved", "rejected", "superseded", "expired"})
 MAX_CONTENT_CHARS = 2_000
@@ -68,6 +70,11 @@ class ProjectMemoryError(ValueError):
 def init_project_memory_schema(conn: sqlite3.Connection) -> None:
     """Create the additive review ledger and indexes without touching memories."""
     conn.executescript(_SCHEMA_SQL)
+    # Fold review rows written before scopes were lowercased (idempotent).
+    conn.execute(
+        "UPDATE project_memory_reviews SET project_scope = lower(project_scope)"
+        " WHERE project_scope <> lower(project_scope)"
+    )
     conn.commit()
 
 
@@ -102,7 +109,7 @@ def _validate_content(content: str) -> str:
 
 
 def _validate_project_scope(project_scope: str) -> str:
-    value = project_scope.strip()
+    value = _scope(project_scope) or ""
     if not value or len(value) > MAX_PROJECT_CHARS or not _SAFE_PROJECT.fullmatch(value):
         raise ProjectMemoryError("project must be a bounded, relative identifier")
     if value.startswith("/") or ".." in value.split("/"):

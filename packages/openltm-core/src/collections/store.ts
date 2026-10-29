@@ -436,7 +436,7 @@ export type { RecordRow };
 /**
  * Injection lines naming the collections visible from `project`, so a session
  * knows which structured types exist before it writes prose about them.
- * Empty when there are none (or the DB predates migration 031).
+ * Empty when there are none (or the DB predates migration 033).
  */
 export function collectionIndexLines(project: string | null, max = 10, db: Database = getDb()): string[] {
   let list: CollectionSummary[];

@@ -12,10 +12,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { Database } from "bun:sqlite";
 import { readFileSync, unlinkSync } from "fs";
-import { join } from "path";
+import { getSchemaPath } from "../../../packages/openltm-core/src/paths.js";
 
 const dbPath = `/tmp/test-ltm-archive-unit-${process.pid}-${Date.now()}.db`;
-const schemaPath = join(import.meta.dir, "..", "..", "..", "src", "schema.sql");
+const schemaPath = getSchemaPath();
 
 let db: Database;
 let runArchive: typeof import("@rohirik/openltm-core").runArchive;
@@ -77,7 +77,7 @@ describe("runArchive()", () => {
     const inMemories = db.query<{ id: number }, [number]>("SELECT id FROM memories WHERE id=?").get(id);
     expect(inMemories).toBeNull();
     const inArchive = db.query<{ id: number }, [number]>("SELECT id FROM memory_archive WHERE id=?").get(id);
-    expect(inArchive).toBeDefined();
+    expect(inArchive).not.toBeNull();
   });
 
   it("archived JSON contains original content", () => {
@@ -86,8 +86,8 @@ describe("runArchive()", () => {
     const row = db.query<{ memory_json: string }, [number]>(
       "SELECT memory_json FROM memory_archive WHERE id=?",
     ).get(id);
-    if (!row) return; // may have been archived in prior test run
-    const parsed = JSON.parse(row.memory_json) as Record<string, unknown>;
+    expect(row).not.toBeNull();
+    const parsed = JSON.parse(row!.memory_json) as Record<string, unknown>;
     expect(parsed["id"]).toBe(id);
     expect(typeof parsed["content"]).toBe("string");
   });
@@ -96,21 +96,21 @@ describe("runArchive()", () => {
     const id = seedDeprecated({ importance: 1, recallCount: 2, decayScore: 0.02 });
     runArchive();
     const inMemories = db.query<{ id: number }, [number]>("SELECT id FROM memories WHERE id=?").get(id);
-    expect(inMemories).toBeDefined(); // not evicted
+    expect(inMemories).not.toBeNull(); // not evicted
   });
 
   it("skips deprecated memories with importance >= 3", () => {
     const id = seedDeprecated({ importance: 3, recallCount: 0, decayScore: 0.01 });
     runArchive();
     const inMemories = db.query<{ id: number }, [number]>("SELECT id FROM memories WHERE id=?").get(id);
-    expect(inMemories).toBeDefined(); // not evicted
+    expect(inMemories).not.toBeNull(); // not evicted
   });
 
   it("skips deprecated memories with decay_score >= 0.10", () => {
     const id = seedDeprecated({ importance: 1, recallCount: 0, decayScore: 0.15 });
     runArchive();
     const inMemories = db.query<{ id: number }, [number]>("SELECT id FROM memories WHERE id=?").get(id);
-    expect(inMemories).toBeDefined(); // not evicted
+    expect(inMemories).not.toBeNull(); // not evicted
   });
 
   it("FK cascade: memory_embeddings deleted when memory archived", () => {

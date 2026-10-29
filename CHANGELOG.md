@@ -1,11 +1,11 @@
 # Changelog
 
-## [2.23.0] — 2026-10-28
+## [2.23.0] — 2026-10-29
 
-Ideas taken from a comparison with memvid, built on top of 2.22.0 (collections).
+Two features ship together: agent-defined collections, and ideas taken from a comparison with memvid. Upgrading runs migrations 033 (collections) and 034 (event time, supersede kind).
 
 ### Added
-- **Event time and point-in-time recall** (migration 032). `learn` takes `occurred_at`, when the fact happened, separate from when it was stored. `recall` takes `as_of` and returns what was known and current at that moment, including memories superseded later. Recency questions rank by event time, falling back to `created_at`. See [MCP tools](docs/08-mcp-tools.md#time-intent-and-adaptive-cutoff-2230).
+- **Event time and point-in-time recall** (migration 034). `learn` takes `occurred_at`, when the fact happened, separate from when it was stored. `recall` takes `as_of` and returns what was known and current at that moment, including memories superseded later. Recency questions rank by event time, falling back to `created_at`. See [MCP tools](docs/08-mcp-tools.md#time-intent-and-adaptive-cutoff-2230).
 - **Query intent.** Recall detects recency questions ("latest", "current") and boosts newer memories, and aggregate questions ("all", "list", "how many") and keeps the whole list. Verbose results report the intent.
 - **Adaptive result cutoff.** Recall drops tail hits under 30% of the best hit's match strength, never below 3 results; `adaptive: false` restores a fixed-size list.
 - **Supersede with a relation.** `learn({ supersedes: { id, relation } })` with `updates`, `retracts` (both retire the old memory, recorded in `supersede_kind`) or `extends` (both stay active, linked by `refines`). An agent cannot retire an owner statement: the request is recorded as a `contradicts` relation instead.
@@ -16,10 +16,8 @@ Ideas taken from a comparison with memvid, built on top of 2.22.0 (collections).
 - **`bun run bench:locomo`**: a reproducible retrieval benchmark on the LoCoMo dataset (pinned SHA-256, no LLM calls). Full-text only, k=10: 51.7% evidence recall, 69.3% of questions with at least one evidence turn.
 - **Hermes and adapters:** the Hermes plugin, OpenCode and OpenClaw pass `occurred_at`, `supersedes`, `as_of` and `adaptive`; Hermes has twins of the intent, cutoff and PII code.
 
-## [2.22.0] — 2026-10-24
-
-### Added
-- **Agents can define their own structured types of information** (collections, migration 031). Facts with a fixed shape, such as hosts and ports, releases and whether each was tagged, or API endpoints, no longer have to be prose. An agent defines a *collection* (named, typed fields: `string`, `text`, `integer`, `number`, `boolean`, `date`, `enum`, `string[]`, `url`) and stores validated *records* in it, then finds them by field (`tagged = false`, `port > 8000`) or by text. A new type is a row, not a table: no agent-written SQL or DDL ever runs, and the migration checksum gate is untouched. See [Collections](docs/16-collections.md).
+### Added: agent-defined collections (migration 033)
+- **Agents can define their own structured types of information** (collections, migration 033). Facts with a fixed shape, such as hosts and ports, releases and whether each was tagged, or API endpoints, no longer have to be prose. An agent defines a *collection* (named, typed fields: `string`, `text`, `integer`, `number`, `boolean`, `date`, `enum`, `string[]`, `url`) and stores validated *records* in it, then finds them by field (`tagged = false`, `port > 8000`) or by text. A new type is a row, not a table: no agent-written SQL or DDL ever runs, and the migration checksum gate is untouched. See [Collections](docs/16-collections.md).
 - **`collection` and `record` tools on every host**: MCP (and Pi through it), OpenCode (`ltm_collection` / `ltm_record`), OpenClaw and Hermes (`openltm_collection` / `openltm_record`). `define` refuses a near-duplicate type (`server` next to `servers`) unless `force`; `evolve` allows additive changes only; `put` upserts by the key field and refuses secret-shaped values instead of storing a redacted placeholder. Errors come back with a stable code so the model can correct the call.
 - **Records in recall and context.** `recall` with a query appends up to 3 matching records after the memories (`type: "record"`, `includeRecords: false` turns it off), ranked by full-text search and, with an embeddings provider (local llama.cpp by default), by vector similarity too. `context`, the SessionStart index and the Hermes system prompt list the collections that exist, inside the recalled-memory frame.
 - **Records carry an origin and are labelled when they look like permission.** Records use the memory origin values; tools default to `agent-observation`, the CLI writes `owner-statement`. A `historical-approval` record, or one in a type whose names read like a permission (`approved`, `authorized`, `allowed`…), comes back with an `authority_note`: history, not a current permission.
@@ -29,10 +27,57 @@ Ideas taken from a comparison with memvid, built on top of 2.22.0 (collections).
 - **Hermes:** a Python port over the same tables and DDL, so a database shared through `LTM_DB_PATH` works from both sides; core and Hermes run one shared contract fixture.
 - Eval `07-collections-record` checks that an agent reuses an existing collection instead of writing prose or a near-duplicate type. The Ltm skill says when to use a record and when `learn`; MemoryReview reviews new, empty and duplicate collections.
 
+## [2.22.2] — 2026-10-29
+
+### Fixed
+- **Codex plugin hooks failed before execution.** First-use dependency installation wrote Bun's executable and workspace symlinks into the plugin cache. Codex rejected them while fingerprinting the plugin (`unsupported plugin entry type: .../node_modules/.bin/esbuild`). Codex launchers now install and execute a source copy under the plugin's writable data directory, keeping dependencies outside the cached package. The Codex dependency install also skips Claude's global hook wiring.
+
+## [2.22.1] — 2026-10-28
+
+### Fixed
+- **False memory conflicts.** The contradiction check matched substrings, so "js" hit `.mjs` and `json`, and "ts" hit "its" and "tests". 2.22.0 started running it in the janitor, which staged unrelated gotchas as "js vs ts" conflicts. It now matches whole words, ignores file extensions and paths, and skips a memory that mentions both sides. To clear a false conflict 2.22.0 staged, run `ltm conflict reject <id>`.
+
+## [2.22.0] — 2026-10-28
+
+An audit of two weeks of real use found the automatic memory loop mostly idle: no memory had an embedding, prompt-time injection did all retrieval but never counted as use, every session-end proposal was a raw tool error, and auto-promoted memories waited for a review nobody did. This release makes those loops work without the user or the agent having to remember to run them.
+
+### Changed
+- **Session-end proposals come only from the LLM pass.** With `ltm.evaluateSessionLlm` off (the default), raw tool errors stay in `learned/patterns` and nothing is queued for review. In real use, 13 of 13 proposals built from tool errors were noise (`fatal: not a git repository`, test output, hook errors).
+- **Auto-promoted memories are accepted after 7 days.** The janitor gives decisions and gotchas promoted from project context a title and origin, then approves any still pending after a week (audited as `janitor:auto-accept`). SessionStart lists the ones accepted this week, with `forget <id>` as the undo.
+- **Prompt-time injection counts as use.** Memories the UserPromptSubmit hook injects now update `last_used_at`, `last_recalled_at` and `recall_count`, the same as a `recall`. SessionStart updates only the memories it actually injects; `getContextMerge` picks the project's top memories by decay score instead of 15 arbitrary rows.
+- **Project names are case-insensitive.** Every write lowercases the project scope, and migration 031 folds stored casings (`SummonOS` and `summonos` were two projects). A git repository inside a registered folder now keeps its own name instead of taking the folder's (`~/Documents/OpenLtm` resolved to `documents`).
+- **Stale flags no longer touch preferences or owner statements**, and flags already set on them are cleared. A memory flagged stale by a commit and not revalidated within 30 days is deprecated (importance 5 exempt).
+- `src/schema.sql` and the root `migrations/` copy are gone; `packages/openltm-core` holds the only copy. `getSimilarMemories` in `db.ts` is renamed `getSimilarMemoriesByVec`.
+
+### Fixed
+- **Embeddings never drained.** With Honker available, `learn` queues the embedding and only the graph server ran the worker, so a plugin without the visualizer never embedded anything and recall was full-text only. The MCP server now runs the worker too. SessionStart says when semantic recall is off because no embedding provider answers.
+- **Staged conflicts were never detected.** The janitor now runs contradiction detection and stages pairs for review, so SessionStart's conflict section has data.
+- **The git post-commit hook could not open the database.** The bundle inlined core, which then looked for `schema.sql` next to `hooks/`. Core is now external to the bundle.
+- **A database from an older release (e.g. 1.8.0) failed to open**: `schema.sql` indexes columns a later migration adds. It is now migrated first.
+- **Processes opening a brand-new database at once raced on migrations** (`table _honker_notifications already exists`). Migrations run under a `<db>.migrate.lock`.
+- **`SQLITE_BUSY_RECOVERY` when a process opened the database while another wrote.** `busy_timeout` is now set before `journal_mode=WAL`, and the graph server sets one at all.
+- **OpenCode on macOS:** the installer created `~/Library/Application Support/opencode/opencode.json`, which OpenCode does not read. It now uses `~/.config/opencode`.
+- `configure()` with a new database path dropped nothing, so the old handle kept serving the old database.
+- The MCP server exits when its stdin closes.
+
+### Tests & CI
+- CI runs typecheck and tests on macOS as well as Linux, and `qa:smoke` on Linux. The suite passes on macOS (10 tests assumed Linux temp paths or a case-sensitive disk).
+- New tests: hooks with a corrupt database exit 0, concurrent writers and concurrent first open, upgrade from the 1.8.0 schema, the Hermes schema against core's, and several assertions that passed on `null`.
+
 ## [2.21.1] — 2026-10-24
 
 ### Added
 - **One-click release.** Actions → *Release (one click)* on `main` checks that every version reference matches, the changelog has the section, the version is not tagged yet and CI passed on that commit, then tags it, creates the GitHub Release, dispatches Publish at the tag (npm, then ClawHub in the same run, so no separate ClawHub dispatch), and opens a PR pinning the repo's Hermes catalog entry to the tag. No more tagging from a local checkout, which once tagged an old commit (v2.18.1).
+
+### Upgrade notes from 2.19.0
+
+Highlights from the 2.20.0–2.21.1 entries below for readers upgrading from 2.19.0.
+
+- **OpenCode V2.** The OpenCode plugin now runs on OpenCode V2 (`@opencode/plugin` 2.0.32) and no longer loads on OpenCode 1.x; OpenCode 1.x users should pin `@rohirik/opencode-ltm@2.19.0`.
+- **Migration checksum recovery.** Known earlier texts of migrations 009, 015, 017, 023 and 027 are recognized and re-recorded with the current checksum; those edits did not change the resulting schema. Other checksum mismatches still fail closed. After reviewing a mismatch, `/openltm:admin migrate --accept-checksums` backs the database up and re-records checksums without running migration SQL or changing memory data; `migrate status` lists mismatched versions.
+- **Hermes memory origin and provenance.** From 2.21.0, `learn` accepts `origin`, defaults new writes to `agent-observation`, and `recall` returns it; restating a memory with `owner-statement` upgrades its origin. Hermes adds the nullable origin column to its own databases, leaving existing rows unknown, and records provenance when core’s `memory_provenance` table exists. Core migration 030 also backfills session-end extractions as agent observations. Origin records a claim’s source, not permission to act.
+- **Hermes memory provider tool calls.** From 2.20.1, the Hermes memory provider prompt says its tools are direct provider tools, not routed through `tool_call` or imported in `execute_code`, and a fact counts as saved only after a tool receipt returns its memory ID.
+- **Release versus Hermes catalog availability.** Publishing to npm and ClawHub does not update the upstream Hermes catalog. The one-click release workflow opens a PR updating the catalog copy in `RohiRIK/OpenLtm`; a separate, manual re-pin PR must be reviewed and merged in `NousResearch/hermes-agent` before its catalog offers the new release. `bun run catalog:drift` checks OpenLTM’s own catalog copy against the latest `v*` release tag; it does not prove the upstream catalog is current.
 
 ## [2.21.0] — 2026-10-24
 
@@ -322,7 +367,7 @@ After the round-4 approval.
 - **Pi plugin registered nothing for users without Claude Code** — the Pi adapter had the same `@rohirik/openltm-core/package.json` lookup. Pi first tries the Claude Code plugin cache, so Claude Code users were unaffected; a Pi-only user fell through to the broken lookup and got zero tools and no Prior Knowledge, silently. Both adapters now share the same lookup in `src/find-core.ts`.
 - **Core now exports `./package.json`** — so adapters already published (2.15.1, which depend on `^2.15.1`) start working as soon as this core is installed, without an adapter update. Verified with the published Pi 2.15.1 bundle against the new core.
 - **Adapters are now tested under Node** — `src/__tests__/adapters-under-node.test.ts` bundles each adapter's core lookup and runs it with `node` against a core whose `exports` hide `package.json`, as 2.15.1's did. With the old lookup put back, it fails.
-- **Hooks broke when the plugin path contained a space** — `hooks.json` ran `${CLAUDE_PLUGIN_ROOT}/hooks/bin/run-hook.sh ${CLAUDE_PLUGIN_ROOT}/…` unquoted, so a path such as `/Users/Jane Doe/…` split into several words and every hook failed with "not found" (exit 127). Both placeholders are now quoted.
+- **Hooks broke when the plugin path contained a space** — `hooks.json` ran `${CLAUDE_PLUGIN_ROOT}/hooks/bin/run-hook.sh ${CLAUDE_PLUGIN_ROOT}/…` unquoted, so a path such as `~/My Plugins/OpenLtm/…` split into several words and every hook failed with "not found" (exit 127). Both placeholders are now quoted.
 - **Hooks died on common shell profiles** — when bun is not in a well-known location, `run-hook.sh` sources the user's `.zprofile`/`.bash_profile`/`.profile`, but did so under `set -u`, so any profile that reads an unset variable aborted the hook ("parameter not set"), and anything a profile printed leaked into the hook's stdout (for SessionStart, into the session). Profiles are now sourced with `set +u` and their output discarded.
 
 

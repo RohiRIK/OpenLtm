@@ -38,8 +38,19 @@ def _proposal(conn: sqlite3.Connection, content: str = "The service uses isolate
 
 
 def test_project_id_normalizes_remote_and_removes_credentials():
-    assert project_memory.project_id_from_remote("https://token@example.com/Acme/Platform.git") == "git/example.com/Acme/Platform"
-    assert project_memory.project_id_from_remote("git@github.com:Acme/Platform.git") == "git/github.com/Acme/Platform"
+    assert project_memory.project_id_from_remote("https://token@example.com/Acme/Platform.git") == "git/example.com/acme/platform"
+    assert project_memory.project_id_from_remote("git@github.com:Acme/Platform.git") == "git/github.com/acme/platform"
+
+
+def test_project_scope_is_case_insensitive(conn):
+    _db.learn(conn, "Worker queues are isolated per tenant in the platform", project="Acme-Platform")
+    assert conn.execute("SELECT project_scope FROM memories").fetchone()[0] == "acme-platform"
+    assert len(_db.recall(conn, query="worker queues", project="ACME-platform")) == 1
+    # Review rows stored before lowercasing are folded when the schema is (re)initialised.
+    _proposal(conn)
+    conn.execute("UPDATE project_memory_reviews SET project_scope = 'git/github.com/Acme/Platform'")
+    project_memory.init_project_memory_schema(conn)
+    assert [r[0] for r in conn.execute("SELECT DISTINCT project_scope FROM project_memory_reviews")] == ["git/github.com/acme/platform"]
 
 
 def test_proposal_is_not_recalled_until_explicit_approval(conn):
