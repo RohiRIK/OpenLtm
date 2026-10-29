@@ -7,7 +7,8 @@
 - [x] Synchronize version 2.22.2 and changelog.
 - [x] Remove a commented sensitive-decorator example that Varlock parsed as an invalid header directive, preventing the pre-commit scan.
 - [x] Remove an optional personal email from marketplace metadata and use a home-relative path in an old changelog example so the existing pre-commit checks can pass.
-- [ ] Finish review and final local checks; open the fix PR.
+- [x] Finish review and final local checks; open the fix PR (#69).
+- [x] Fix the macOS CI fixture's unbounded SQLite writer race against the real OpenClaw bridge.
 - [ ] Verify PR checks, merge, and verify CI on the release commit.
 - [ ] Run the release workflow and verify the tag, GitHub release, npm and ClawHub publication.
 - [ ] Merge the repository's generated Hermes catalog re-pin PR and record the outcome.
