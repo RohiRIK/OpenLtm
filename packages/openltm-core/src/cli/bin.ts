@@ -48,6 +48,8 @@ function printHelp(): void {
       "    import <file>         Load a capsule (checksum verified, deduplicated)",
       "    doctor [--fix]        Check the database (integrity, indexes, orphan rows,",
       "                          stale vectors); --fix repairs after a backup",
+      "    hive <cmd>            Shared memory between agents (opt-in, closed by",
+      "                          default): init, enable, agent add, grant, … — run 'hive --help'",
       "    conflict [list]       List staged memory conflicts; resolve one with",
       "                          'conflict accept|reject|coexist <id>'",
       "    hook --name <event>   Lifecycle hook entrypoint (SessionStart prefill,",
@@ -124,6 +126,14 @@ async function main(): Promise<void> {
   if (argv[0] === "export" || argv[0] === "import") {
     const { runExportCommand, runImportCommand } = await import("./capsule.js");
     const result = argv[0] === "export" ? await runExportCommand(argv.slice(1)) : await runImportCommand(argv.slice(1));
+    (result.exitCode === 0 ? process.stdout : process.stderr).write(result.output + "\n");
+    process.exit(result.exitCode);
+  }
+
+  // Sub-command: hive — the owner's controls for the shared hive memory (no main DB needed)
+  if (argv[0] === "hive") {
+    const { runHiveCommand } = await import("./hive.js");
+    const result = await runHiveCommand(argv.slice(1));
     (result.exitCode === 0 ? process.stdout : process.stderr).write(result.output + "\n");
     process.exit(result.exitCode);
   }

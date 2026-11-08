@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.24.0] — unreleased
+
+### Added
+- **Hive mode: opt-in shared memory between agents.** A separate SQLite file (default `~/.openltm/hive/hive.db`) that several agents can share, closed by default at every layer: a host registers the `hive_*` tools only after it opts in (`LTM_HIVE=1` or config `hive.enabled`), a new hive is disabled with no members, and a member needs an explicit `read` or `write` grant. Agents can only request access; the owner decides with `ltm hive approve|deny|grant|revoke`, which need the owner key printed once by `ltm hive init`. Tools: `hive_status`, `hive_recall`, `hive_learn`, `hive_forget`, `hive_request_access` (Hermes: `openltm_hive_*`). The author is set from the agent's token; agents cannot write `owner-statement` or `historical-approval`; writes are secret-scrubbed and deduplicated; every read, write and refusal is audited. The main database is not migrated. See [Hive mode](docs/18-hive-mode.md).
+
 ## [2.23.0] — 2026-10-29
 
 Two features ship together: agent-defined collections, and ideas taken from a comparison with memvid. Upgrading runs migrations 033 (collections) and 034 (event time, supersede kind).

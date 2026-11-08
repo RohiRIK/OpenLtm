@@ -1,6 +1,6 @@
 {
   "name": "@rohirik/opencode-ltm",
-  "version": "2.23.0",
+  "version": "2.24.0",
   "description": "Long-term memory plugin for OpenCode: persistent local SQLite memory with semantic recall, shared with Claude Code, Pi, OpenClaw and Hermes.",
   "type": "module",
   "main": "./src/index.ts",

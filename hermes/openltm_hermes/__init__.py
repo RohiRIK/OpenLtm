@@ -303,6 +303,7 @@ class OpenLtmpMemoryProvider(MemoryProvider):
         self._prefetch_lock = threading.Lock()
         self._atexit_registered = False
         self._embedder = None  # Lazy-loaded embedding provider
+        self._hive_cfg: Dict[str, Any] = {"enabled": False}  # opt-in shared memory (see _hive.py)
 
     @property
     def name(self) -> str:
@@ -345,6 +346,14 @@ class OpenLtmpMemoryProvider(MemoryProvider):
         except Exception as e:
             self._project_scope = None
             logger.warning("OpenLTM project-memory initialization failed: %s", e)
+
+        # Hive mode: off unless openltm.json "hive": {"enabled": true} or LTM_HIVE=1.
+        try:
+            from . import _hive
+            self._hive_cfg = _hive.host_config(_load_config(hermes_home))
+        except Exception as e:
+            self._hive_cfg = {"enabled": False}
+            logger.warning("OpenLTM hive config failed; hive tools stay off: %s", e)
 
         # Load the embedding provider selected in openltm.json (default: local Ollama)
         try:
@@ -533,12 +542,24 @@ class OpenLtmpMemoryProvider(MemoryProvider):
             RECALL_SCHEMA, LEARN_SCHEMA, FORGET_SCHEMA, CONTEXT_SCHEMA,
             RELATE_SCHEMA, GRAPH_SCHEMA, BRAIN_STATS_SCHEMA, STALE_SCHEMA,
             COLLECTION_SCHEMA, RECORD_SCHEMA,
-        ]
+        ] + self._hive_tool_schemas()
+
+    def _hive_tool_schemas(self) -> List[Dict[str, Any]]:
+        """The openltm_hive_* tools, only when this host opted in to hive mode."""
+        if not self._hive_cfg.get("enabled"):
+            return []
+        from . import _hive
+        return _hive.tool_schemas()
 
     def handle_tool_call(self, tool_name: str, args: Dict[str, Any], **kwargs) -> str:
         """Dispatch tool calls to the appropriate database operation."""
         if not self._conn:
             return json.dumps({"error": "OpenLTM not initialized"})
+
+        if tool_name.startswith("openltm_hive_"):
+            # The hive is its own file; a call never touches the private DB.
+            from . import _hive
+            return _hive.handle(tool_name, args, self._hive_cfg) or json.dumps({"error": f"Unknown tool: {tool_name}"})
 
         db_mod = _get_db()
 

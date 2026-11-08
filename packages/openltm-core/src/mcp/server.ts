@@ -35,6 +35,8 @@ import { COLLECTION_ACTIONS, RECORD_ACTIONS, COLLECTION_TOOL_DESCRIPTION, RECORD
 import { runCollectionTool, runRecordTool, type ToolOutcome } from "../collections/tools.js";
 import { startEmbeddingWorker } from "../queue/worker.js";
 import { scopeName } from "../project.js";
+import { HIVE_CATEGORIES, HIVE_CAPABILITIES, HIVE_LIMITS, AGENT_HIVE_ORIGINS, type HiveHostConfig } from "../hive/store.js";
+import { HIVE_TOOL_DESCRIPTIONS, loadHiveHostConfig, runHiveTool, type HiveToolName, type HiveToolResult } from "../hive/tools.js";
 
 // ─── Options ─────────────────────────────────────────────────────────────────
 
@@ -49,6 +51,11 @@ export interface McpServerOptions {
    * calls return an error asking the model to pass `project`.
    */
   defaultProject?: () => string | Promise<string>;
+  /**
+   * Hive mode (shared memory, opt-in). Omitted: read from LTM_HIVE* env / the
+   * config.json `hive` block. The hive tools are registered only when enabled.
+   */
+  hive?: HiveHostConfig;
 }
 
 /** Server version = the published @rohirik/openltm-core version (src/mcp/ → package root). */
@@ -622,6 +629,47 @@ export function buildMcpServer(options: McpServerOptions = {}): McpServer {
     },
     async ({ project, ...args }) => outcome(runRecordTool(args, { project: await resolveProjectArg(project), actor: "mcp" })),
   );
+
+  // ─── Hive (shared memory, opt-in) ──────────────────────────────────────────
+  // Not registered unless this host opted in, so a normal install's tool list
+  // is unchanged. Grants are checked in the hive on every call (default deny).
+  const hive = options.hive ?? loadHiveHostConfig();
+  if (hive.enabled) {
+    const hiveResult = (r: HiveToolResult): CallToolResult =>
+      r.ok ? jsonResult(r.value) : errorResult(`${r.code}: ${r.error}`);
+    const hiveTool = (name: HiveToolName, title: string, inputSchema: Record<string, z.ZodTypeAny>, readOnly: boolean): void => {
+      server.registerTool(
+        name,
+        {
+          title,
+          description: HIVE_TOOL_DESCRIPTIONS[name],
+          inputSchema,
+          annotations: { readOnlyHint: readOnly, destructiveHint: false, idempotentHint: readOnly, openWorldHint: false },
+        },
+        async (args: Record<string, unknown>) => hiveResult(runHiveTool(name, args, hive)),
+      );
+    };
+    hiveTool("hive_status", "Hive status", {}, true);
+    hiveTool("hive_recall", "Recall from the shared hive", {
+      query: z.string().optional().describe("Full-text query; omit for the most important recent hive memories"),
+      project: z.string().optional().describe("Only this project (plus global hive memories)"),
+      category: z.enum(HIVE_CATEGORIES).optional(),
+      limit: z.number().int().min(1).max(HIVE_LIMITS.maxRecall).optional(),
+    }, true);
+    hiveTool("hive_learn", "Share a memory with the hive", {
+      content: z.string().describe("The insight, in English, with nothing private or secret"),
+      title: z.string().optional(),
+      category: z.enum(HIVE_CATEGORIES).optional(),
+      importance: z.number().int().min(1).max(5).optional(),
+      project: z.string().optional().describe("Project scope; omit for a global hive memory"),
+      origin: z.enum(AGENT_HIVE_ORIGINS).optional().describe("agent-observation (default), external-source or proposal"),
+    }, false);
+    hiveTool("hive_forget", "Archive your own hive memory", { id: z.number().int() }, false);
+    hiveTool("hive_request_access", "Ask the owner for hive access", {
+      capabilities: z.array(z.enum(HIVE_CAPABILITIES)).min(1),
+      reason: z.string().optional().describe("Why this agent needs it (shown to the owner)"),
+    }, false);
+  }
 
   // ─── Resources ─────────────────────────────────────────────────────────────
 

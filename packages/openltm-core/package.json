@@ -1,6 +1,6 @@
 {
   "name": "@rohirik/openltm-core",
-  "version": "2.23.0",
+  "version": "2.24.0",
   "description": "Local long-term memory engine for AI coding agents: SQLite with full-text and vector search, an MCP server and a CLI. Powers OpenLTM for Claude Code, OpenCode, Pi, OpenClaw and Hermes.",
   "type": "module",
   "main": "./src/index.ts",

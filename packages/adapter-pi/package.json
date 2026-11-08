@@ -1,6 +1,6 @@
 {
   "name": "@rohirik/pi-ltm",
-  "version": "2.23.0",
+  "version": "2.24.0",
   "description": "Long-term memory extension for the Pi coding agent: persistent local SQLite memory with semantic recall, shared with Claude Code, OpenCode, OpenClaw and Hermes.",
   "type": "module",
   "main": "./dist/index.js",

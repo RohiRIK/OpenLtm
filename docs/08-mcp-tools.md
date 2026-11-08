@@ -26,6 +26,7 @@ If you ever need to call them yourself (e.g. from a custom hook or script), this
 | `stats` | Counts over the store, or over one `project` plus globals: `active`, `byStatus`, `byCategory`, `byImportance`, `stale`, `private`, `embedded` (active memories with a vector; `0` means recall is full-text only) and `pendingProposals`. |
 | `collection` | `{action: list\|describe\|define\|evolve\|archive}`: structured types the agent defines (servers, releases, endpoints…). `define` refuses a near-duplicate of an existing type unless `force`; `evolve` is additive only. See [Collections](16-collections.md). |
 | `record` | `{action: put\|get\|query\|archive, collection}`: validated records in a collection. `put` upserts by the key field (`merge` updates only the given fields); `query` filters by field (`eq`, `neq`, `lt`, `lte`, `gt`, `gte`, `in`, `contains`, `exists`) and/or full-text `text`. Values that look like secrets are refused. See [Collections](16-collections.md). |
+| `hive_status`, `hive_recall`, `hive_learn`, `hive_forget`, `hive_request_access` | Only registered when the host opted in to [hive mode](18-hive-mode.md) (`LTM_HIVE=1`): shared memory between agents, gated by per-agent `read`/`write` grants the owner gives with `ltm hive`. |
 
 ### Optional `project`
 

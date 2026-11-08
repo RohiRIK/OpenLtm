@@ -7,7 +7,7 @@
 **Persistent, local-first memory for Claude Code, OpenCode, Pi, OpenClaw and Hermes.**
 Your agent remembers decisions, conventions and gotchas across sessions, in one SQLite file on your disk.
 
-[![Version](https://img.shields.io/badge/version-2.23.0-blue?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.24.0-blue?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![npm](https://img.shields.io/npm/v/@rohirik/openltm-core?style=flat-square&logo=npm&label=npm)](https://www.npmjs.com/package/@rohirik/openltm-core)
 [![MCP](https://img.shields.io/badge/MCP-server-8B5CF6?style=flat-square)](https://modelcontextprotocol.io)
@@ -83,6 +83,7 @@ Where each package is published (npm, ClawHub, Pi catalog, Hermes catalog): [Dis
 | **Code-anchored staleness** | A commit flags the memories tied to the files it touched. |
 | **Decay and janitor** | Memories fade by importance and confidence; the janitor archives, promotes and suggests duplicates (never auto-merges). [Janitor](docs/13-janitor.md) |
 | **Collections** | Typed records the agent defines (hosts, releases, endpoints) next to prose memories. [Collections](docs/16-collections.md) |
+| **Hive mode** | Opt-in shared memory between agents with per-agent `read`/`write` grants, closed by default. [Hive mode](docs/18-hive-mode.md) |
 | **Privacy** | `private` memories stay local, secrets are scrubbed on learn, PII is masked before text reaches a model. [Security](docs/17-security.md) |
 | **Integrity and portability** | `ltm doctor` checks and repairs the database; `ltm export` / `import` move a project as one checksummed, optionally encrypted capsule. |
 | **Graph explorer** | A browser view of memories and their relations, with janitor controls. |
