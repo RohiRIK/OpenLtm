@@ -303,7 +303,10 @@ class OpenLtmpMemoryProvider(MemoryProvider):
         self._prefetch_lock = threading.Lock()
         self._atexit_registered = False
         self._embedder = None  # Lazy-loaded embedding provider
-        self._hive_cfg: Dict[str, Any] = {"enabled": False}  # opt-in shared memory (see _hive.py)
+        # Hive mode (opt-in shared memory, see _hive.py). Resolved here, not only in
+        # initialize(): Hermes builds its tool routing table from get_tool_schemas()
+        # before initialize() runs, so tools added later get "Unknown tool".
+        self._hive_cfg: Dict[str, Any] = self._load_hive_cfg(None)
 
     @property
     def name(self) -> str:
@@ -348,12 +351,7 @@ class OpenLtmpMemoryProvider(MemoryProvider):
             logger.warning("OpenLTM project-memory initialization failed: %s", e)
 
         # Hive mode: off unless openltm.json "hive": {"enabled": true} or LTM_HIVE=1.
-        try:
-            from . import _hive
-            self._hive_cfg = _hive.host_config(_load_config(hermes_home))
-        except Exception as e:
-            self._hive_cfg = {"enabled": False}
-            logger.warning("OpenLTM hive config failed; hive tools stay off: %s", e)
+        self._hive_cfg = self._load_hive_cfg(hermes_home)
 
         # Load the embedding provider selected in openltm.json (default: local Ollama)
         try:
@@ -543,6 +541,19 @@ class OpenLtmpMemoryProvider(MemoryProvider):
             RELATE_SCHEMA, GRAPH_SCHEMA, BRAIN_STATS_SCHEMA, STALE_SCHEMA,
             COLLECTION_SCHEMA, RECORD_SCHEMA,
         ] + self._hive_tool_schemas()
+
+    @staticmethod
+    def _load_hive_cfg(hermes_home: Optional[str]) -> Dict[str, Any]:
+        """Hive host config from openltm.json / LTM_HIVE*; disabled on any error."""
+        try:
+            from . import _hive
+            if hermes_home is None:
+                from hermes_constants import get_hermes_home
+                hermes_home = str(get_hermes_home())
+            return _hive.host_config(_load_config(hermes_home))
+        except Exception as e:
+            logger.debug("OpenLTM hive config unavailable; hive tools stay off: %s", e)
+            return {"enabled": False}
 
     def _hive_tool_schemas(self) -> List[Dict[str, Any]]:
         """The openltm_hive_* tools, only when this host opted in to hive mode."""

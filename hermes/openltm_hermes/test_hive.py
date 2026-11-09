@@ -165,3 +165,32 @@ def test_interop_with_core_cli(tmp_path):
     assert w["ok"]
     rows = json.loads(run("recall", "hermes").stdout)
     assert rows[0]["author_agent"] == "bob" and rows[0]["source_host"] == "hermes"
+
+
+def test_tools_are_routable_before_initialize(hive, tmp_path, monkeypatch):
+    """Hermes snapshots get_tool_schemas() before initialize(); the hive tools must
+    already be there and must answer (2.24.0 test report item 5a)."""
+    path, _ = hive
+    _enable(path)
+    token = _member(path, "bob", ["read"])
+    home = tmp_path / "hermes-home"
+    home.mkdir()
+    (home / "openltm.json").write_text(json.dumps({"hive": {"enabled": True, "path": path, "token": token}}))
+    monkeypatch.setenv("HERMES_HOME", str(home))
+    for var in ("LTM_HIVE", "LTM_HIVE_PATH", "LTM_HIVE_TOKEN"):
+        monkeypatch.delenv(var, raising=False)
+    p = openltm_hermes.OpenLtmpMemoryProvider()
+    names = {s["name"] for s in p.get_tool_schemas()}
+    assert {"openltm_" + n for n in _hive.HIVE_TOOL_NAMES} <= names
+    p._conn = object()
+    out = json.loads(p.handle_tool_call("openltm_hive_status", {}))
+    assert out["ok"] and out["value"]["agent"] == "bob"
+
+
+def test_no_hive_block_means_no_tools_before_initialize(tmp_path, monkeypatch):
+    home = tmp_path / "hermes-home"
+    home.mkdir()
+    monkeypatch.setenv("HERMES_HOME", str(home))
+    monkeypatch.delenv("LTM_HIVE", raising=False)
+    p = openltm_hermes.OpenLtmpMemoryProvider()
+    assert not any(s["name"].startswith("openltm_hive_") for s in p.get_tool_schemas())
