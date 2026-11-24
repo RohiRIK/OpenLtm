@@ -14,6 +14,7 @@
 [![Database](https://img.shields.io/badge/database-SQLite-003B57?style=flat-square&logo=sqlite)](https://sqlite.org)
 [![Claude Code](https://img.shields.io/badge/Claude_Code-plugin-cc785c?style=flat-square)](https://docs.anthropic.com/en/docs/claude-code)
 [![MCP](https://img.shields.io/badge/MCP-compatible-8B5CF6?style=flat-square)](https://modelcontextprotocol.io)
+[![RohiRIK/OpenLTM MCP server](https://glama.ai/mcp/servers/RohiRIK/OpenLTM/badges/score.svg)](https://glama.ai/mcp/servers/RohiRIK/OpenLTM)
 
 Persistent semantic memory that survives every session, every update, every compaction.
 
