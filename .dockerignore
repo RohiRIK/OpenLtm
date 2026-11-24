@@ -1,0 +1,60 @@
+# VCS and CI
+.git
+.github
+.gitignore
+
+# Installed dependencies and pack output
+node_modules
+**/node_modules
+**/.node-test
+packages/*/reports/
+.deps-install.lock/
+deps-install.log
+*.tgz
+
+# Local databases and secrets
+**/*.db
+**/*.db-shm
+**/*.db-wal
+**/*.bak*
+data/
+.env
+.env.local
+.env.*.local
+
+# Not needed to run mcp-serve
+graph-app/
+hermes/
+evals/
+docs/
+design/
+assets/
+tasks/
+agents/
+commands/
+hooks/
+skills/
+src/
+scripts/
+.claude-plugin/
+src
+*.md
+!packages/**/*.md
+
+# Local tooling / scratch
+.sisyphus/
+.aegis/
+.antigravitycli/
+.claude/
+.dev-team/
+.rename/
+.opencode/
+specs/
+*.tmp
+.DS_Store
+.pre-commit-config.yaml
+.trufflehogignore
+.npmrc
+bunfig.toml
+.tsconfig.tsbuildinfo
+**/tsconfig.tsbuildinfo
