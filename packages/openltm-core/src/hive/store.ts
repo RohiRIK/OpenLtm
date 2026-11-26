@@ -92,7 +92,7 @@ export function hiveHostConfig(env: NodeJS.ProcessEnv = process.env, configJson:
 /** Open an existing hive. Never creates one: a missing file is `hive_missing`. */
 export function openHive(path: string): Database {
   if (!existsSync(path)) throw new HiveError("hive_missing", `No hive at ${path}. The owner creates one with 'ltm hive init'.`);
-  const db = new Database(path, { create: false });
+  const db = new Database(path, { readwrite: true, create: false });
   db.exec("PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
   const version = metaGet(db, "schema_version");
   if (version !== String(HIVE_SCHEMA_VERSION)) {
