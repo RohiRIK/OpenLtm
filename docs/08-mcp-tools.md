@@ -24,12 +24,19 @@ If you ever need to call them yourself (e.g. from a custom hook or script), this
 | `context_add` | Record a goal, decision, gotcha, or progress note for a project. `project` is optional. |
 | `proposals` | List, accept, or reject memories proposed by end-of-session evaluation. |
 | `stats` | Counts over the store, or over one `project` plus globals: `active`, `byStatus`, `byCategory`, `byImportance`, `stale`, `private`, `embedded` (active memories with a vector; `0` means recall is full-text only) and `pendingProposals`. |
+| `collection` | `{action: list\|describe\|define\|evolve\|archive}`: structured types the agent defines (servers, releases, endpoints…). `define` refuses a near-duplicate of an existing type unless `force`; `evolve` is additive only. See [Collections](16-collections.md). |
+| `record` | `{action: put\|get\|query\|archive, collection}`: validated records in a collection. `put` upserts by the key field (`merge` updates only the given fields); `query` filters by field (`eq`, `neq`, `lt`, `lte`, `gt`, `gte`, `in`, `contains`, `exists`) and/or full-text `text`. Values that look like secrets are refused. See [Collections](16-collections.md). |
+| `hive_status`, `hive_recall`, `hive_learn`, `hive_forget`, `hive_request_access` | Only registered when the host opted in to [hive mode](18-hive-mode.md) (`LTM_HIVE=1`): shared memory between agents, gated by per-agent `read`/`write` grants the owner gives with `ltm hive`. |
 
 ### Optional `project`
 
 `context`, `context_items` and `context_add` take an optional `project` (the LTM registry name). When it's omitted, the server uses the current project — the plugin resolves it from the server's working directory exactly like the hooks do (registry exact or longest-prefix match, else the git repo root's folder name, else the working directory's). If no project can be resolved (e.g. a host that supplies no default — `bunx @rohirik/openltm-core mcp-serve` now defaults to its working directory), the tool returns an error asking for `project`. `context` echoes the project it used: `{ project, goal, decisions, gotchas, progress, globals, scoped }` — context items as written by `context_add` and the hooks, memories egress-scrubbed. `learn` returns the `project_scope` it stored the memory under (`null` = cross-project).
 
 Hosts embedding the server pick the default with `buildMcpServer({ defaultProject: () => "<name>" })` / `startMcpServer({ defaultProject })`.
+
+### Records in `recall` and `context`
+
+`recall` also appends up to 3 matching collection records after the memories, each with `type: "record"`, when a `query` is given and no `category` (turn it off with `includeRecords: false`). `context` lists the collections that exist.
 
 ### `context_add`
 
@@ -60,7 +67,7 @@ Every tool carries a `title` and MCP [tool annotations](https://modelcontextprot
 | Tool | `readOnlyHint` | `destructiveHint` | `idempotentHint` |
 |------|:-:|:-:|:-:|
 | `recall`, `get`, `context`, `context_items`, `graph`, `admin_audit`, `stale`, `stats` | ✅ | — | — |
-| `learn`, `context_add` | ❌ | ❌ | ❌ |
+| `learn`, `context_add`, `collection`, `record` | ❌ | ❌ | ❌ |
 | `relate`, `revalidate` | ❌ | ❌ | ✅ |
 | `forget` | ❌ | ✅ | ✅ |
 | `proposals` | ❌ | ✅ (reject discards) | ❌ |
@@ -88,6 +95,25 @@ Recall falls back to **full-text only**, with identical results, when any of the
 ### Workspace and agent filters
 
 `recall({ workspace_id })` returns memories learned with that `workspace_id` plus memories with no workspace; `agent_id` works the same way. `learn` persists both fields.
+
+### Time, intent and adaptive cutoff (2.23.0)
+
+- **Event time.** `learn` takes `occurred_at` (ISO date or datetime): when the fact happened, as opposed to when it was stored. Unknown stays `NULL` and ranking falls back to `created_at`. Reinforcing a memory fills an unknown `occurred_at` but never overwrites a known one.
+- **Point-in-time recall.** `recall` takes `as_of`: only memories that had happened by then, including ones superseded *after* that moment. A bare date means the end of that day. An `as_of` recall does not bump recall counts.
+- **Query intent.** Recall detects two shapes of question. *Recency* ("latest", "current", "most recent", "now") boosts newer memories by event time. *Aggregate* ("all", "every", "list", "how many") keeps the full result list. Verbose results report the detected `intent`.
+- **Adaptive cutoff.** By default recall drops tail hits whose match strength (the stronger of relative BM25 and relative semantic similarity) is under 30% of the best hit, never returning fewer than 3. Pass `adaptive: false` for a fixed-size list; aggregate questions skip the cutoff.
+
+### Superseding with a relation (2.23.0)
+
+`learn` takes `supersedes: { id, relation }`, where `relation` is:
+
+| relation | Effect |
+|----------|--------|
+| `updates` (default) | The old memory is marked superseded (`supersede_kind: "updates"`); the new one replaces it. |
+| `retracts` | Same, but `supersede_kind: "retracts"`: the old claim was wrong, not just outdated. |
+| `extends` | Both stay active; a `refines` relation links them. |
+
+The result carries `supersede: { applied, reason? }`. An agent cannot retire an `owner-statement` memory: the request becomes a `contradicts` relation with reason `owner_statement_protected`, and the owner decides. Other refusals: `not_found`, `not_active`, `self`. Superseded memories returned by an `as_of` recall show `status`, `superseded_by`, `superseded_at` and `supersede_kind`.
 
 ---
 

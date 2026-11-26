@@ -37,6 +37,19 @@ function printHelp(): void {
       "                          forget, relate, context) — run 'memory --help'",
       "    janitor <cmd>         Curate the DB without graph-server (run, status,",
       "                          schedule, daemon) — run 'janitor --help'",
+      "    collection <cmd>      Agent-defined structured types (list, show, define,",
+      "                          evolve, archive, restore) — run 'collection --help'",
+      "    record <cmd>          Records in a collection (list, get, put, archive,",
+      "                          export) — run 'record --help'",
+      "    facts extract         Pull entity/slot/value facts (ports, versions, …)",
+      "                          from memories; --apply stores them as records",
+      "    export --project <p>  Write a project's memory to one portable file",
+      "                          (optional --encrypt); 'export --help'",
+      "    import <file>         Load a capsule (checksum verified, deduplicated)",
+      "    doctor [--fix]        Check the database (integrity, indexes, orphan rows,",
+      "                          stale vectors); --fix repairs after a backup",
+      "    hive <cmd>            Shared memory between agents (opt-in, closed by",
+      "                          default): init, enable, agent add, grant, … — run 'hive --help'",
       "    conflict [list]       List staged memory conflicts; resolve one with",
       "                          'conflict accept|reject|coexist <id>'",
       "    hook --name <event>   Lifecycle hook entrypoint (SessionStart prefill,",
@@ -99,6 +112,46 @@ async function main(): Promise<void> {
     }
     process.stdout.write(JSON.stringify({ ok, action, id }) + "\n");
     process.exit(ok ? 0 : 1);
+  }
+
+  // Sub-command: facts — rule-based fact extraction into the facts collection
+  if (argv[0] === "facts") {
+    const { runFactsCommand } = await import("./facts.js");
+    const result = await runFactsCommand(argv.slice(1));
+    (result.exitCode === 0 ? process.stdout : process.stderr).write(result.output + "\n");
+    process.exit(result.exitCode);
+  }
+
+  // Sub-commands: export / import — a project's memory as one capsule file
+  if (argv[0] === "export" || argv[0] === "import") {
+    const { runExportCommand, runImportCommand } = await import("./capsule.js");
+    const result = argv[0] === "export" ? await runExportCommand(argv.slice(1)) : await runImportCommand(argv.slice(1));
+    (result.exitCode === 0 ? process.stdout : process.stderr).write(result.output + "\n");
+    process.exit(result.exitCode);
+  }
+
+  // Sub-command: hive — the owner's controls for the shared hive memory (no main DB needed)
+  if (argv[0] === "hive") {
+    const { runHiveCommand } = await import("./hive.js");
+    const result = await runHiveCommand(argv.slice(1));
+    (result.exitCode === 0 ? process.stdout : process.stderr).write(result.output + "\n");
+    process.exit(result.exitCode);
+  }
+
+  // Sub-command: doctor — database health checks and safe repair
+  if (argv[0] === "doctor") {
+    const { runDoctorCommand } = await import("./doctor.js");
+    const result = await runDoctorCommand(argv.slice(1));
+    (result.exitCode === 0 ? process.stdout : process.stderr).write(result.output + "\n");
+    process.exit(result.exitCode);
+  }
+
+  // Sub-commands: collection / record — the owner's view of agent-defined collections
+  if (argv[0] === "collection" || argv[0] === "record") {
+    const { runCollectionCommand, runRecordCommand } = await import("./collections.js");
+    const result = argv[0] === "collection" ? await runCollectionCommand(argv.slice(1)) : await runRecordCommand(argv.slice(1));
+    (result.exitCode === 0 ? process.stdout : process.stderr).write(result.output + "\n");
+    process.exit(result.exitCode);
   }
 
   // Sub-command: memory (learn | recall | forget | relate | context)

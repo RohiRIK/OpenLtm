@@ -1,0 +1,1 @@
+{"ok":true,"count":1,"collections":[{"name":"hosts","description":"Machines in the home lab. role is one of db, web, proxmox, cache","scope":"global","key_field":"host","version":2,"status":"active","origin":"owner-statement","fields":["host:string!","port:integer","role:enum","notes:text"],"record_count":3}]}

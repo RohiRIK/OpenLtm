@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Brain, FolderTree, Network, Inbox, Settings, Menu, X } from "lucide-react";
+import { Brain, FolderTree, Network, Inbox, Settings, Menu, X, Table2 } from "lucide-react";
 import Omnibar from "@/components/shell/Omnibar";
 import AskDialog from "@/components/shell/AskDialog";
 import BackendStatusChip from "@/components/shell/BackendStatusChip";
@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 const NAV_ITEMS = [
   { href: "/projects", label: "Projects", icon: FolderTree },
   { href: "/graph", label: "Graph", icon: Network },
+  { href: "/collections", label: "Collections", icon: Table2 },
   { href: "/inbox", label: "Inbox", icon: Inbox },
   { href: "/settings", label: "Settings", icon: Settings },
 ] as const;

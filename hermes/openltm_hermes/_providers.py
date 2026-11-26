@@ -67,6 +67,9 @@ class EmbeddingProvider:
         """Compute embedding for a single text (cached). Returns None on failure."""
         if not text:
             return None
+        # Personal data never reaches the provider (LTM_MASK_PII=off disables).
+        from ._pii import mask_pii_for_provider
+        text = mask_pii_for_provider(text)
         cached = self._cache.get(text)
         if cached is not None:
             self._cache.move_to_end(text)

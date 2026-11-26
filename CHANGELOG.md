@@ -1,5 +1,40 @@
 # Changelog
 
+## [2.24.0] — 2026-11-26
+
+### Added
+- **Hive mode: opt-in shared memory between agents.** A separate SQLite file (default `~/.openltm/hive/hive.db`) that several agents can share, closed by default at every layer: a host registers the `hive_*` tools only after it opts in (`LTM_HIVE=1` or config `hive.enabled`), a new hive is disabled with no members, and a member needs an explicit `read` or `write` grant. Agents can only request access; the owner decides with `ltm hive approve|deny|grant|revoke`, which need the owner key printed once by `ltm hive init`. Tools: `hive_status`, `hive_recall`, `hive_learn`, `hive_forget`, `hive_request_access` (Hermes: `openltm_hive_*`). The author is set from the agent's token; agents cannot write `owner-statement` or `historical-approval`; writes are secret-scrubbed and deduplicated; every read, write and refusal is audited. The main database is not migrated. See [Hive mode](docs/18-hive-mode.md).
+
+### Fixed
+- **Hive could not be opened on Bun 1.3.14.** `openHive` passed only `{ create: false }`, which Bun rejects with "flags must include SQLITE_OPEN_READONLY or SQLITE_OPEN_READWRITE"; it now opens read-write like the main store.
+
+## [2.23.0] — 2026-10-29
+
+Two features ship together: agent-defined collections, and ideas taken from a comparison with memvid. Upgrading runs migrations 033 (collections) and 034 (event time, supersede kind).
+
+### Added
+- **Event time and point-in-time recall** (migration 034). `learn` takes `occurred_at`, when the fact happened, separate from when it was stored. `recall` takes `as_of` and returns what was known and current at that moment, including memories superseded later. Recency questions rank by event time, falling back to `created_at`. See [MCP tools](docs/08-mcp-tools.md#time-intent-and-adaptive-cutoff-2230).
+- **Query intent.** Recall detects recency questions ("latest", "current") and boosts newer memories, and aggregate questions ("all", "list", "how many") and keeps the whole list. Verbose results report the intent.
+- **Adaptive result cutoff.** Recall drops tail hits under 30% of the best hit's match strength, never below 3 results; `adaptive: false` restores a fixed-size list.
+- **Supersede with a relation.** `learn({ supersedes: { id, relation } })` with `updates`, `retracts` (both retire the old memory, recorded in `supersede_kind`) or `extends` (both stay active, linked by `refines`). An agent cannot retire an owner statement: the request is recorded as a `contradicts` relation instead.
+- **Personal data masking toward providers.** Emails, phone numbers, Luhn-valid card numbers, SSNs and IPv4 addresses become placeholders in text sent to the categoriser, session-end extraction, relation classification, the janitor's LLM and embedding providers. Memories are stored as written. `LTM_MASK_PII` / `ltm.maskPii`: `providers` (default), `all` (also mask agent-bound output), `off`. Session-end extraction input was not secret-scrubbed before; it now is.
+- **`ltm doctor [--deep] [--fix] [--json]`**: SQLite, foreign-key, FTS and vector-index integrity checks, orphan and other-model vectors, dangling supersedes. `--fix` backs up first. `/openltm:doctor` gains a *Database integrity* section.
+- **Portable capsules: `ltm export` / `ltm import`.** One checksummed JSON file per project (memories, relations, context items, collections and records), optionally AES-256-GCM encrypted with a passphrase from the environment. Imports go through normal dedup and are labelled `external-source` unless `--keep-origin`.
+- **`ltm facts extract [--apply]`**: deterministic English rules turn prose ("X listens on port N", "X is pinned to vN", "X uses Y"…) into records of a global `facts` collection, one per entity.slot, newest memory wins.
+- **`bun run bench:locomo`**: a reproducible retrieval benchmark on the LoCoMo dataset (pinned SHA-256, no LLM calls). Full-text only, k=10: 51.7% evidence recall, 69.3% of questions with at least one evidence turn.
+- **Hermes and adapters:** the Hermes plugin, OpenCode and OpenClaw pass `occurred_at`, `supersedes`, `as_of` and `adaptive`; Hermes has twins of the intent, cutoff and PII code.
+
+### Added: agent-defined collections (migration 033)
+- **Agents can define their own structured types of information** (collections, migration 033). Facts with a fixed shape, such as hosts and ports, releases and whether each was tagged, or API endpoints, no longer have to be prose. An agent defines a *collection* (named, typed fields: `string`, `text`, `integer`, `number`, `boolean`, `date`, `enum`, `string[]`, `url`) and stores validated *records* in it, then finds them by field (`tagged = false`, `port > 8000`) or by text. A new type is a row, not a table: no agent-written SQL or DDL ever runs, and the migration checksum gate is untouched. See [Collections](docs/16-collections.md).
+- **`collection` and `record` tools on every host**: MCP (and Pi through it), OpenCode (`ltm_collection` / `ltm_record`), OpenClaw and Hermes (`openltm_collection` / `openltm_record`). `define` refuses a near-duplicate type (`server` next to `servers`) unless `force`; `evolve` allows additive changes only; `put` upserts by the key field and refuses secret-shaped values instead of storing a redacted placeholder. Errors come back with a stable code so the model can correct the call.
+- **Records in recall and context.** `recall` with a query appends up to 3 matching records after the memories (`type: "record"`, `includeRecords: false` turns it off), ranked by full-text search and, with an embeddings provider (local llama.cpp by default), by vector similarity too. `context`, the SessionStart index and the Hermes system prompt list the collections that exist, inside the recalled-memory frame.
+- **Records carry an origin and are labelled when they look like permission.** Records use the memory origin values; tools default to `agent-observation`, the CLI writes `owner-statement`. A `historical-approval` record, or one in a type whose names read like a permission (`approved`, `authorized`, `allowed`…), comes back with an `authority_note`: history, not a current permission.
+- **Managed indexes.** Past 2,000 active records (`collections.index_min_records`), the first query that filters or sorts on a scalar field indexes it for that collection (at most 3). About 15× faster lookups at 20,000 records.
+- **Owner CLI:** `ltm collection list | show | define | evolve | archive | restore` and `ltm record list | get | put | archive | export`. Only the CLI can make a breaking change (`evolve --allow-breaking`), after backing up the database and revalidating every record.
+- **Collections page in the graph app** (`/collections`): browse types and records, search, archive and restore.
+- **Hermes:** a Python port over the same tables and DDL, so a database shared through `LTM_DB_PATH` works from both sides; core and Hermes run one shared contract fixture.
+- Eval `07-collections-record` checks that an agent reuses an existing collection instead of writing prose or a near-duplicate type. The Ltm skill says when to use a record and when `learn`; MemoryReview reviews new, empty and duplicate collections.
+
 ## [2.22.2] — 2026-10-29
 
 ### Fixed

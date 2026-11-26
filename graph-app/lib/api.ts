@@ -3,6 +3,8 @@ import type {
   ClaudeConfig,
   ClaudeLtmConfig,
   Cluster,
+  CollectionRecords,
+  CollectionSummary,
   ConfigExplorerData,
   CtxItem,
   FtsResult,
@@ -114,6 +116,19 @@ export const api = {
   // Phase 2: Janitor
   janitorStatus: (): Promise<JanitorStatus> => get("/janitor/status"),
   runJanitor: (): Promise<JanitorRunResult> => post("/janitor/run"),
+
+  // Collections (agent-defined structured types)
+  collections: async (): Promise<CollectionSummary[]> => {
+    try {
+      return await get<CollectionSummary[]>("/collections");
+    } catch {
+      return [];
+    }
+  },
+  collectionRecords: (id: number, text?: string): Promise<CollectionRecords> =>
+    get(`/collections/${id}/records${text ? `?text=${encodeURIComponent(text)}` : ""}`),
+  setCollectionArchived: (id: number, archived: boolean): Promise<{ ok: boolean }> =>
+    post(`/collections/${id}/${archived ? "archive" : "restore"}`),
 
   // Phase 2: Pending memories
   pending: (): Promise<PendingMemory[]> => get("/pending"),

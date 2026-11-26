@@ -20,6 +20,9 @@ Read top to bottom for a guided path, or jump to what you need.
 | 13 | [Janitor](13-janitor.md) | Run the janitor without graph-server: CLI, SessionEnd hook, systemd/launchd timers |
 | 14 | [Memory versus authority](memory-versus-authority.md) | Conceptual separation of LTM from action approval |
 | 15 | [Local embeddings](15-local-embeddings.md) | Turn on search by meaning with a local llama.cpp server, in five minutes |
+| 16 | [Collections](16-collections.md) | Structured types the agent defines (hosts, releases, endpoints) and the records in them |
+| 17 | [Security and privacy](17-security.md) | What stays local, what can leave the machine, secret scrubbing, PII masking, native-code loading |
+| 18 | [Hive mode](18-hive-mode.md) | Opt-in shared memory between agents, with per-agent read/write grants (closed by default) |
 
 **Top-level docs** live at the repository root: [README](../README.md) · [Changelog](../CHANGELOG.md) · [Contributing](../CONTRIBUTING.md).
 

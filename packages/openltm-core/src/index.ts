@@ -12,11 +12,23 @@ export {
   learn, recall, getMemoryById, forget, relate, getSimilarMemoriesByVec,
   getContextMerge, getContextMergeWithGraph, computeDecayScore, updateLastUsed,
   exportMarkdown, exportGraphJson, flagStaleByPaths, revalidate,
+  SUPERSEDE_RELATIONS, normalizeEventTime,
 } from "./db.js";
 export type {
   Memory, MemoryWithRelations, MemoryCategory, RelationshipType, MemoryRelation,
   LearnInput, LearnResult, RecallInput, FlagStaleResult,
+  SupersedeRelation, SupersedeKind, SupersedeOutcome,
 } from "./db.js";
+export { detectQueryIntent, recencyRanks, type QueryIntent } from "./recall/intent.js";
+export { adaptiveCutoff, matchStrengths, ADAPTIVE_DEFAULTS } from "./recall/adaptive.js";
+export { checkIntegrity, repairIntegrity } from "./integrity.js";
+export { buildCapsule, openCapsule, importCapsule, CAPSULE_FORMAT, CAPSULE_VERSION } from "./capsule.js";
+export { extractFacts, scanMemoryFacts, applyFacts, FACTS_COLLECTION, FACTS_FIELDS } from "./facts.js";
+export type { Fact, FactCandidate, ApplyFactsResult } from "./facts.js";
+export type { CapsulePayload, CapsuleEnvelope, CapsuleMemory, ExportOptions, ImportOptions, ImportResult } from "./capsule.js";
+export { maskPii, maskPiiForProvider, maskPiiForAgent, piiMode, introducesPiiPlaceholder, luhnValid, PII_PATTERNS, PII_PLACEHOLDERS, PII_MODES, _resetPiiModeForTesting } from "./pii.js";
+export type { PiiMode, PiiMaskResult } from "./pii.js";
+export type { IntegrityCheck, IntegrityCheckId, IntegrityReport, IntegrityOptions, RepairResult } from "./integrity.js";
 
 // Context items
 export { addItem, getItems, getProjectContext, exportContextMarkdown, trimProgress, promote } from "./context.js";
@@ -40,12 +52,27 @@ export { listByProject, upsertGoal, appendProgress, addDecision, addGotcha, addC
 export { MEMORY_ORIGINS, DEFAULT_ORIGIN, isMemoryOrigin, ORIGIN_PARAM_DESCRIPTION } from "./origin.js";
 export type { MemoryOrigin } from "./origin.js";
 
+// Collections: structured types the agent defines (migration 033)
+export {
+  FIELD_TYPES, FILTER_OPS, LIMITS as COLLECTION_LIMITS, COLLECTION_ORIGINS, AUTHORITY_NOTE, CollectionError,
+  defineCollection, evolveCollection, listCollections, resolveCollection, setCollectionStatus, collectionIndexLines,
+  putRecord, getRecord, archiveRecord, queryRecords, searchRecords, recallRecords, embedRecord, backfillRecordEmbeddings,
+  collectionsById, managedIndexes, MAX_INDEXES as COLLECTION_MAX_INDEXES, INDEX_MIN_RECORDS as COLLECTION_INDEX_MIN_RECORDS,
+  runCollectionTool, runRecordTool, COLLECTION_ACTIONS, RECORD_ACTIONS, COLLECTION_TOOL_DESCRIPTION, RECORD_TOOL_DESCRIPTION,
+  COLLECTION_TOOL_JSON_SCHEMA, RECORD_TOOL_JSON_SCHEMA,
+} from "./collections/index.js";
+export type {
+  FieldSpec, FieldType, Filter, FilterOp, Collection, CollectionSummary, CollectionOrigin, RecordView, RecordHit,
+  CollectionToolArgs, RecordToolArgs, ToolContext as CollectionToolContext, ToolOutcome as CollectionToolOutcome,
+  DefineCollectionInput, EvolveCollectionInput, EvolveResult, PutRecordInput, PutRecordResult, QueryRecordsInput, QueryRecordsResult,
+} from "./collections/index.js";
+
 // Stale flags and store statistics
 export { listStaleMemories, memoryStats } from "./stats.js";
 export type { StaleMemory, ListStaleOptions, MemoryStats } from "./stats.js";
 
 // Utilities
-export { scrubSecrets, scrubOrRefuse, scrubForEgress, isEgressScrubFailed, SCRUB_FAILED_PLACEHOLDER, _forceScrubThrowForTesting } from "./secretsScrubber.js";
+export { scrubSecrets, scrubOrRefuse, scrubForEgress, scrubForProvider, isEgressScrubFailed, SCRUB_FAILED_PLACEHOLDER, _forceScrubThrowForTesting } from "./secretsScrubber.js";
 export { PRIVATE_TAG, hasPrivateTag, filterPrivateMemories } from "./privacy.js";
 export { normalizeKey } from "./dedup.js";
 export { normalizeAnchorPath, normalizeAnchorPaths } from "./anchors.js";

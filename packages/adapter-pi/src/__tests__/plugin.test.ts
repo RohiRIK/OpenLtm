@@ -57,7 +57,7 @@ describe("Pi extension (real entry point over the MCP bridge)", () => {
   });
 
   it("registers every MCP tool and hooks before_agent_start + session_compact", () => {
-    for (const name of ["recall", "get", "learn", "context", "context_items", "context_add", "proposals"]) {
+    for (const name of ["recall", "get", "learn", "context", "context_items", "context_add", "proposals", "collection", "record"]) {
       expect(pi.tools.has(name)).toBe(true);
     }
     expect(pi.handlers.has("before_agent_start")).toBe(true);

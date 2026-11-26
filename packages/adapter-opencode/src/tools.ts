@@ -1,7 +1,10 @@
 import {
   recall, learn, forget, relate, revalidate, getMemoryById, getProjectContext, scrubForEgress, categorise, hasPrivateTag,
   addContextItem, listPendingProposals, MEMORY_ORIGINS, ORIGIN_PARAM_DESCRIPTION, isMemoryOrigin, acceptProposal, rejectProposal, listStaleMemories, memoryStats,
+  deriveProjectFromCwd, recallRecords, runCollectionTool, runRecordTool, COLLECTION_TOOL_DESCRIPTION, RECORD_TOOL_DESCRIPTION,
+  COLLECTION_TOOL_JSON_SCHEMA, RECORD_TOOL_JSON_SCHEMA,
 } from "@rohirik/openltm-core";
+import type { CollectionToolArgs, RecordToolArgs } from "@rohirik/openltm-core";
 import type { ContextItemType, MemoryCategory, RelationshipType } from "@rohirik/openltm-core";
 
 /** A V2 tool with a JSON Schema input and no declared output: results reach the model as text content. */
@@ -17,7 +20,14 @@ export interface LtmTool {
 // behind OpenCode's `execute` code-mode tool.
 const options = { codemode: false } as const;
 
-export function buildTools(): LtmTool[] {
+/** `directory`: the session's working directory; collection lookups resolve the project from it. */
+export function buildTools(opts: { directory?: string } = {}): LtmTool[] {
+  const currentProject = (input: Record<string, unknown>): string | null =>
+    (typeof input.project === "string" && input.project.trim()) || (opts.directory ? deriveProjectFromCwd(opts.directory) || null : null);
+  const withProject = <T extends { properties: object }>(schema: T) => ({
+    ...schema,
+    properties: { ...schema.properties, project: { type: "string", description: "Project name; omit for the current project" } },
+  });
   return [
     {
       name: "ltm_recall",
@@ -30,17 +40,39 @@ export function buildTools(): LtmTool[] {
           project: { type: "string", description: "Filter by project scope" },
           limit: { type: "number", description: "Max results (default 10)", minimum: 1, maximum: 50 },
           category: { type: "string", enum: ["preference", "architecture", "gotcha", "pattern", "workflow", "constraint"] },
+          include_records: { type: "boolean", description: "Append up to 3 matching collection records (type: \"record\") after the memories (default true)" },
+          adaptive: { type: "boolean", description: "Trim hits far weaker than the best match (default true; never below 3; skipped for 'list all / how many' queries)" },
+          as_of: { type: "string", description: "Point-in-time recall (YYYY-MM-DD or date-time): what was known and not yet superseded then" },
         },
       },
       async execute(input) {
-        const { query, project, limit, category } = input as Record<string, unknown>;
-        const results = await recall({
-          query: query as string | undefined,
-          project: project as string | undefined,
-          limit: limit as number | undefined,
-          category: category as MemoryCategory | undefined,
-        });
-        return text(results.map(m => ({ id: m.id, content: scrubForEgress(m.content), category: m.category, importance: m.importance, origin: m.origin ?? null })));
+        const { query, project, limit, category, include_records, adaptive, as_of } = input as Record<string, unknown>;
+        let results: Awaited<ReturnType<typeof recall>>;
+        try {
+          results = await recall({
+            query: query as string | undefined,
+            project: project as string | undefined,
+            limit: limit as number | undefined,
+            category: category as MemoryCategory | undefined,
+            adaptive: typeof adaptive === "boolean" ? adaptive : undefined,
+            as_of: typeof as_of === "string" && as_of ? as_of : undefined,
+          });
+        } catch (err) {
+          return text({ ok: false, error: (err as Error).message });
+        }
+        const memories = results.map(m => ({
+          id: m.id, content: scrubForEgress(m.content), category: m.category, importance: m.importance, origin: m.origin ?? null,
+          ...(m.occurred_at ? { occurred_at: m.occurred_at } : {}),
+          ...(m.status === "superseded" ? { status: m.status, superseded_by: m.superseded_by, supersede_kind: m.supersede_kind ?? "updates" } : {}),
+        }));
+        // Records follow the memories, as in the MCP recall tool.
+        const records = typeof query === "string" && query && !category && include_records !== false
+          ? (await recallRecords(query, { project: currentProject(input as Record<string, unknown>), limit: 3 })).map((r) => ({
+            type: "record", collection: r.collection, key: r.key, id: r.id, data: r.data, origin: r.origin,
+            updated_at: r.updated_at, ...(r.authority_note ? { authority_note: r.authority_note } : {}),
+          }))
+          : [];
+        return text([...memories, ...(deepScrub(records) as unknown[])]);
       },
     },
 
@@ -57,24 +89,44 @@ export function buildTools(): LtmTool[] {
           importance: { type: "number", description: "Importance 1-5 (default 3)", minimum: 1, maximum: 5 },
           project: { type: "string", description: "Scope to a specific project" },
           origin: { type: "string", enum: [...MEMORY_ORIGINS], description: ORIGIN_PARAM_DESCRIPTION },
+          occurred_at: { type: "string", description: "When the fact became true or the event happened (YYYY-MM-DD or date-time), if not now" },
+          supersedes: {
+            type: "object",
+            description: "Set when this memory changes an older one. An owner statement is never retired by another origin (linked as contradicts instead)",
+            properties: {
+              id: { type: "number", description: "The older memory this one changes" },
+              relation: { type: "string", enum: ["updates", "extends", "retracts"], description: "updates (default) replaces it, retracts: no longer true, extends: adds to it" },
+            },
+            required: ["id"],
+          },
         },
         required: ["content"],
       },
       async execute(input) {
-        const { content, title, category, importance, project, origin } = input as Record<string, unknown>;
+        const { content, title, category, importance, project, origin, occurred_at, supersedes } = input as Record<string, unknown>;
         // Like the MCP learn tool: an omitted category is auto-detected (heuristic only, no LLM).
         const resolved = (category as MemoryCategory | undefined) ?? (await categorise(content as string, 0).catch(() => ({ category: "pattern" as const }))).category;
-        const result = learn({
-          content: content as string,
-          title: title as string | undefined,
-          category: resolved,
-          importance: importance as number | undefined,
-          project_scope: project as string | undefined,
-          origin: isMemoryOrigin(origin) ? origin : undefined,
-          actor: "opencode:ltm_learn",
-          skipExport: true,
-        });
-        return text({ id: result.id, action: result.action, category: resolved, origin: result.origin });
+        const sup = supersedes as { id?: unknown; relation?: unknown } | undefined;
+        let result: ReturnType<typeof learn>;
+        try {
+          result = learn({
+            content: content as string,
+            title: title as string | undefined,
+            category: resolved,
+            importance: importance as number | undefined,
+            project_scope: project as string | undefined,
+            origin: isMemoryOrigin(origin) ? origin : undefined,
+            occurred_at: typeof occurred_at === "string" && occurred_at ? occurred_at : undefined,
+            supersedes: sup && typeof sup.id === "number"
+              ? { id: sup.id, relation: (["updates", "extends", "retracts"] as const).find((r) => r === sup.relation) }
+              : undefined,
+            actor: "opencode:ltm_learn",
+            skipExport: true,
+          });
+        } catch (err) {
+          return text({ ok: false, error: (err as Error).message });
+        }
+        return text({ id: result.id, action: result.action, category: resolved, origin: result.origin, ...(result.supersede ? { supersede: result.supersede } : {}) });
       },
     },
 
@@ -251,6 +303,28 @@ export function buildTools(): LtmTool[] {
       async execute(input) {
         const { project } = input as Record<string, unknown>;
         return text(memoryStats(project as string | undefined));
+      },
+    },
+
+    {
+      name: "ltm_collection",
+      description: COLLECTION_TOOL_DESCRIPTION,
+      options,
+      input: withProject(COLLECTION_TOOL_JSON_SCHEMA) as unknown as LtmTool["input"],
+      async execute(input) {
+        const args = input as Record<string, unknown>;
+        return text(deepScrub(runCollectionTool(args as unknown as CollectionToolArgs, { project: currentProject(args), actor: "opencode" })));
+      },
+    },
+
+    {
+      name: "ltm_record",
+      description: RECORD_TOOL_DESCRIPTION,
+      options,
+      input: withProject(RECORD_TOOL_JSON_SCHEMA) as unknown as LtmTool["input"],
+      async execute(input) {
+        const args = input as Record<string, unknown>;
+        return text(deepScrub(runRecordTool(args as unknown as RecordToolArgs, { project: currentProject(args), actor: "opencode" })));
       },
     },
   ];

@@ -89,9 +89,14 @@ try {
     const learned = await txt("openltm_learn", { content: "OpenClaw smoke: Demo repo invoices are summed in integer cents", category: "gotcha", project: "${EXPECTED}" });
     const ctx = await txt("openltm_context", {});
     const lines = preps.length ? await preps[0]() : [];
-    console.log(JSON.stringify({ tools: [...tools.keys()], learned, ctx, prefill: lines.join("\\n") }));
+    await txt("openltm_collection", { action: "define", name: "smoke_hosts", description: "Smoke-test machines", key_field: "host",
+      fields: [{ name: "host", type: "string", required: true }, { name: "port", type: "integer" }] });
+    await txt("openltm_record", { action: "put", collection: "smoke_hosts", data: { host: "pve-smoke", port: 8006 } });
+    const queried = await txt("openltm_record", { action: "query", collection: "smoke_hosts", where: [{ field: "port", op: "gt", value: 8000 }] });
+    console.log(JSON.stringify({ tools: [...tools.keys()], learned, ctx, prefill: lines.join("\\n"), queried }));
     process.exit(0);`, repo);
-  check("OpenClaw (Node, dist) registers its 11 tools", Array.isArray(oc.tools) && oc.tools.length === 11, oc);
+  check("OpenClaw (Node, dist) registers its 13 tools", Array.isArray(oc.tools) && oc.tools.length === 13, oc);
+  check("OpenClaw collection + record round trip through the MCP bridge", String(oc.queried).includes("pve-smoke"), oc.queried ?? oc);
   check(`OpenClaw's context tool resolves "${EXPECTED}" from a mixed-case cwd`, String(oc.ctx).includes(`"project":"${EXPECTED}"`) || String(oc.ctx).includes("OpenClaw smoke"), oc.ctx ?? oc);
   check("OpenClaw prompt preparation injects Prior Knowledge", String(oc.prefill).includes("Prior Knowledge") && String(oc.prefill).includes("OpenClaw smoke"), oc.prefill ?? oc);
 

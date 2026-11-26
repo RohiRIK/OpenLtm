@@ -13,7 +13,7 @@ const plugin: Plugin.Plugin = {
     const directory = ctx.location.directory;
 
     await ctx.tool.transform(editor => {
-      for (const tool of buildTools()) editor.add(tool);
+      for (const tool of buildTools({ directory })) editor.add(tool);
     });
     await registerSessionHooks(ctx, { project: directory });
   },

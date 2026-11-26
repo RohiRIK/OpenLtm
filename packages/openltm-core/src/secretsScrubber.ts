@@ -6,6 +6,8 @@
  * of durable content so secrets cannot land in SQLite via a write bypass.
  */
 
+import { maskPiiForAgent, maskPiiForProvider } from "./pii.js";
+
 export interface ScrubResult {
   scrubbed: string;
   redactions: string[]; // deduplicated pattern IDs found
@@ -177,7 +179,19 @@ export function scrubOrRefuse(text: string): ScrubResult {
 export function scrubForEgress(text: string): string {
   const { scrubbed, redactions } = scrubOrRefuse(text);
   if (redactions.includes("scrub-failed")) return SCRUB_FAILED_PLACEHOLDER;
-  return scrubbed;
+  // Personal data reaches the agent as stored unless LTM_MASK_PII=all (pii.ts).
+  return maskPiiForAgent(scrubbed);
+}
+
+/**
+ * Scrub text bound for a third-party model (LLM or embedding provider):
+ * secrets as in scrubForEgress, and personal data masked unless
+ * LTM_MASK_PII=off. A provider's output built on this text can contain
+ * placeholders; never write it back over the original (introducesPiiPlaceholder).
+ */
+export function scrubForProvider(text: string): string {
+  const out = scrubForEgress(text);
+  return out === SCRUB_FAILED_PLACEHOLDER ? out : maskPiiForProvider(out);
 }
 
 /** True when egress should prefer omitting the item over showing a stub. */

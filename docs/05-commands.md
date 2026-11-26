@@ -126,6 +126,21 @@ Logs go to `~/.claude/tmp/ltm-server.log` and `~/.claude/tmp/nextjs.log`. Withou
 
 ---
 
+## Terminal CLI: integrity, capsules, facts (2.23.0)
+
+These run from a shell through the `ltm` binary (`bunx @rohirik/openltm-core <command>` without a global install).
+
+| Command | What it does |
+|---------|-------------|
+| `ltm doctor [--deep] [--fix] [--json]` | Checks the database: SQLite `quick_check` (`integrity_check` with `--deep`), foreign keys, the three FTS indexes, vectors whose memory is gone, vectors from another embedding model, the vector index row count, and superseded memories whose replacement is gone. `--fix` backs the database up first, then deletes orphans, rebuilds FTS, drops other-model vectors and rebuilds the vector index. Exit code 1 when a problem remains. `/openltm:doctor` shows the same checks under *Database integrity*. |
+| `ltm export --project <p> [--out file] [--include-global] [--include-private] [--mask-pii] [--encrypt]` | Writes a portable *capsule*: one JSON file with the project's memories (tags, files, origin, event time), relations, goal / decisions / gotchas, and collections with their records, plus a SHA-256 checksum. Private memories are left out unless asked. `--encrypt` uses AES-256-GCM with a key derived (scrypt) from `LTM_CAPSULE_PASSPHRASE` (or `--passphrase-env VAR`). The file is written with mode 0600 and an existing file is never overwritten. |
+| `ltm import <file> [--project p] [--keep-origin] [--dry-run]` | Verifies the checksum (and decrypts), then writes through normal `learn` dedup. Imported memories get origin `external-source` unless `--keep-origin`, and keep their original event time. The target project's goal is never replaced; duplicate context items are skipped. |
+| `ltm facts extract [--project p] [--limit n] [--apply] [--json]` | Finds entity / slot / value facts in active memories with fixed English rules (`X listens on port N`, `X is pinned to vN`, `X uses Y`, `prefer X over Y`, `X lives in <path>`, `X depends on Y`, `the default X is Y`). Without `--apply` it only lists them. With `--apply` it writes one record per `entity.slot` to a global `facts` collection, newest memory wins, each linked to its memory. Then `record query facts` with `slot = port` answers what prose recall only hints at. |
+
+Benchmark (repo checkout only): `bun run bench:locomo [-- --k 5 --convs 2 --semantic --json]` scores retrieval on the LoCoMo dataset (downloaded once, SHA-256 pinned, no LLM calls). Full-text only at k=10 it finds at least one evidence turn for 69% of 1,536 questions.
+
+---
+
 ## See also
 
 - [README](../README.md) — back to the top

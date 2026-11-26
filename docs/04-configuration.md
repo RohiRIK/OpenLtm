@@ -37,6 +37,26 @@ still read (and written in place) when the new file does not exist. See
 | `gitInvalidateEnabled` | `true` | Flag memories stale when a commit touches their anchored files — from the `PostToolUse` hook when Claude commits, and from git-learn. Set `false` to turn off code-anchored invalidation. |
 
 
+## Environment variables
+
+The main variables at a glance. Sections below give details and defaults.
+
+| Variable | Purpose |
+|---|---|
+| `LTM_DB_PATH` | Where the SQLite file lives. Overrides the default location. |
+| `LTM_EMBED_PROVIDER` | Embedding provider. Unset probes local llama.cpp (`llamacpp`); falls back to FTS if the server is down. `ollama` / `disabled` and the cloud providers (`openai`, `gemini`) opt in or out. |
+| `LTM_LLM_PROVIDER` | Provider for janitor summaries. Unset → `ollama` (local). Cloud providers (`anthropic`, `openai`, `gemini`, `cohere`, `openrouter`) are opt-in. |
+| `LTM_JANITOR_INTERVAL_MINUTES` | Minimum minutes between `janitor run --if-due` passes (hook, timers, daemon). Default 360. |
+| `LTM_JANITOR_ON_SESSION_END` | `0` disables the janitor-on-`SessionEnd` hook. |
+| `LTM_DISABLE_VEC` | Turn off the sqlite-vec loader; falls back to JS-cosine. |
+| `LTM_DISABLE_HONKER` | Turn off the Honker loader. |
+| `LTM_SQLITE_LIB` | Explicit path to a SQLite library. Loads native code. |
+| `LTM_HONKER_EXT` | Explicit path to the Honker extension. Loads native code. |
+| `LTM_CHANNEL` | Honker pub-sub channel. |
+| `LTM_BACKUP_RETENTION` | How many rotated backups to keep. |
+| `LTM_MASK_PII` | Personal-data masking: `providers` (default, mask text sent to LLM / embedding providers), `all` (also what the agent sees), `off`. |
+| `LTM_CAPSULE_PASSPHRASE` | Passphrase for `ltm export --encrypt` / `ltm import` of an encrypted capsule. |
+
 ## Embeddings
 
 Default is local llama.cpp. OpenLTM does not download a model. Start a server, then leave `LTM_EMBED_PROVIDER` unset ([step-by-step setup](15-local-embeddings.md), including running it as a service; `/openltm:doctor` checks it):
@@ -205,3 +225,14 @@ This project uses stricter memory injection.
 - `autoRecall` — Override auto-recall at session start
 
 **Note:** Changes require restarting Claude Code.
+
+## Personal data masking (2.23.0)
+
+Secrets are scrubbed on every write. Personal data (emails, phone numbers, Luhn-valid card numbers, US SSNs, IPv4 addresses other than loopback) is stored as written, because it is often the point of the memory, but it is replaced with placeholders (`[EMAIL]`, `[PHONE]`, `[CREDIT_CARD]`, `[SSN]`, `[IP_ADDRESS]`) on the way to third-party models: the categoriser, session-end extraction, relation classification, the janitor's LLM and embedding providers. A janitor merge whose text contains a placeholder the originals did not is dropped.
+
+| Setting | Values | Default |
+|---------|--------|---------|
+| `LTM_MASK_PII` env, else `ltm.maskPii` in config.json | `providers` (mask provider-bound text), `all` (also mask what the agent sees through MCP and hooks), `off` | `providers` |
+
+Hermes reads the same `LTM_MASK_PII` variable. Patterns are English/US-centric, like the rest of the store.
+

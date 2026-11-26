@@ -1,7 +1,7 @@
 {
   "name": "openltm",
-  "version": "2.22.2",
-  "description": "OpenLTM \u2014 Long-Term Memory for AI coding agents (Claude Code, OpenCode, Pi)",
+  "version": "2.24.0",
+  "description": "OpenLTM: local long-term memory for AI coding agents (Claude Code, OpenCode, Pi, OpenClaw, Hermes)",
   "private": true,
   "workspaces": [
     "packages/*"
@@ -27,7 +27,8 @@
     "check:openclaw": "bun run scripts/check-openclaw-manifest.ts",
     "check:published": "bun run scripts/check-published-versions.ts",
     "qa:smoke": "bun run scripts/qa/mcp-smoke.ts && bun run scripts/qa/hooks-smoke.ts && bun run scripts/qa/continuity-smoke.ts && bun run scripts/qa/semantic-smoke.ts && bun run scripts/qa/adapters-smoke.ts && bun run scripts/qa/server-smoke.ts",
-    "qa:ui": "bun run scripts/qa/ui-smoke.ts"
+    "qa:ui": "bun run scripts/qa/ui-smoke.ts",
+    "bench:locomo": "bun run scripts/bench/locomo.ts"
   },
   "dependencies": {
     "@clack/prompts": "^1.3.0",
