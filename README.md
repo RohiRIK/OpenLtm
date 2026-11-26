@@ -13,6 +13,7 @@ Your agent remembers decisions, conventions and gotchas across sessions, in one 
 [![MCP](https://img.shields.io/badge/MCP-server-8B5CF6?style=flat-square)](https://modelcontextprotocol.io)
 [![Database](https://img.shields.io/badge/database-SQLite-003B57?style=flat-square&logo=sqlite)](https://sqlite.org)
 [![Runtime](https://img.shields.io/badge/runtime-Bun-f472b6?style=flat-square&logo=bun)](https://bun.sh)
+[![RohiRIK/OpenLTM MCP server](https://glama.ai/mcp/servers/RohiRIK/OpenLTM/badges/score.svg)](https://glama.ai/mcp/servers/RohiRIK/OpenLTM)
 
 [Quick start](#quick-start) · [Features](#features) · [Supported agents](#supported-agents) · [Docs](docs/README.md) · [Changelog](CHANGELOG.md)
 
