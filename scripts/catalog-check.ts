@@ -10,7 +10,7 @@
  *
  * Usage: bun run catalog:check
  */
-import { readFileSync, existsSync } from "fs";
+import { readFileSync, existsSync, readdirSync } from "fs";
 import { join } from "path";
 import { execSync } from "child_process";
 
@@ -206,7 +206,17 @@ if (pinnedVersion === null) {
 // Cross-check declared capabilities against the real plugin source.
 if (existsSync(pluginPath)) {
   const source = readFileSync(pluginPath, "utf-8");
-  const sourceTools = new Set(Array.from(source.matchAll(/"name":\s*"(openltm_[a-z_]+)"/g), (m) => m[1]!));
+  // Tools live in several modules, and hive tool names are built from HIVE_TOOL_NAMES.
+  const pluginDir = join(root, "hermes", "openltm_hermes");
+  const allSource = readdirSync(pluginDir)
+    .filter((f) => f.endsWith(".py") && !f.startsWith("test_"))
+    .map((f) => readFileSync(join(pluginDir, f), "utf-8"))
+    .join("\n");
+  const hiveNames = allSource.match(/^HIVE_TOOL_NAMES = \(([^)]*)\)/m)?.[1] ?? "";
+  const sourceTools = new Set([
+    ...Array.from(allSource.matchAll(/"name":\s*"(openltm_[a-z_]+)"/g), (m) => m[1]!),
+    ...Array.from(hiveNames.matchAll(/"([a-z_]+)"/g), (m) => `openltm_${m[1]}`),
+  ]);
   const sourceHooks = new Set(
     Array.from(source.matchAll(/^\s+def\s+([a-z_]+)\s*\(/gm), (m) => m[1]!),
   );
